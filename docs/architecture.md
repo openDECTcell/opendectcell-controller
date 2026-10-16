@@ -66,11 +66,27 @@
 
 Not provided: dial plans, routing, hunt and ring groups, voicemail, IVR, conferencing, call parking, call recording, a SIP registrar or proxy for other devices. Internal calls between handsets go through the SIP server.
 
-## 7. Open design decisions
+## 7. Decisions (2026-10-16)
+
+| Topic | Decision | Reason / notes |
+|---|---|---|
+| Variant | **Multi-cell only:** all DECT and VoIP logic runs on the controller; cells are thin radio units | A possible later split into `opendectcell-mc` (multi-cell) and `opendectcell-sa` (standalone with VoIP on the box) is **not** on the list now |
+| Media path | Always relayed through the controller (cell ↔ controller ↔ PBX) | Direct cell↔PBX media is out of scope |
+| Service language | **Go** (`libopendectcell` via cgo) | Mature, permissively licensed SIP/RTP stack (sipgo for SIP; pion for RTP, SRTP and DTLS), simple and fast to compile (efficient for AI-assisted coding), small static binaries, good enough performance. Rust was the alternative (faster, safer, but less mature SIP libraries and slower iteration); Python was rejected (efficiency) |
+| Deployment | **Docker container**, **PostgreSQL only** | No SQLite variant |
+| Authentication | Local accounts + OIDC (e.g. Authentik); **OIDC groups map to roles**; **users are created on first login** (just-in-time) | |
+| Handset ownership | Personal handsets **and shared/admin-owned handsets** (e.g. a reception handset) | `handset.owner` is a user or "shared"; shared handsets are managed by admins |
+| Lines | **0, 1 or 2 SIP accounts per handset.** With 0 lines a handset still works for paging/locating | **When both lines ring at the same time, the user chooses the behaviour per handset:** call waiting, or busy for the second call |
+| Internal calls | **Only via the SIP server**; no handset-to-handset routing in the controller | No call routing in the controller (not a PBX) |
+| Scale | Design target **10 cells / 50 handsets** per installation, but keep scaling easy: stateless web/API, state in PostgreSQL, no hard-coded limits | Multi-site and multi-tenant are not goals for now |
+| UI language | **English only** | No frontend framework preference; pick what fits Go best (decision at implementation start) |
+
+## 8. Still open
 
 | Topic | Options | Notes |
 |---|---|---|
-| Controller service language | Go / Rust / Python (calling `libopendectcell` via FFI) | To be decided before implementation. Needs a solid SIP/SRTP library |
-| SIP/media library | PJSIP (C) / sofia-sip / language-native stacks | PJSIP covers TLS, SRTP, G.722 and jitter buffer; dependencies must be AGPL-3.0 compatible (e.g. GPL-2.0-or-later, LGPL, MIT, BSD, Apache-2.0); GPL-2.0-only code cannot be linked in |
-| Database | PostgreSQL / SQLite | SQLite for small installs, PostgreSQL optional |
 | Audio format on the cell link | linear PCM vs G.722/G.711 | LAN bandwidth is not an issue; linear keeps cells simple |
+| Web frontend technology | server-rendered (Go templates + htmx) vs SPA | Decide at implementation start |
+| DECT system identity (ARI) for multi-cell | see openDECTcell ROADMAP M11 research item | Needed before multi-cell handover; single-cell tests use the box's factory RFPI |
+
+All dependencies must be AGPL-3.0 compatible (GPL-2.0-or-later, GPL-3.0, LGPL, MIT, BSD, Apache-2.0); GPL-2.0-only code cannot be linked in.
