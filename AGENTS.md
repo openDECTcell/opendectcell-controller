@@ -1,6 +1,6 @@
 # AGENTS.md: rules for AI agents (and humans) working on opendectcell-controller
 
-Read this completely before changing anything. If a rule is unclear or wrong, propose a change to this file in its own commit; don't silently deviate. The sister repository **openDECTcell** (cell side: firmware loader, kernel module, `libopendectcell`) has its own `AGENTS.md`. Its clean-room rules apply here too.
+Read this completely before changing anything. For the current project state, see the maintainers' notes. If a rule is unclear or wrong, propose a change to this file in its own commit; don't silently deviate. The sister repository **openDECTcell** (cell side: firmware loader, kernel module, `libopendectcell`) has its own `AGENTS.md`. Its clean-room rules apply here too.
 
 ## 1. What this project is, and what it is not
 
