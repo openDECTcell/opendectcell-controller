@@ -31,10 +31,10 @@
 
 | Entity | Key fields |
 |---|---|
-| `user` | id, name, email, auth source (local/OIDC subject), role, `may_add_cells` |
-| `handset` | id, owner (user), IPUI, TPUI, auth key (UAK, **encrypted**), model info (manufacturer/EMC, model, profile/capabilities), display name, default line, last seen cell, registration time |
+| `user` | id, name, email, auth source (local/OIDC subject; created on first OIDC login), role (mapped from OIDC groups or set locally), `may_add_cells` |
+| `handset` | id, owner (user, or *shared* = admin-managed), IPUI, TPUI, auth key (UAK, **encrypted**), model info (manufacturer/EMC, model, profile/capabilities), display name, default line, last seen cell, registration time |
 | `sip_account` | id, owner (user), display name, user, domain, auth user, password (**encrypted**), registrar, outbound proxy, transport, encryption policy, codec list, DTMF mode, NAT options, … (`voip-requirements.md` §2) |
-| `handset_line` | handset, slot (1 or 2), sip_account. **Up to 2 lines per handset**; one account may serve several handsets |
+| `handset_line` | handset, slot (1 or 2), sip_account. **0–2 lines per handset**; one account may serve several handsets. Per handset: `dual_ring_policy` (call waiting / busy) for when both lines ring |
 | `cell` | id, name, location, RFPI/RPN, certificate fingerprint, enrolled by, status, firmware/STUB version, last heartbeat |
 | `cell_enrollment_token` | token hash, created by, expiry, single use |
 | `call_log` | handset, line, direction, remote party, start/answer/end, cell(s), codec, encrypted yes/no, quality metrics |
