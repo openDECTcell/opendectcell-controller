@@ -19,7 +19,12 @@ Read this completely before changing anything. If a rule is unclear or wrong, pr
 2. Never paste decompiled or disassembled code anywhere. Use facts in your own words, with the source named.
 3. The DECT protocol logic comes from `libopendectcell` (C) in the openDECTcell repo. Don't fork it into this repo; use it as a dependency.
 
-## 3. Commit and push discipline
+## 3. Licence
+
+- **AGPL-3.0-or-later.** Every source file carries `SPDX-License-Identifier: AGPL-3.0-or-later`.
+- Dependencies must be AGPL-3.0 compatible (GPL-2.0-**or-later**, GPL-3.0, LGPL, MIT, BSD, Apache-2.0). GPL-2.0-**only** code cannot be linked in. This also applies to `libopendectcell` from the openDECTcell repo, which therefore must be GPL-2.0-or-later or more permissive.
+
+## 4. Commit and push discipline
 
 - **Commit early and often:** one logical change per commit (a doc section, a model plus its migration, a handler plus its tests).
 - **Push after every commit** (or every few small ones), so changes stay traceable and easy to revert.
@@ -28,7 +33,7 @@ Read this completely before changing anything. If a rule is unclear or wrong, pr
 - **Check `git diff --staged` before committing.** Never commit secrets, `.env` files, keys, certificates or databases.
 - **Author:** `ctandi <ctandi@users.noreply.github.com>` (repo-local).
 
-## 4. Security rules
+## 5. Security rules
 
 - **Secrets encrypted at rest:**
   - DECT authentication keys (UAK/DCK) and SIP credentials are encrypted in the database. The key comes from config or a secret store, never from the repo.
@@ -36,20 +41,20 @@ Read this completely before changing anything. If a rule is unclear or wrong, pr
 - **Cell enrollment:** cells enroll with a one-time token and then authenticate with **mutual TLS** (per-cell certificate). There are no shared static passwords.
 - **Access control:** every web or API action is checked server-side against the user's role (admin / user) and ownership (a user only sees their own handsets and accounts).
 
-## 5. Feature framework rule
+## 6. Feature framework rule
 
 DECT features beyond basic calls (see `docs/dect-features.md`) are implemented as **feature modules**:
 - Each module declares the handset capabilities or models it needs.
 - It is enabled per handset, based on the capabilities the handset signalled and a model-quirks table.
 - The core call path must never depend on an optional feature module.
 
-## 6. Testing
+## 7. Testing
 
 - Unit tests for every module. SIP interop is tested against at least Asterisk and FreeSWITCH, ideally also a FRITZ!Box as registrar.
 - DECT-side tests use openDECTcell's simulator and golden traces until real cells are available.
 - **No implementation before openDECTcell gate G7.** Design documents, data model and UI mock-ups are fine before then.
 
-## 7. Documentation
+## 8. Documentation
 
 - Keep `docs/` current. Every design decision gets a short note: the decision, the alternatives and the reason.
 - Write in English, concisely, preferring tables.
