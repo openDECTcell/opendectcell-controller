@@ -28,4 +28,4 @@ Status: **design phase.** Implementation starts after openDECTcell's hardware ga
 
 ## License
 
-GPL-2.0 (see [LICENSE](LICENSE)).
+AGPL-3.0-or-later (see [LICENSE](LICENSE)). Anyone running a modified controller as a network service must offer its source to the users of that service.

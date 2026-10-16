@@ -71,6 +71,6 @@ Not provided: dial plans, routing, hunt and ring groups, voicemail, IVR, confere
 | Topic | Options | Notes |
 |---|---|---|
 | Controller service language | Go / Rust / Python (calling `libopendectcell` via FFI) | To be decided before implementation. Needs a solid SIP/SRTP library |
-| SIP/media library | PJSIP (C) / sofia-sip / language-native stacks | PJSIP covers TLS, SRTP, G.722 and jitter buffer; licence check needed (GPL-2.0 compatible) |
+| SIP/media library | PJSIP (C) / sofia-sip / language-native stacks | PJSIP covers TLS, SRTP, G.722 and jitter buffer; dependencies must be AGPL-3.0 compatible (e.g. GPL-2.0-or-later, LGPL, MIT, BSD, Apache-2.0); GPL-2.0-only code cannot be linked in |
 | Database | PostgreSQL / SQLite | SQLite for small installs, PostgreSQL optional |
 | Audio format on the cell link | linear PCM vs G.722/G.711 | LAN bandwidth is not an issue; linear keeps cells simple |
