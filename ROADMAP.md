@@ -17,7 +17,7 @@ measured so far and what is still unknown.
 - [ ] UI mock-ups: user (handsets, lines, registration), admin (cells, stats, logs, policies)
 - [ ] Web frontend technology decision (Go templates + htmx vs SPA)
 - [ ] Audio format on the cell link (linear PCM vs G.722/G.711)
-- [ ] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection) — design in `docs/libopendectcell-integration.md`; proof of concept outstanding
+- [x] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection) — `docs/libopendectcell-integration.md`, proof of concept in `internal/dect/cdect`; pending review
 - [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record) — proposal in `docs/cell-protocol.md` §7.4, policy pending decision
 
 ## C1: Skeleton (after G7)
