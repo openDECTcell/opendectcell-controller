@@ -10,15 +10,15 @@ measured so far and what is still unknown.
 ## C0: Design (now)
 - [x] Architecture draft, VoIP requirements, DECT feature framework (`docs/`)
 - [x] Core decisions: Go, Docker + PostgreSQL, multi-cell only, roles/OIDC, 0–2 lines per handset
-- [ ] Cell↔controller wire protocol spec: framing, message types, enrollment, mTLS, heartbeat, SRTP key exchange (`docs/cell-protocol.md`)
+- [x] Cell↔controller wire protocol spec: framing, message types, enrollment, mTLS, heartbeat, SRTP key exchange (`docs/cell-protocol.md`, v1 draft; pending review)
 - [ ] Database schema (SQL) and migration strategy
 - [ ] REST/JSON API specification (OpenAPI) for web UI and admin
 - [ ] Threat model and secret handling (key management for UAK/DCK and SIP passwords)
 - [ ] UI mock-ups: user (handsets, lines, registration), admin (cells, stats, logs, policies)
 - [ ] Web frontend technology decision (Go templates + htmx vs SPA)
 - [ ] Audio format on the cell link (linear PCM vs G.722/G.711)
-- [ ] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection)
-- [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record)
+- [ ] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection) — design in `docs/libopendectcell-integration.md`; proof of concept outstanding
+- [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record) — proposal in `docs/cell-protocol.md` §7.4, policy pending decision
 
 ## C1: Skeleton (after G7)
 - [ ] Go module layout, linting, unit-test setup, CI (GitHub Actions)

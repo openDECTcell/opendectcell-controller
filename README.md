@@ -25,6 +25,8 @@ Status: **design phase.** Implementation starts after openDECTcell's hardware ga
 | [docs/architecture.md](docs/architecture.md) | Components, data model, cell protocol, security |
 | [docs/voip-requirements.md](docs/voip-requirements.md) | SIP/RTP parameters to support, including encryption |
 | [docs/dect-features.md](docs/dect-features.md) | DECT features beyond calls and the per-model feature framework |
+| [docs/cell-protocol.md](docs/cell-protocol.md) | Cell↔controller wire protocol (v1 draft): framing, enrollment, mTLS, heartbeat, mail tunnel, subscription slots, media |
+| [docs/libopendectcell-integration.md](docs/libopendectcell-integration.md) | How the controller embeds `libopendectcell` through cgo: sessions, memory, timers, build |
 | [docs/first-tasks.md](docs/first-tasks.md) | **Start here if you are joining:** the C0/C1 tasks in order, and what the cell side has measured |
 | the maintainers' notes | What was done each session, for review |
 
