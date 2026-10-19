@@ -162,6 +162,24 @@ Each task names its deliverable and how you know it is done. Order within each
 part is roughly dependency order; A1 and A2 are the ones everything else leans
 on.
 
+**Progress** (update this table when a task changes state; details are in
+the maintainers' notes):
+
+| Task | State | Where |
+|---|---|---|
+| A1 Cell protocol | **Done, awaiting review** | `docs/cell-protocol.md` (v1 draft); open cell questions in its §13 |
+| A2 libopendectcell integration | **Done, awaiting review** | `docs/libopendectcell-integration.md`; PoC in `internal/dect/cdect`; change requests for openDECTcell in its §11 |
+| A3 Schema | Not started | Needs the `cell_slot` table from `cell-protocol.md` §7.4, and question 3 below |
+| A4 API spec | Not started | |
+| A5 Threat model | Not started | `cell-protocol.md` §4–5 and `libopendectcell-integration.md` §5 already refer to it |
+| A6 Frontend ADR | Not started | |
+| A7 UI mock-ups | Not started | |
+| B1 Module layout, lint, CI | Started by A2 | `go.mod` exists, plus one package (`internal/dect/cdect`); no lint config and no CI yet. CI needs read access to the private openDECTcell repo |
+| B2–B5 | Not started | |
+
+Per `AGENTS.md` §9, the next task is chosen by the maintainers after they
+review A1 and A2.
+
 ### Part A — C0 design
 
 **A1. Cell↔controller wire protocol spec** → `docs/cell-protocol.md`
@@ -285,9 +303,9 @@ provider, an audit trail, and green CI.
 
 | Item | Blocked on | Note |
 |---|---|---|
-| **Audio format on the cell link** (`ROADMAP.md` C0, `architecture.md` §8) | A measurement in progress on the cell side | Two bytes per frame at 8000 frames/s is equally consistent with 16-bit linear at 8 kHz, A-law at 16 kHz, or A-law in one byte. Specify the cell-link media negotiation so the format is a *parameter*, and leave the default open |
+| **Audio format on the cell link** (`ROADMAP.md` C0, `architecture.md` §8) | A measurement in progress on the cell side | Two bytes per frame at 8000 frames/s is equally consistent with 16-bit linear at 8 kHz, A-law at 16 kHz, or A-law in one byte. Specify the cell-link media negotiation so the format is a *parameter*, and leave the default open. *Update 2026-10-19:* narrowband is 8-bit A-law in the low byte on bench loopback; a live call still passes no decoded audio (openDECTcell `docs/call-g7.md`, v17). A1 makes the format negotiated (`cell-protocol.md` §8.2) |
 | **Mail tunnel semantics** (C2) | openDECTcell's cell mode, milestone M9 | `dect-stubd` currently runs standalone. The protocol spec (A1) can and should still define the tunnel; the implementation waits |
-| **Call ciphering** | Unresolved on the cell side | A handset will not hold an unencrypted call. Does not affect C0/C1, but it is why G7 is not finished |
+| **Call ciphering** | Unresolved on the cell side | Does not affect C0/C1. *Update 2026-10-19:* the handset drops unencrypted calls only when its "Abhörsicher" (secure) setting is on; with it off, they hold. The DCK derivation is verified on hardware, and the chip-side cipher enable (`0x0208`) is still unproven (openDECTcell `docs/call-g7.md`) |
 | **DECT system identity (ARI/RPN) for multi-cell** | openDECTcell research item M11 | Affects C9 only |
 
 The sensible move for all four: design so the unknown is a configurable
@@ -306,6 +324,11 @@ Send these back rather than designing around them:
    handset homed to one cell with roaming as an exception?
 4. Does the cell link need to carry anything the current message list omits —
    for example log shipping, remote firmware update, or a debug channel?
+
+*Status 2026-10-19:* still open for the maintainers. A1 contains proposals for
+1 (a 7 s grace period, `cell-protocol.md` §6.4) and 2 (automatic eviction
+with pins, plus a manual mode, §7.4), and reserves message types for 4 (§12).
+Question 3 is untouched and is needed for A3.
 
 ## 7. How we work together
 
