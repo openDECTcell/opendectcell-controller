@@ -329,12 +329,12 @@ should add a CI check that fails if a file the controller compiles stops being
 |---|---|---|
 | L1 | ~~Proof of concept~~ **done** (§10) | — |
 | L2 | ~~Real signatures~~ **resolved** from the headers (§1) | — |
-| L3 | **Change request:** `dect_lapc_next_deadline()`, so the controller doesn't read `last_tx_ms`/`retry_ms` directly (§6) | `cdect` |
+| L3 ([opendectcell#69](https://github.com/openDECTcell/opendectcell/issues/69)) | **Change request:** `dect_lapc_next_deadline()`, so the controller doesn't read `last_tx_ms`/`retry_ms` directly (§6) | `cdect` |
 | L4 | ~~Internal pointers~~ **resolved:** none except the transient `dect_lapc_frame.info` (§5) | — |
 | L5 | ~~`assert`/`abort`~~ **resolved:** none (§8) | — |
-| L6 | No version macro or function. **Change request:** `OPENDECTCELL_API_VERSION`, so `cdect` can refuse a submodule bump it wasn't written for | `cdect` |
+| L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | No version macro or function. **Change request:** `OPENDECTCELL_API_VERSION`, so `cdect` can refuse a submodule bump it wasn't written for | `cdect` |
 | L7 | The openDECTcell repository is private: CI needs read access (deploy key or token) | B1 |
 | L8 | ~~Connection identifier~~ **resolved:** `handle` + 3-byte `tag` from `0x0203` (§3.1) | — |
-| L9 | **Change request:** move the stack glue (§1.1) into `libopendectcell`, so `dect-stubd` and the controller share it instead of keeping two copies | `cdect`, openDECTcell |
-| L10 | **Change request:** the MM layer hard-codes subscription slot 1 (`DECT_MM_REG_SLOT`) in the TPUI it assigns. The controller allocates slots (`cell-protocol.md` §7.4), so the slot must be part of `struct dect_mm_cfg` | `core`, openDECTcell |
-| L11 | `dect_cs.h` says to flush with `0x0202`, but `dect-stubd` found that `0x0202` drops the connection and sends `0x0244` alone. The header comment should be corrected upstream | openDECTcell docs |
+| L9 ([opendectcell#67](https://github.com/openDECTcell/opendectcell/issues/67)) | **Change request:** move the stack glue (§1.1) into `libopendectcell`, so `dect-stubd` and the controller share it instead of keeping two copies | `cdect`, openDECTcell |
+| L10 ([opendectcell#68](https://github.com/openDECTcell/opendectcell/issues/68)) | **Change request:** the MM layer hard-codes subscription slot 1 (`DECT_MM_REG_SLOT`) in the TPUI it assigns. The controller allocates slots (`cell-protocol.md` §7.4), so the slot must be part of `struct dect_mm_cfg` | `core`, openDECTcell |
+| L11 ([opendectcell#71](https://github.com/openDECTcell/opendectcell/issues/71)) | `dect_cs.h` says to flush with `0x0202`, but `dect-stubd` found that `0x0202` drops the connection and sends `0x0244` alone. The header comment should be corrected upstream | openDECTcell docs |
