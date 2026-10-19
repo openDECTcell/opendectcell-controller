@@ -3,6 +3,10 @@
 - **Timing:** design work (C0) can happen now. **Implementation (C1 onward) starts only after openDECTcell gate G7** (a handset rings and audio passes via the on-box test tool). See the openDECTcell ROADMAP for the gates.
 - **Tracking:** each `## C…` section is a GitHub milestone, and each checkbox an issue. Items marked **[hw]** need real cells and handsets.
 
+**Joining the project?** Start with [docs/first-tasks.md](docs/first-tasks.md):
+the C0 and C1 items below, in dependency order, with what the cell side has
+measured so far and what is still unknown.
+
 ## C0: Design (now)
 - [x] Architecture draft, VoIP requirements, DECT feature framework (`docs/`)
 - [x] Core decisions: Go, Docker + PostgreSQL, multi-cell only, roles/OIDC, 0–2 lines per handset
@@ -14,6 +18,7 @@
 - [ ] Web frontend technology decision (Go templates + htmx vs SPA)
 - [ ] Audio format on the cell link (linear PCM vs G.722/G.711)
 - [ ] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection)
+- [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record)
 
 ## C1: Skeleton (after G7)
 - [ ] Go module layout, linting, unit-test setup, CI (GitHub Actions)
