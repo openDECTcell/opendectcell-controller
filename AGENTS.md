@@ -65,3 +65,28 @@ DECT features beyond basic calls (see `docs/dect-features.md`) are implemented a
 
 - Keep `docs/` current. Every design decision gets a short note: the decision, the alternatives and the reason.
 - Write in English, concisely, preferring tables.
+
+## 9. Work log and review loop
+
+The maintainers review this work and decide what gets built next. They are not
+watching the commits as they happen, so the log is how they see what you did.
+
+- **Keep the maintainers' notes current.** Add an entry for every working session,
+  newest first. An entry states what changed (with commit hashes), the
+  decisions taken and why, and anything that is uncertain or incomplete.
+- **Surface decisions, don't bury them.** Anything a reviewer might reasonably
+  overrule — a library choice, a schema shape, an interpretation of a design
+  doc — goes in the entry's decisions list explicitly, with the alternative you
+  rejected. A decision only mentioned in a commit message has not been
+  surfaced.
+- **Ask rather than assume.** Open questions go in the entry under their own
+  heading. If a question blocks you, say so and work on something else
+  meanwhile rather than guessing.
+- **Report honestly.** If something does not work, is half-finished, or was
+  skipped, the entry says so plainly. An entry that only lists successes is not
+  useful for review.
+- **Commit and push frequently** (§4). Small, reviewable commits that are
+  already pushed; nothing of value sits only on your machine.
+- **Wait for review before starting a new milestone.** Finishing the tasks you
+  were given is the point at which you report and stop, not the point at which
+  you pick the next ones yourself.

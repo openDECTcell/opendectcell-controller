@@ -25,6 +25,8 @@ Status: **design phase.** Implementation starts after openDECTcell's hardware ga
 | [docs/architecture.md](docs/architecture.md) | Components, data model, cell protocol, security |
 | [docs/voip-requirements.md](docs/voip-requirements.md) | SIP/RTP parameters to support, including encryption |
 | [docs/dect-features.md](docs/dect-features.md) | DECT features beyond calls and the per-model feature framework |
+| [docs/first-tasks.md](docs/first-tasks.md) | **Start here if you are joining:** the C0/C1 tasks in order, and what the cell side has measured |
+| the maintainers' notes | What was done each session, for review |
 
 ## License
 

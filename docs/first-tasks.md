@@ -40,7 +40,8 @@ than quietly designing around it.
   encrypted at rest with a key from config or a secret store. Logs carry state
   transitions, never key, PIN or identity bytes.
 - **Commit early, push after every commit**, imperative subject ≤72 chars, then
-  the *why*. Never force-push.
+  the *why*. Never force-push. Record each session in the maintainers' notes — see
+  §7, this is how the maintainers review the work.
 - **No DECT or SIP call logic yet.** `AGENTS.md` §7 gates that on openDECTcell's G7.
   C0 design and the C1 skeleton are explicitly allowed; see §5 for the line.
 
@@ -292,11 +293,40 @@ Send these back rather than designing around them:
 4. Does the cell link need to carry anything the current message list omits —
    for example log shipping, remote firmware update, or a debug channel?
 
-## 7. Working agreement suggestion
+## 7. How we work together
 
-The cell side moves fast and its findings keep changing the interface — this
-brief alone corrects two things the architecture draft assumed. So: keep A1
-(`docs/cell-protocol.md`) as the living contract between the two repos, and
-raise a question the moment a task depends on cell behaviour that is not written
-down here. Guessing at the DECT side has already cost the cell project several
-days twice over.
+The maintainers review this work and decide what gets built next. They are not
+watching your commits as they happen, so the written trail is the whole of what
+they see. `AGENTS.md` §9 has the binding version; in short:
+
+**Commit and push frequently.** Small, reviewable commits, pushed as you go.
+Nothing of value should sit only on your machine. Imperative subject ≤72 chars,
+then the *why*; never force-push.
+
+**Keep the maintainers' notes current.** One entry per working session, newest
+first, using the template at the top of that file. It is the review surface:
+what changed and with which commits, what you decided and why, what is open,
+and what did not work.
+
+Three things reviewers need from every entry:
+
+- **Decisions stated explicitly**, with the alternative you rejected. Anything
+  a reviewer might reasonably overrule — a library, a schema shape, an
+  interpretation of a design doc — belongs in the decisions list. A choice
+  mentioned only in a commit message has not been surfaced.
+- **Honest status.** Say when something is half-finished, skipped or did not
+  work. An entry listing only successes cannot be reviewed.
+- **Questions, not assumptions.** Put open questions under their own heading
+  and mark whether they block you. If one does, work on something else
+  meanwhile rather than guessing.
+
+**Finish the given tasks, then stop and report.** Completing a milestone is the
+point at which you hand back for review, not the point at which you choose the
+next one.
+
+**Ask early about the cell side.** It moves fast and its findings keep changing
+the interface — this brief alone corrects two things the architecture draft
+assumed. Keep A1 (`docs/cell-protocol.md`) as the living contract between the
+two repos, and raise a question the moment a task depends on cell behaviour not
+written down here. Guessing at the DECT side has already cost the cell project
+several days, twice.
