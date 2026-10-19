@@ -76,7 +76,8 @@ drive:
 | `0x0247` + `0x020A` | Write a subscription record: slot index plus the handset's 16-byte key |
 | `0x0200` / `0x0201` | Connection up / connection released |
 | `0x0243` | Connection status (periodic) |
-| `0x0203` | **Signalling segment** — carries the DECT C-plane in both directions |
+| `0x0203` | **Signalling segment** — carries the DECT C-plane inbound, one 5-byte Cs fragment per mail |
+| `0x0244` | Append connection data — carries the C-plane outbound, a whole Lc frame per mail (not followed by `0x0202`, which drops the link) |
 | `0x0230` → `0x0242` | Assign an audio channel, and the chip's confirmation |
 | `0xF626`, `0x022D`, `0x0233` | Audio route, audio path on/off, release channel |
 | `0x0208` | Call security material. **Not yet working** — see §5 |
