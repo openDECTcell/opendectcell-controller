@@ -142,6 +142,19 @@ design that has a consequence which `architecture.md` does not yet address:
 
 Designing that allocation and eviction policy is part of task A1.
 
+**Three capacity dimensions, not one** (from A-0032, 2026-10-19). Keep them in
+separate fields from the start, because they are bounded by different things:
+
+| per cell | value | status |
+|---|---:|---|
+| subscription records (identity + key storage) | 6 | STUB table size, not a proven silicon limit |
+| concurrent radio connection contexts | 6 | reconstructed firmware; paging/registration can use some without a voice path |
+| host audio endpoints configured by the stock 7520 | **4** | observed in the stock boot log (`DECT=4`); the cell protocol should let a cell *announce* this |
+| validated concurrent two-way calls | **0** | nothing end-to-end yet; raise only after measured 2-, 3-, 4-call tests |
+
+Do not put 6, 5 or 4 into the controller as a fixed fact. Model narrowband and
+wideband capacity separately until measured.
+
 ## 4. The tasks
 
 Each task names its deliverable and how you know it is done. Order within each
