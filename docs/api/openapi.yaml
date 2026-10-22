@@ -236,6 +236,7 @@ paths:
                 dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
                 owner_id: { type: string, format: uuid, nullable: true, description: Admin only }
       responses:
+        "403": { $ref: "#/components/responses/Forbidden" }
         "200":
           description: OK
           content: { application/json: { schema: { $ref: "#/components/schemas/Handset" } } }
@@ -365,6 +366,7 @@ paths:
                 cell_ids: { type: array, items: { type: string, format: uuid }, minItems: 1, uniqueItems: true }
                 owner_id: { type: string, format: uuid, nullable: true, description: Admin only. Default the caller }
       responses:
+        "403": { $ref: "#/components/responses/Forbidden" }
         "201":
           description: Opened
           content:
@@ -420,6 +422,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
       responses:
+        "403": { $ref: "#/components/responses/Forbidden" }
         "201":
           description: Created
           content: { application/json: { schema: { $ref: "#/components/schemas/SipAccount" } } }
@@ -444,6 +447,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
       responses:
+        "403": { $ref: "#/components/responses/Forbidden" }
         "200":
           description: OK
           content: { application/json: { schema: { $ref: "#/components/schemas/SipAccount" } } }
@@ -625,6 +629,7 @@ paths:
                 ttl_seconds: { type: integer, minimum: 300, maximum: 604800, default: 86400 }
                 auto_approve: { type: boolean, default: false, description: Admin only }
       responses:
+        "403": { $ref: "#/components/responses/Forbidden" }
         "201":
           description: Created
           content:
@@ -754,6 +759,9 @@ components:
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     Conflict:
       description: Conflicts with the current state
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Forbidden:
+      description: The caller may see the object but not do this (e.g. set an admin-only field)
       content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
     RateLimited:
       description: Too many attempts

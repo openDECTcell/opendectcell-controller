@@ -117,6 +117,7 @@ func (s *Server) routes() {
 	s.cellRoutes()
 	s.sipRoutes()
 	s.userRoutes()
+	s.apiRoutes()
 }
 
 func cacheStatic(h http.Handler) http.Handler {
