@@ -33,7 +33,7 @@ jobs:
       # cdect needs the private openDECTcell submodule (see the test job), so it
       # is left out here.
       - name: Lint
-        run: golangci-lint run --timeout=5m $(go list ./... | grep -v /dect/cdect)
+        run: golangci-lint run --timeout=5m $(go list -f '{{.Dir}}' ./... | grep -v /dect/cdect)
 
   test:
     runs-on: ubuntu-24.04
