@@ -66,7 +66,50 @@ DECT features beyond basic calls (see `docs/dect-features.md`) are implemented a
 - Keep `docs/` current. Every design decision gets a short note: the decision, the alternatives and the reason.
 - Write in English, concisely, preferring tables.
 
-## 9. Work log and review loop
+## 9. Asking openDECTcell questions
+
+The DECT protocol logic lives in the **openDECTcell** repo and is developed by a
+different agent on different hardware. That agent has the chip, the handsets
+and the clean-room answers; you do not. When the controller needs a fact about
+chip behaviour, mail primitives, `libopendectcell` APIs or air-side protocol, **ask
+rather than guess** -- the cost of a wrong assumption here is a design built on
+it.
+
+**How to ask.** Open an issue **in `openDECTcell/opendectcell`** (not in this repo -- the
+answer lives where the knowledge is):
+
+- title prefixed **`Controller Q: `**, label **`question`**
+- **Question.** one sentence, answerable
+- **Why.** what depends on it, linked to the controller doc or task
+- **Fallback.** what you will assume if nobody answers, so you are not blocked
+- **Blocking?** say plainly whether work stops without it
+- the openDECTcell commit you checked against
+
+Issue #66 in that repo is a good model; it was written to this shape before
+this section existed.
+
+**The state model is the issue state.** **Open means waiting on openDECTcell.
+Closed means answered** -- the answer is in the comments. Nothing else to
+track.
+
+- **Do not block.** Proceed on your stated fallback and keep working. If the
+  answer later contradicts it, that is a normal revision, not a crisis.
+- **Check back** for closed questions at the start of each work session and
+  before finalising anything that rests on a fallback:
+  `gh issue list -R openDECTcell/opendectcell --label question --state closed --limit 20`
+- If an answer is wrong or incomplete, **reopen the issue** and say why. The
+  openDECTcell side would rather be corrected than have a bad answer propagate.
+- Answers may be marked `[observed]`, `[assumed]`, `[derived]` or
+  `[not established]`. **Treat `[assumed]` and `[not established]` as what they
+  say** -- do not harden them into design assumptions without saying so.
+
+**What you must not ask for.** The clean-room rules in §2 apply to questions
+too: never request AVM firmware, source, disassembly or binaries, and never
+request or publish DECT identities (RFPI, IPUI, TPUI), authentication keys or
+captured speech. Ask about *behaviour and interfaces*, which is what you need
+anyway.
+
+## 10. Work log and review loop
 
 The maintainers review this work and decide what gets built next. They are not
 watching the commits as they happen, so the log is how they see what you did.
