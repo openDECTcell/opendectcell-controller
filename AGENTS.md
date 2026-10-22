@@ -92,11 +92,28 @@ this section existed.
 Closed means answered** -- the answer is in the comments. Nothing else to
 track.
 
-- **Do not block.** Proceed on your stated fallback and keep working. If the
-  answer later contradicts it, that is a normal revision, not a crisis.
-- **Check back** for closed questions at the start of each work session and
-  before finalising anything that rests on a fallback:
-  `gh issue list -R openDECTcell/opendectcell --label question --state closed --limit 20`
+- **Work on your own and do not block.** Ask, state the fallback, and carry
+  on with something else. If the answer later contradicts the fallback, that
+  is a normal revision, not a crisis. Switching task is always better than
+  waiting.
+- **Chase your own answers.** Nobody will hand them to you. Check with
+  `gh issue list -R openDECTcell/opendectcell --label question --state closed --limit 20`,
+  and read the answer with `gh issue view <n> -R openDECTcell/opendectcell --comments`.
+- **When to check, without burning tokens.** Do it at natural boundaries --
+  the start of a work session, the end of each task, and before finalising
+  anything that rests on a fallback. **Never poll in a loop**, and never wake
+  repeatedly just to look: a question typically takes 10-20 minutes to answer
+  and may take hours, so a frequent poll is pure waste.
+  If you are genuinely blocked with nothing else to do, wait in **one** shell
+  call rather than a sequence of turns:
+
+  ```
+  sleep 600; gh issue view <n> -R openDECTcell/opendectcell --json state,comments
+  ```
+
+  That costs one tool call per ten minutes instead of a wake-up cycle. Do it
+  at most two or three times, then proceed on the fallback and move on --
+  being blocked is not a reason to idle, it is a reason to change task.
 - If an answer is wrong or incomplete, **reopen the issue** and say why. The
   openDECTcell side would rather be corrected than have a bad answer propagate.
 - Answers may be marked `[observed]`, `[assumed]`, `[derived]` or
