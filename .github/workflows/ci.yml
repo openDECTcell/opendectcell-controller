@@ -114,6 +114,7 @@ jobs:
           done
           sudo asterisk -rx "core show version"
           sudo asterisk -rx "pjsip show endpoints"
+          sudo asterisk -rx "pjsip set logger on"
       - name: Interop test
         env:
           OPENDECTCELL_INTEROP_SIP: 127.0.0.1:5060
@@ -123,7 +124,8 @@ jobs:
         run: |
           sudo asterisk -rx "pjsip show contacts" || true
           sudo asterisk -rx "core show channels" || true
-          sudo tail -n 200 /var/log/asterisk/messages* || true
+          sudo tail -n 1500 /var/log/asterisk/messages* || true
+          sudo tail -n 1500 /var/log/asterisk/full* || true
 
   interop-freeswitch:
     # SIP interop against FreeSWITCH (AGENTS.md §7). No Ubuntu package
