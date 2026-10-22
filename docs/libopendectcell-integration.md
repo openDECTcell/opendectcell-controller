@@ -1,8 +1,11 @@
 # `libopendectcell` integration design (cgo boundary)
 
 Status: draft, 2026-10-19 (task A2 in `docs/first-tasks.md`). Checked against
-the `libopendectcell` headers at openDECTcell commit `88d61af`, the commit pinned in
-`third_party/opendectcell`. A proof of concept builds and passes (§10). The library
+the `libopendectcell` headers at openDECTcell commit `88d61af`. The submodule is now
+pinned at `ee72c4d` (API version 3, 2026-10-22): the proof of concept still
+builds and passes (§10), and the delivered change requests are in §11. The
+rest of the design is frozen with the integration (opendectcell-controller#46) and
+has not been re-checked line by line against the new pin. The library
 API is still changing (the maintainers' notes, 2026-10-19), so the design depends on its
 *shape*, and every exact signature stays inside one package.
 
@@ -16,7 +19,7 @@ flat struct plus functions over it.
 |---|---|---|---|
 | Cs ↔ STUB mails | `dect_cs.h` | `dect_cs_decode_segment`, `dect_cs_append_mail` | Inbound: one 5-octet fragment per `0x0203`, with `handle` and 3-byte `tag`. Outbound: one `0x0244`. Do **not** use `dect_cs_trigger_mail` (`0x0202`): on hardware it drops the link (`cell-protocol.md` §7.2) |
 | Lc (DLC lower) | `dect_lc.h` | `dect_lc_rx_init`, `dect_lc_rx_fragment`, `dect_lc_build` | Reassembly + checksum; learns the link signature (LSIG) from the first frame |
-| LAPC (DLC class A) | `dect_lapc.h` | `dect_lapc_init`, `_parse`, `_rx`, `_send`, `_tick`, `_poll_tx` | Window 1, modulus 2; segments NWK messages up to 256 octets; retransmit after `retry_ms` (default 1000) |
+| LAPC (DLC class A) | `dect_lapc.h` | `dect_lapc_init`, `_parse`, `_rx`, `_send`, `_tick`, `_poll_tx` | Window 1, modulus 2; segments NWK messages up to 256 octets; retransmit after `retry_ms` (default 2000 since API 1; was 1000) |
 | NWK codec | `dect_nwk.h` | `dect_nwk_parse` | Routes by protocol discriminator (MM vs CC) |
 | MM | `dect_mm.h` | `dect_mm_init`, `_rx`, `_start_cipher`, `_cipher_dck`, `_poll` | Registration (access rights, key allocation, DSAA), locate, call-time authentication → DCK |
 | CC | `dect_cc.h` | `dect_cc_init`, `_rx`, `_release`, `_poll` | Minimal FP side of an outgoing call (G7 milestone A) |
@@ -245,7 +248,7 @@ state fields (`mm.state == DECT_MM_FAILED`).
 | Go panic in a session | `recoverPanic` logs it (no key, PIN or identity bytes), closes the stack (which wipes and frees C memory), asks the cell to release the connection (`0x017A`), and ends the session. Other sessions carry on |
 | Crash inside C (SIGSEGV) | Can't be recovered in-process: the controller dies, and Docker's restart policy brings it back. Cells resume or reconnect (`cell-protocol.md` §6.4). Prevented rather than handled: length checks in Go before every call, fuzzing, sanitizer builds (§9, §10) |
 
-The library uses no `assert`/`abort` (checked at `88d61af`), so a crash means
+The library uses no `assert`/`abort` (checked at `88d61af`, rechecked at `ee72c4d`), so a crash means
 memory corruption, not a deliberate stop.
 
 **Alternative rejected for v1:** running `libopendectcell` in a worker process per
@@ -324,7 +327,7 @@ Either build on Debian and run on a distroless glibc base, or build fully
 static against musl on Alpine. B2 decides.
 
 **Licence:** `libopendectcell` is GPL-2.0-or-later (every file in
-`src/libopendectcell/` carries that SPDX identifier at `88d61af`), so linking it into
+`src/libopendectcell/` carries that SPDX identifier at `88d61af`, rechecked at `ee72c4d`), so linking it into
 this AGPL-3.0-or-later program is allowed, and the combined binary is
 distributed under AGPL-3.0-or-later. The kernel module in the same submodule is
 GPL-2.0-only, but it is never compiled here; only `src/libopendectcell/` is. B1
@@ -337,12 +340,12 @@ should add a CI check that fails if a file the controller compiles stops being
 |---|---|---|
 | L1 | ~~Proof of concept~~ **done** (§10) | — |
 | L2 | ~~Real signatures~~ **resolved** from the headers (§1) | — |
-| L3 ([opendectcell#69](https://github.com/openDECTcell/opendectcell/issues/69)) | **Change request:** `dect_lapc_next_deadline()`, so the controller doesn't read `last_tx_ms`/`retry_ms` directly (§6) | `cdect` |
+| L3 ([opendectcell#69](https://github.com/openDECTcell/opendectcell/issues/69)) | ~~`dect_lapc_next_deadline()`~~ **delivered** (pin `ee72c4d`), with `UINT64_MAX` when idle. `DEFAULT_RETRY_MS` is now 2000 (`<DL.04>`). Also new: `dect_cc_tick()` / `dect_cc_next_deadline()` for CC's own timer, as §6 anticipated | `cdect` |
 | L4 | ~~Internal pointers~~ **resolved:** none except the transient `dect_lapc_frame.info` (§5) | — |
 | L5 | ~~`assert`/`abort`~~ **resolved:** none (§8) | — |
-| L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | No version macro or function. **Change request:** `OPENDECTCELL_API_VERSION`, so `cdect` can refuse a submodule bump it wasn't written for. Agreed: a single integer, bumped on any public signature or struct-layout change (openDECTcell#70); header not yet chosen | `cdect` |
+| L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | ~~Version macro~~ **delivered:** `OPENDECTCELL_API_VERSION` in `dect_proto.h`, now **3** (2: CC timer fields; 3: `dect_iwu.h`, and `struct dect_cc` embeds `struct dect_iwu`, so its layout changed: recompile, don't relink). `cdect.h` refuses any other version with `#error` | `cdect` |
 | L7 | ~~The openDECTcell repository is private: CI needs read access~~ **resolved:** a **read-only deploy key** on `openDECTcell/opendectcell`, with the private half in the `OPENDECTCELL_READ_SSH_KEY` secret of this repo. `.github/workflows/ci.yml` installs it and rewrites the one resolved submodule URL to SSH; without the secret the job still warns and skips `cdect`, as before | B1 |
 | L8 | ~~Connection identifier~~ **resolved:** `handle` + 3-byte `tag` from `0x0203` (§3.1) | — |
 | L9 ([opendectcell#67](https://github.com/openDECTcell/opendectcell/issues/67)) | **Change request:** move the stack glue (§1.1) into `libopendectcell`, so `dect-stubd` and the controller share it instead of keeping two copies | `cdect`, openDECTcell |
-| L10 ([opendectcell#68](https://github.com/openDECTcell/opendectcell/issues/68)) | **Change request:** the MM layer hard-codes subscription slot 1 (`DECT_MM_REG_SLOT`) in the TPUI it assigns. Since openDECTcell#65 the TPUI is no longer derived from the slot at all: the controller assigns it from an installation-wide pool (`cell-protocol.md` §7.4), so `struct dect_mm_cfg` must take the **TPUI** (and the link signature follows from it), with the slot only where the cell writes the record | `core`, openDECTcell |
-| L11 ([opendectcell#71](https://github.com/openDECTcell/opendectcell/issues/71)) | `dect_cs.h` says to flush with `0x0202`, but `dect-stubd` found that `0x0202` drops the connection and sends `0x0244` alone. The header comment should be corrected upstream. openDECTcell reports it fixed and `dect_cs_trigger_mail()` deprecated, but the change is not on openDECTcell `main` as of `fc7c203`; reopened on #71 | openDECTcell docs |
+| L10 ([opendectcell#68](https://github.com/openDECTcell/opendectcell/issues/68)) | ~~TPUI as a parameter~~ **delivered:** `struct dect_mm_cfg` takes `tpui[3]` and `sub_slot`, decoupled; all-zero TPUI falls back to `{0x00, 0x11, sub_slot}`. Accessors `dect_mm_tpui()`, `dect_mm_sub_slot()`. **Trap:** a page (`0x0300`) must take its octets from `dect_mm_tpui()`, never from the slot index | `core` |
+| L11 ([opendectcell#71](https://github.com/openDECTcell/opendectcell/issues/71)) | ~~`0x0202` comment~~ **delivered** (`4557505`): `dect_cs.h` says `0x0244` is self-flushing; `dect_cs_trigger_mail()` is deprecated | — |
