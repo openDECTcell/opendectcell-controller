@@ -743,21 +743,27 @@ internal channel. Every wideband call measured so far reports channel 1. The
 controller logs the channel and never branches on it.
 
 **Uplink audio works; downlink does not yet.** Handset → host audio is decoded
-correctly (G.722, §8.2). Host → handset audio is reproduced as loud noise while
-loopback is clean; the format is not in doubt, but how the chip wants to be fed
-is, and it is openDECTcell's top open defect (openDECTcell#64, #77). No working host →
-handset path may be assumed until it is fixed.
+correctly (G.722, §8.2). Host → handset audio on base-originated calls is
+reproduced as noise (openDECTcell#64, #77), so no working host → handset path may
+be assumed until openDECTcell announces a fix in `notes-for-the-controller.md`.
 
-Ruled out so far: lane word, octet order and byte half, the two-frame hold,
-the supply rate, the encoder, the FIFO and the `0x0230` codec byte. What
-survives every run is that sources whose word changes coincide with the chip's
-own uplink transitions are clean, and sources on an independent clock are
-noise. openDECTcell's working assumption **[cell?]** is that the chip reads the
-downlink on its own media clock and an independently clocked writer laps it.
-If so, the cell must take its write cadence from the chip's receive side, not
-from a local timer, and absorb the difference to the controller's RTP clock in
-its jitter buffer. v1 already leaves pacing to the cell; `ptime_ms` may need
-to be revisited once this is measured.
+**Cause, as of 2026-10-22 night** (the maintainers' notes): the chip's TDM lane takes
+**signed 16-bit linear PCM** and the chip encodes to G.722 itself, while the
+cell fed it pre-encoded G.722, a double encode. A linear test tone came out
+clean. The earlier media-clock and supply-rate readings are falsified. The fix
+is cell-internal (the lane gets linear PCM). Nothing on the cell link changes,
+and the formats of §8.2 stand. Still open on the cell side: speech has not
+yet been heard (probably a level deficit), and the lane path is intermittent.
+
+**The audio bind is not part of openDECTcell#67.** The stack glue that moves into
+`libopendectcell` covers Cs, LAPC and NWK only. The bind sequence above, the
+channel assignment and everything keyed on `0x0242` stay host-side and remain
+the controller's to drive, as this section already describes. The cell side's
+own bind is known to be wrong (it assigns on its own CC state, and drops
+`0x0242` indications that arrive before the bind). So the controller must not
+copy `dect-stubd`'s trigger or its `0x0242` handling, and must accept a
+`0x0242` that arrives before its own bind completes. Which chip indication
+should trigger the assign is not yet known **[cell?]**; it is C3 work.
 
 **Only voice calls get media.** A `{CC-SETUP}`…`{CC-CONNECT}` is also how a
 handset runs CAT-iq list access (phonebook, call list), and a Gigaset A540 does
@@ -1045,6 +1051,6 @@ fallback written into it.
 | C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61), [#80](https://github.com/openDECTcell/opendectcell/issues/80)) | Will `dect-stubd` release calls itself when the grace period ends? | Release calls and audio at 7 s, then park the radio; do not reset the chip. Committed for M9 (#80). §6.4 | — (also agreed in #80: the controller is the only slot writer and the only one that unparks; §7.4) |
 | C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates confirmed compiled in by binary evidence ([#75](https://github.com/openDECTcell/opendectcell/issues/75)); a real handshake is offered and wanted before C2 |
 | C8 ([opendectcell#63](https://github.com/openDECTcell/opendectcell/issues/63)) | Per-mail overhead on the TDM control channel? | `12 + plen`, rounded up to even; 16 000 octets/s raw. 3 000 octets/s and counters 15–19 agreed (#79). §9.3 | The chip's overrun threshold |
-| C9 ([opendectcell#64](https://github.com/openDECTcell/opendectcell/issues/64)) | Cell-link audio format? | Wideband is coded G.722 at 8 000 octets/s, narrowband A-law. §8.2 | Live narrowband call; the downlink feeding discipline ([#77](https://github.com/openDECTcell/opendectcell/issues/77), blocked behind the FP-originated call defect) |
+| C9 ([opendectcell#64](https://github.com/openDECTcell/opendectcell/issues/64)) | Cell-link audio format? | Wideband is coded G.722 at 8 000 octets/s, narrowband A-law. §8.2 | Live narrowband call; the downlink fix (cause found: the lane takes linear PCM, a cell-internal fix; §8.1); [#77](https://github.com/openDECTcell/opendectcell/issues/77) pacing is queued behind the FP-originated call defect |
 | C10 ([opendectcell#65](https://github.com/openDECTcell/opendectcell/issues/65)) | Does a handset accept a different TPUI per cell? | The premise is wrong: a TPUI is per location area, and slot-derived TPUIs collide across cells. Decouple TPUI from slot. §7.4 | Handset behaviour with a pool TPUI and on reassignment, and whether ciphering depends on the slot-shaped TPUI ([#76](https://github.com/openDECTcell/opendectcell/issues/76)); `libopendectcell` change L10 |
 | C11 ([opendectcell#66](https://github.com/openDECTcell/opendectcell/issues/66)) | One 5-octet Cs fragment per 10 ms frame? | No: at most one per 20 ms (`C_T` only in odd frames), so ≥ 280 ms for a 70-octet frame. §2 | openDECTcell's move of the LAPC timer to 2 s |
