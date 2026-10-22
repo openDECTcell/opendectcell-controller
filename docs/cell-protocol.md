@@ -197,10 +197,14 @@ Senders send only types that are in the peer's announced capabilities, so
   25.12.5). It is already installed as OpenWrt's default stack (pulled in by
   `ustream-ssl` and `wpad`), and no OpenSSL or wolfSSL is present, so any other
   choice ships a second TLS library on a flash-limited device (openDECTcell#62).
-  TLS 1.3 with a P-256 **client** certificate is *assumed*, not yet observed:
-  mbedTLS's TLS 1.3 client-certificate support is newer than its server side
-  and can be disabled at build time. A smoke test against the target build is
-  needed before this section is final **[cell?]**.
+  TLS 1.3 with an ECDSA P-256 **client** certificate is compiled into the
+  target build. That is shown by binary evidence, not yet by a completed
+  handshake: the 1.3 key-schedule labels, the `TLS 1.3, client
+  CertificateVerify` context, `secp256r1` and the ECDSA and cert-config
+  functions are all present (openDECTcell#75). A real mutual-auth handshake is on
+  offer from openDECTcell and should be run before C2 implements the link. The cell
+  pins the group (`mbedtls_ssl_conf_groups`) and signature algorithm
+  (`mbedtls_ssl_conf_sig_algs`) explicitly rather than relying on defaults.
 - The cell keeps TLS work off the thread that services the chip's TDM control
   channel, so a handshake cannot starve the mail channel. openDECTcell flags this
   as unmeasured.
@@ -594,8 +598,15 @@ write-only cache:
   is load-bearing, not a safety net: a cell that assumes its slots survived a
   park fails intermittently. So every time the controller turns
   a cell's radio on (`0x015B 01`), and on HELLO with a new `boot_id` or
-  `chip_epoch`, all of that cell's slots become *unknown*. The controller then
-  rewrites every slot it wants populated before it opens the cell to handsets.
+  `chip_epoch`, all of that cell's slots become *unknown*, which the
+  controller treats as **empty, unconditionally**: there is no read-back to
+  check. The controller then rewrites every slot it wants populated before it
+  opens the cell to handsets.
+- **The controller is the only writer.** In cell mode `dect-stubd` keeps no
+  host-side subscription store and does no reload at start-up (the default in
+  cell mode, not a flag), never writes slots on its own, and never sends
+  `0x015B {01}` on its own (openDECTcell#80, committed for M9). The UAKs exist only
+  in the controller's database, encrypted, never on the cell.
 - A write is two MAIL_DOWN, in this order: `0x0247 {slot, op = 1, status}` then
   `0x020A {slot, UAK[16], extra}`, to task `0x02` [CR A-0026]. The `status` and
   `extra` bytes have no known enumeration and are sent as `0x00`, as
@@ -1001,8 +1012,8 @@ fallback written into it.
 | C3 ([opendectcell#59](https://github.com/openDECTcell/opendectcell/issues/59)) | Write confirm? Slot clear? `status`/`extra`? | No confirm observed; writes succeed silently. No clear known. `status`/`extra` unknown, `0x00` works. Byte layouts given. §7.4 | Whether another op value clears a slot (untested; not needed by §7.4) |
 | C4 | Which field identifies a radio connection? | `handle` (0..6) plus a 3-byte handset `tag` in `0x0203` (`dect_cs.h`) | — |
 | C5 ([opendectcell#60](https://github.com/openDECTcell/opendectcell/issues/60), [#78](https://github.com/openDECTcell/opendectcell/issues/78)) | How does `0x0242` identify the audio channel, and which PCM slot carries it? | Low nibble of octet 1 of the long form, matched on handle; lane mapping `raw = logical ^ 1`, lanes may share a word. §8.1 | Channel → lane for channels other than 1 (cell-internal) |
-| C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61), [#80](https://github.com/openDECTcell/opendectcell/issues/80)) | Will `dect-stubd` release calls itself when the grace period ends? | Release calls and audio at 7 s, then park the radio; do not reset the chip. Committed for M9 (#80). §6.4 | Who rewrites the slots: reopened on #80 |
-| C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates on the target build are assumed: smoke test, which openDECTcell runs on the lab 7520 ([#75](https://github.com/openDECTcell/opendectcell/issues/75)) |
+| C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61), [#80](https://github.com/openDECTcell/opendectcell/issues/80)) | Will `dect-stubd` release calls itself when the grace period ends? | Release calls and audio at 7 s, then park the radio; do not reset the chip. Committed for M9 (#80). §6.4 | — (also agreed in #80: the controller is the only slot writer and the only one that unparks; §7.4) |
+| C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates confirmed compiled in by binary evidence ([#75](https://github.com/openDECTcell/opendectcell/issues/75)); a real handshake is offered and wanted before C2 |
 | C8 ([opendectcell#63](https://github.com/openDECTcell/opendectcell/issues/63)) | Per-mail overhead on the TDM control channel? | `12 + plen`, rounded up to even; 16 000 octets/s raw. 3 000 octets/s and counters 15–19 agreed (#79). §9.3 | The chip's overrun threshold |
 | C9 ([opendectcell#64](https://github.com/openDECTcell/opendectcell/issues/64)) | Cell-link audio format? | Wideband is coded G.722 at 8 000 octets/s, narrowband A-law. §8.2 | Live narrowband call; the downlink feeding discipline ([#77](https://github.com/openDECTcell/opendectcell/issues/77), blocked behind the FP-originated call defect) |
 | C10 ([opendectcell#65](https://github.com/openDECTcell/opendectcell/issues/65)) | Does a handset accept a different TPUI per cell? | The premise is wrong: a TPUI is per location area, and slot-derived TPUIs collide across cells. Decouple TPUI from slot. §7.4 | Handset behaviour with a pool TPUI and on reassignment, and whether ciphering depends on the slot-shaped TPUI ([#76](https://github.com/openDECTcell/opendectcell/issues/76)); `libopendectcell` change L10 |
