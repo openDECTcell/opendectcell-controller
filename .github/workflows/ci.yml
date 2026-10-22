@@ -83,6 +83,37 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/...
 
+  interop:
+    # SIP interop against Asterisk (AGENTS.md §7; test/asterisk/).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install and configure Asterisk
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq asterisk >/dev/null
+          sudo cp test/asterisk/*.conf /etc/asterisk/
+          sudo systemctl restart asterisk
+          for i in $(seq 30); do
+            sudo asterisk -rx "pjsip show transports" 2>/dev/null | grep -q transport-udp && break
+            sleep 1
+          done
+          sudo asterisk -rx "core show version"
+          sudo asterisk -rx "pjsip show endpoints"
+      - name: Interop test
+        env:
+          OPENDECTCELL_INTEROP_SIP: 127.0.0.1:5060
+        run: go test -tags interop -count=1 -v -run Interop ./internal/sip/
+      - name: Asterisk state on failure
+        if: failure()
+        run: |
+          sudo asterisk -rx "pjsip show contacts" || true
+          sudo asterisk -rx "core show channels" || true
+          sudo tail -n 200 /var/log/asterisk/messages* || true
+
   image:
     runs-on: ubuntu-24.04
     steps:
