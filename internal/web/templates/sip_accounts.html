@@ -1,0 +1,21 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "sip_accounts.html"}}{{template "head" .}}
+<h1>SIP accounts</h1>
+<p><a class="button" href="/sip-accounts/new">Add account</a></p>
+<table>
+<thead><tr><th>Label</th><th>Address</th><th>Transport</th><th>Registration</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
+<tbody>
+{{range .Data}}
+<tr>
+  <td><a href="/sip-accounts/{{.ID}}">{{.Label}}</a>{{if not .Enabled}} <span class="muted">(disabled)</span>{{end}}</td>
+  <td>{{.Username}}@{{.Domain}}</td>
+  <td>{{.Transport}}{{if ne .MediaEncryption "off"}} · SRTP {{.MediaEncryption}}{{end}}</td>
+  <td>{{if .HasState}}{{.Status.State}}{{with .Status.LastError}} · <span class="muted">{{.}}</span>{{end}}{{else}}<span class="muted">not running</span>{{end}}</td>
+  {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
+</tr>
+{{else}}
+<tr><td colspan="5" class="muted">No SIP accounts yet.</td></tr>
+{{end}}
+</tbody>
+</table>
+{{template "foot" .}}{{end}}

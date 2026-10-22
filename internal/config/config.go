@@ -30,6 +30,25 @@ type Config struct {
 	Log      Log      `yaml:"log"`
 	Auth     Auth     `yaml:"auth"`
 	Cells    Cells    `yaml:"cells"`
+	SIP      SIP      `yaml:"sip"`
+}
+
+// SIP configures the SIP user agents' transports and media (docs/sip-ua.md).
+type SIP struct {
+	UDPListen string `yaml:"udp_listen"` // shared by every account
+	TCPListen string `yaml:"tcp_listen"` // "" disables incoming TCP
+	RTPPorts  string `yaml:"rtp_ports"`  // "min-max"
+	// MediaIP, if set, is advertised in SDP instead of the local address
+	// (a static public address, voip-requirements.md §2).
+	MediaIP string `yaml:"media_ip"`
+}
+
+// RTPRange parses RTPPorts; Validate has checked it.
+func (s SIP) RTPRange() (lo, hi int) {
+	a, b, _ := strings.Cut(s.RTPPorts, "-")
+	lo, _ = strconv.Atoi(strings.TrimSpace(a))
+	hi, _ = strconv.Atoi(strings.TrimSpace(b))
+	return lo, hi
 }
 
 type HTTP struct {
@@ -137,6 +156,7 @@ func Default() Config {
 			LoginRateLimit: 10,
 		},
 		Cells: Cells{Listen: ":7300"},
+		SIP:   SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
 	}
 }
 
@@ -231,6 +251,10 @@ func vars(c *Config) []envVar {
 		{"OIDC_PROVIDER_NAME", false, str(&c.Auth.OIDC.ProviderName)},
 		{"CELLS_LISTEN", false, str(&c.Cells.Listen)},
 		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
+		{"SIP_UDP_LISTEN", false, str(&c.SIP.UDPListen)},
+		{"SIP_TCP_LISTEN", false, str(&c.SIP.TCPListen)},
+		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},
+		{"SIP_MEDIA_IP", false, str(&c.SIP.MediaIP)},
 	}
 }
 
@@ -346,6 +370,17 @@ func (c Config) Validate() error {
 	if c.Cells.PublicAddress != "" {
 		if h, p, err := net.SplitHostPort(c.Cells.PublicAddress); err != nil || h == "" || p == "" {
 			add("cells public address %q must be host:port", c.Cells.PublicAddress)
+		}
+	}
+	if c.SIP.UDPListen == "" {
+		add("SIP UDP listen address is required (OPENDECTCELL_SIP_UDP_LISTEN, e.g. :5060)")
+	}
+	if lo, hi := c.SIP.RTPRange(); lo < 1024 || hi > 65535 || hi-lo < 3 {
+		add("SIP RTP ports %q must be a range like 41000-41999 above 1023", c.SIP.RTPPorts)
+	}
+	if c.SIP.MediaIP != "" {
+		if _, err := netip.ParseAddr(c.SIP.MediaIP); err != nil {
+			add("SIP media IP %q is not an IP address", c.SIP.MediaIP)
 		}
 	}
 	if c.Database.MaxConns < 1 {

@@ -29,3 +29,5 @@ dl.kv dt { color: var(--muted); }
 code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-select: all; }
 select { display: block; padding: .4rem; font: inherit; margin-top: .2rem; }
 label.check input { display: inline; width: auto; margin-right: .4rem; }
+.form-grid { max-width: 32rem; }
+.fielderr { color: var(--err); margin: -.4rem 0 .6rem; font-size: .9em; }

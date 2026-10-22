@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/signal"
@@ -46,6 +47,9 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
+	"github.com/openDECTcell/opendectcell-controller/internal/sip"
+	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/web"
 )
 
@@ -244,12 +248,19 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	cellErr := make(chan error, 1)
 	go func() { cellErr <- link.Serve(ctx, cln) }()
 
+	sipMgr, sipAccts, err := startSIP(ctx, cfg, pool, kr, log)
+	if err != nil {
+		return err
+	}
+	defer sipMgr.Close()
+
 	store := authStore(cfg, pool)
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
 		Cells: cells, CellLink: link,
+		SIPAccounts: sipAccts, SIP: sipMgr,
 	}
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,
@@ -302,6 +313,49 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	sctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return hs.Shutdown(sctx)
+}
+
+// startSIP opens the SIP transports and starts every account's user agent.
+// Until the DECT core exists (C3) there is no endpoint, so incoming calls
+// are answered 480.
+func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *secret.Keyring, log *slog.Logger) (*sip.Manager, *sipaccount.Store, error) {
+	lc := net.ListenConfig{}
+	udp, err := lc.ListenPacket(ctx, "udp", cfg.SIP.UDPListen)
+	if err != nil {
+		return nil, nil, fmt.Errorf("SIP UDP %s: %w", cfg.SIP.UDPListen, err)
+	}
+	var tcp net.Listener
+	if cfg.SIP.TCPListen != "" {
+		if tcp, err = lc.Listen(ctx, "tcp", cfg.SIP.TCPListen); err != nil {
+			udp.Close()
+			return nil, nil, fmt.Errorf("SIP TCP %s: %w", cfg.SIP.TCPListen, err)
+		}
+	}
+	lo, hi := cfg.SIP.RTPRange()
+	sc := sip.Config{UDP: udp, TCP: tcp, RTP: &rtp.Ports{IP: netip.IPv4Unspecified(), Min: lo, Max: hi},
+		Log: log.With("component", "sip"), UserAgent: "opendectcell-controller/" + buildVersion()}
+	if cfg.SIP.MediaIP != "" {
+		sc.MediaIP = netip.MustParseAddr(cfg.SIP.MediaIP) // validated
+	}
+	m, err := sip.New(sc, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	m.Start(ctx)
+	accts := &sipaccount.Store{Pool: pool, Keyring: kr}
+	reconcile := func() {
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		list, err := accts.RuntimeAccounts(rctx)
+		if err != nil {
+			log.Error("loading SIP accounts", "err", err)
+		}
+		m.SetAccounts(list)
+	}
+	accts.OnChange = reconcile
+	reconcile()
+	log.Info("SIP started", "udp", cfg.SIP.UDPListen, "tcp", cfg.SIP.TCPListen, "rtp", cfg.SIP.RTPPorts)
+	return m, accts, nil
 }
 
 func migrate(ctx context.Context, pool *pgxpool.Pool, args []string, out io.Writer) error {

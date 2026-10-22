@@ -312,3 +312,7 @@ func TestClientAddr(t *testing.T) {
 		}
 	}
 }
+
+func newUser(name string) auth.NewLocalUser {
+	return auth.NewLocalUser{Username: name, Password: name + " password!", Role: auth.RoleUser}
+}

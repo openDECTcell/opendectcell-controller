@@ -27,6 +27,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 )
 
 //go:embed templates/*.html
@@ -49,6 +50,8 @@ type Server struct {
 	Version        string
 	Cells          *cell.Store // nil: no cell pages
 	CellLink       CellLink
+	SIPAccounts    *sipaccount.Store // nil: no SIP pages
+	SIP            SIPStatus
 
 	tmpl *template.Template
 	mux  *http.ServeMux
@@ -62,6 +65,14 @@ func (s *Server) Handler() (http.Handler, error) {
 	t, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.Local().Format("2006-01-02 15:04:05") },
 		"ms":      func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) + " ms" },
+		"join":    strings.Join,
+		"list":    func(xs ...string) []string { return xs },
+		"fieldErr": func(m map[string]string, k string) string {
+			if m == nil {
+				return ""
+			}
+			return m[k]
+		},
 	}).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -104,6 +115,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
 	s.cellRoutes()
+	s.sipRoutes()
 }
 
 func cacheStatic(h http.Handler) http.Handler {

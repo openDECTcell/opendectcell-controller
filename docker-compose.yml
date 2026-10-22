@@ -42,11 +42,17 @@ services:
       OPENDECTCELL_DATABASE_URL_FILE: /secrets/database_url
       OPENDECTCELL_MASTER_KEY_FILE: /secrets/master_key
       OPENDECTCELL_HTTP_BASE_URL: ${OPENDECTCELL_HTTP_BASE_URL:-http://localhost:8080}
+      # Docker maps big UDP ranges slowly; 100 ports = 50 calls. For more,
+      # widen both, or use network_mode: host (docs/deployment.md).
+      OPENDECTCELL_SIP_RTP_PORTS: 41000-41099
     volumes:
       - secrets:/secrets:ro
     ports:
       - "127.0.0.1:8080:8080"
       - "7300:7300"
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "41000-41099:41000-41099/udp"
     depends_on:
       db:
         condition: service_healthy

@@ -35,6 +35,10 @@ echoed in error messages or logs.
 | `OPENDECTCELL_OIDC_USER_GROUPS` | `auth.oidc.user_groups` | none | Groups that grant `user`. **Empty: every user the IdP authenticates for this client may log in** — restrict access at the IdP, or set this |
 | `OPENDECTCELL_OIDC_PROVIDER_NAME` | `auth.oidc.provider_name` | `Single sign-on` | Login button label |
 | `OPENDECTCELL_CELLS_LISTEN` | `cells.listen` | `:7300` | Cell control port (`cell-protocol.md` §1) |
+| `OPENDECTCELL_SIP_UDP_LISTEN` | `sip.udp_listen` | `:5060` | The UDP socket all SIP accounts share (`sip-ua.md` §2) |
+| `OPENDECTCELL_SIP_TCP_LISTEN` | `sip.tcp_listen` | `:5060` | Incoming SIP over TCP; empty turns it off. Outgoing TCP/TLS connections are made as needed |
+| `OPENDECTCELL_SIP_RTP_PORTS` | `sip.rtp_ports` | `41000-41999` | RTP/RTCP port pairs for the SIP side, two ports per call. Separate from the cell media ports (`cell-protocol.md` §1) |
+| `OPENDECTCELL_SIP_MEDIA_IP` | `sip.media_ip` | local address | Advertise this IP in SDP, for a controller behind a static NAT |
 | `OPENDECTCELL_CELLS_PUBLIC_ADDRESS` | `cells.public_address` | base URL host + listen port | `host:port` as cells reach the control port; written into enrollment strings. Set it when cells connect through NAT or another name |
 
 For OIDC users, the role is recomputed from the groups at every login, so

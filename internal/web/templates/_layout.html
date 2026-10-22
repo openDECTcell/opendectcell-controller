@@ -13,6 +13,7 @@
   {{if .User}}
   <nav>
     <a href="/">Overview</a>
+    <a href="/sip-accounts">SIP accounts</a>
     {{if .User.IsAdmin}}<a href="/cells">Cells</a><a href="/admin/users">Users</a><a href="/admin/audit">Audit log</a>{{end}}
     {{if and .User.CanAddCells (not .User.IsAdmin)}}<a href="/enroll">Enroll a cell</a>{{end}}
     <a href="/account">{{.User.Name}}</a>

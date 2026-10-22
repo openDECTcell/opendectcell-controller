@@ -1,0 +1,55 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "sip_account.html"}}{{template "head" .}}
+{{with .Data}}
+<h1>{{if .New}}New SIP account{{else}}{{.Rec.Label}}{{end}}</h1>
+{{if not .New}}
+<p>Registration: <strong>{{if .HasState}}{{.Status.State}}{{else}}not running{{end}}</strong>
+{{with .Status.Server}} · {{.}}{{end}}{{with .Status.LastError}} · {{.}}{{end}}</p>
+{{range .Warnings}}<p class="msg error">{{if eq . "srtp_without_tls"}}SRTP keys are exchanged in the signalling: without TLS they travel in clear.{{else if eq . "tls_not_verified"}}The server's TLS certificate is not verified.{{else}}{{.}}{{end}}</p>{{end}}
+{{end}}
+{{$e := .Errors}}
+<form method="post" action="{{if .New}}/sip-accounts{{else}}/sip-accounts/{{.Rec.ID}}{{end}}" class="form-grid">
+  {{with .Rec}}
+  <label>Label <input name="label" value="{{.Label}}" maxlength="64" required></label>{{with fieldErr $e "label"}}<p class="fielderr">{{.}}</p>{{end}}
+  <label>Display name <input name="display_name" value="{{.DisplayName}}"></label>
+  <label>User (number) <input name="username" value="{{.Username}}" required></label>
+  <label>Domain <input name="domain" value="{{.Domain}}" required></label>
+  <label>Authentication user <input name="auth_username" value="{{.AuthUsername}}" placeholder="same as user"></label>
+  <label>Password <input name="password" type="password" autocomplete="new-password" placeholder="{{if .HasPassword}}leave empty to keep{{end}}"></label>
+  {{if .HasPassword}}<label class="check"><input type="checkbox" name="clear_password">Remove the stored password</label>{{end}}
+  <label>Registrar <input name="registrar" value="{{.Registrar}}" placeholder="from the domain (DNS)"></label>
+  <label>Outbound proxy <input name="outbound_proxy" value="{{.OutboundProxy}}"></label>
+  <label>Transport
+    <select name="transport">{{range $t := list "tls" "tcp" "udp"}}<option value="{{$t}}" {{if eq $t $.Data.Rec.Transport}}selected{{end}}>{{$t}}</option>{{end}}</select></label>
+  <label class="check"><input type="checkbox" name="tls_verify" {{if .TLSVerify}}checked{{end}}>Verify the server's TLS certificate</label>
+  <label class="check"><input type="checkbox" name="register" {{if .Register}}checked{{end}}>Register</label>
+  <label>Registration interval (s) <input name="register_expiry" type="number" min="60" max="86400" value="{{.RegisterExpiry}}"></label>
+  <label>Keep-alive
+    <select name="keepalive">{{range $k := list "auto" "options" "crlf" "none"}}<option {{if eq $k $.Data.Rec.Keepalive}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
+  <label>Media encryption (SRTP)
+    <select name="media_encryption">{{range $k := list "off" "optional" "mandatory"}}<option {{if eq $k $.Data.Rec.MediaEncryption}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
+  <label>Codecs, in order <input name="codecs" value="{{join .Codecs ", "}}"></label>
+  <label>DTMF
+    <select name="dtmf_mode">{{range $k := list "rfc4733" "info" "inband"}}<option {{if eq $k $.Data.Rec.DTMFMode}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
+  <label>Caller ID from
+    <select name="caller_id_source">{{range $k := list "auto" "pai" "rpid" "from"}}<option {{if eq $k $.Data.Rec.CallerIDSource}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
+  <label>User-Agent <input name="user_agent" value="{{.Advanced.UserAgent}}" placeholder="opendectcell-controller"></label>
+  <label>Line prefix (GAP handsets) <input name="line_prefix" value="{{.Advanced.LinePrefix}}" placeholder="e.g. *1#"></label>{{with fieldErr $e "advanced.line_prefix"}}<p class="fielderr">{{.}}</p>{{end}}
+  <label class="check"><input type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}>Enabled</label>
+  {{end}}
+  {{if $.User.IsAdmin}}
+  <label>Owner
+    <select name="owner">
+      <option value="">{{if .New}}me{{else}}unchanged{{end}}</option>
+      <option value="shared" {{if eq .Owner "shared"}}selected{{end}}>shared (admin-managed)</option>
+      {{range .Users}}<option value="{{.ID}}" {{if eq $.Data.Owner .ID.String}}selected{{end}}>{{.Username}}</option>{{end}}
+    </select></label>
+  {{end}}
+  {{with fieldErr $e "account"}}<p class="fielderr">{{.}}</p>{{end}}
+  <button type="submit">Save</button>
+</form>
+{{if not .New}}
+<form method="post" action="/sip-accounts/{{.Rec.ID}}/delete"><button type="submit" class="link">Delete this account</button></form>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

@@ -14,7 +14,7 @@ Then open <http://localhost:8080>.
 |---|---|
 | `init` | One-shot: `init-secrets` creates `master_key`, `db_password` and `database_url` in the `secrets` volume if they are missing. It never overwrites |
 | `db` | PostgreSQL 18; data in the `pgdata` volume |
-| `controller` | Applies migrations, then serves on `127.0.0.1:8080` (web) and `:7300` (cells, from C2). Non-root, read-only root filesystem, no capabilities |
+| `controller` | Applies migrations, then serves on `127.0.0.1:8080` (web), `:7300` (cells), `:5060` UDP/TCP (SIP) and `41000-41099/udp` (RTP). Non-root, read-only root filesystem, no capabilities |
 
 **Back up the master key now**, separately from the database. Without it,
 every UAK and SIP password in a database backup is unrecoverable
@@ -25,6 +25,11 @@ docker compose cp controller:/secrets/master_key ./master_key.backup
 ```
 
 ## Production notes
+
+- **SIP and RTP through Docker's port mapping** work for a few calls, but
+  Docker's userland proxy and NAT add latency and rewrite source addresses.
+  For production, run the controller with `network_mode: host` and set
+  `OPENDECTCELL_SIP_RTP_PORTS` to the range you open in the firewall.
 
 - Put a TLS-terminating reverse proxy in front of port 8080, set
   `OPENDECTCELL_HTTP_BASE_URL=https://…` and `OPENDECTCELL_HTTP_TRUSTED_PROXIES` to the
