@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -661,18 +662,38 @@ func (c *Call) Hold(ctx context.Context, on bool) error {
 	if err != nil {
 		return err
 	}
-	req := sip.NewRequest(sip.INVITE, c.remoteTarget())
-	req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
-	req.SetBody(body)
-	res, err := c.dialogRequest(ctx, req)
-	if err != nil {
-		return err
+	var req *sip.Request
+	var res *sip.Response
+	// RFC 3261 §14.1: 491 (glare) and 500 with Retry-After mean "try again
+	// shortly"; a PBX that is still re-INVITEing the bridged leg answers so.
+	for attempt := 0; ; attempt++ {
+		req = sip.NewRequest(sip.INVITE, c.remoteTarget())
+		req.AppendHeader(sip.NewHeader("Content-Type", "application/sdp"))
+		req.SetBody(body)
+		if res, err = c.dialogRequest(ctx, req); err != nil {
+			return err
+		}
+		if (res.StatusCode != 491 && res.StatusCode != 500) || attempt >= 3 {
+			break
+		}
+		wait := time.Duration(500+rand.IntN(1500)) * time.Millisecond //nolint:gosec // G404: back-off jitter
+		if h := res.GetHeader("Retry-After"); h != nil {
+			if n, err := strconv.Atoi(strings.Fields(h.Value() + " ")[0]); err == nil && n >= 0 && n <= 10 {
+				wait = time.Duration(n)*time.Second + wait/4
+			}
+		}
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	if res.StatusCode != 200 {
 		return &responseError{res.StatusCode, res.Reason}
 	}
 	ack := sip.NewRequest(sip.ACK, c.remoteTarget())
 	ack.AppendHeader(c.m.via(c.target))
+	ack.AppendHeader(c.l.contact(c.target))
 	c.mu.Lock()
 	cs, ss := c.client, c.server
 	c.mu.Unlock()

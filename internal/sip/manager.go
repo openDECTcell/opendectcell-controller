@@ -106,8 +106,12 @@ func New(cfg Config, ep Endpoint) (*Manager, error) {
 	if m.server, err = sipgo.NewServer(ua, sipgo.WithServerLogger(cfg.Log)); err != nil {
 		return nil, err
 	}
-	m.dialogs = &sipgo.DialogUA{Client: m.client}
 	m.udpPort = cfg.UDP.LocalAddr().(*net.UDPAddr).Port
+	// sipgo puts this Contact on requests it builds itself (ACK for a
+	// 2xx); it must at least be well-formed. Our own requests carry the
+	// account's Contact.
+	m.dialogs = &sipgo.DialogUA{Client: m.client, ContactHDR: sip.ContactHeader{Address: sip.Uri{Scheme: "sip", User: "opendectcell",
+		Host: primaryIP().String(), Port: m.udpPort}}}
 	if cfg.TCP != nil {
 		m.tcpPort = cfg.TCP.Addr().(*net.TCPAddr).Port
 	}
@@ -249,6 +253,14 @@ func (m *Manager) line(id uuid.UUID) *line {
 // transport helpers
 
 func sipTransport(t resolve.Transport) string { return strings.ToUpper(string(t)) }
+
+// primaryIP is the address of the default route, or loopback.
+func primaryIP() netip.Addr {
+	if a := localAddrFor(netip.MustParseAddrPort("192.0.2.1:5060")); a.IsValid() {
+		return a
+	}
+	return netip.MustParseAddr("127.0.0.1")
+}
 
 // localAddrFor returns the local IP the kernel would use towards a target.
 // No packet is sent.
