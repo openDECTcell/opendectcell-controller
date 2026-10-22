@@ -1,0 +1,28 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "contactrows"}}{{range .}}<tr><td>{{.LastName}}{{if and .LastName .FirstName}}, {{end}}{{.FirstName}}</td>
+<td>{{range .Numbers}}<span class="kvp">{{.Number}} ({{.Kind}}{{if .Default}}, default{{end}})</span> {{end}}</td>
+<td><form method="post" action="/contacts/{{.ID}}/delete" class="inline"><button type="submit" class="link">Delete</button></form></td></tr>{{end}}{{end}}
+{{define "contacts.html"}}{{template "head" .}}
+<h1>Contacts</h1>
+<p class="muted">Your handsets show your contacts and the shared ones (CAT-iq handsets, once cells carry list access).</p>
+{{$admin := .User.IsAdmin}}
+{{with .Data}}
+<h2>Yours</h2>
+<table><tbody>{{template "contactrows" .Personal}}{{if not .Personal}}<tr><td class="muted">None yet.</td></tr>{{end}}</tbody></table>
+<h2>Shared</h2>
+<table><tbody>{{template "contactrows" .Shared}}{{if not .Shared}}<tr><td class="muted">None.</td></tr>{{end}}</tbody></table>
+<h2>Add a contact</h2>
+<form method="post" action="/contacts" class="form-grid">
+  <label>Last name <input name="last_name" value="{{.Form.LastName}}" maxlength="64"></label>
+  <label>First name <input name="first_name" value="{{.Form.FirstName}}" maxlength="64"></label>
+  {{with fieldErr .Errors "name"}}<p class="fielderr">{{.}}</p>{{end}}
+  {{range $i := list "0" "1" "2"}}
+  <label>Number {{$i}} <input name="number{{$i}}" inputmode="tel"></label>
+  <select name="kind{{$i}}">{{range $k := list "mobile" "fixed" "work" "other"}}<option>{{$k}}</option>{{end}}</select>
+  {{end}}
+  {{range $k, $v := .Errors}}{{if ne $k "name"}}<p class="fielderr">{{$k}}: {{$v}}</p>{{end}}{{end}}
+  {{if $admin}}<label class="check"><input type="checkbox" name="shared" {{if .SharedChecked}}checked{{end}}>Shared with everyone</label>{{end}}
+  <button type="submit">Add</button>
+</form>
+{{end}}
+{{template "foot" .}}{{end}}

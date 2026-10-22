@@ -121,6 +121,7 @@ func (s *Server) routes() {
 	s.userRoutes()
 	s.apiRoutes()
 	s.contactRoutes()
+	s.contactPages()
 }
 
 func cacheStatic(h http.Handler) http.Handler {
