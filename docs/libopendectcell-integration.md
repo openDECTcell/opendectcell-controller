@@ -201,10 +201,18 @@ will record it.
   `last_tx_ms + retry_ms` while `outstanding` is set. The library has no
   "next deadline" function, so `cdect` derives the deadline from those two
   struct fields. That reads library internals, so it is a change request:
-  `dect_lapc_next_deadline()` (§11, L3). Until then, a coarse alternative is a
-  100 ms ticker per session that calls `dect_lapc_tick` only while an I-frame
-  is outstanding. That is accurate enough against a 1 s timer, and needs no
-  internals.
+  `dect_lapc_next_deadline()` (§11, L3). openDECTcell agreed the shape
+  `uint64_t dect_lapc_next_deadline(const struct dect_lapc *)`, returning
+  `UINT64_MAX` when nothing is outstanding (openDECTcell#69). Until it lands, a
+  coarse alternative is a 100 ms ticker per session that calls `dect_lapc_tick`
+  only while an I-frame is outstanding. That is accurate enough against a 1 s
+  timer, and needs no internals.
+- **`retry_ms` will change** from 1000 to the 2 s that EN 300 175-4 specifies
+  (openDECTcell Gap 3), and **more library timers are coming**: CC's mandatory
+  `F<CC.03>` is not implemented yet (openDECTcell Gap 1), and openDECTcell intends to
+  widen L3 to a stack-level "next deadline" then. So `session` arms **one**
+  timer per session from whatever deadline `cdect` reports, and nothing in Go
+  assumes LAPC is the only clock or that its period is constant.
 - **Procedure supervision is Go's job**, because MM and CC have no timers: the
   registration window (`architecture.md` §5), a registration that stalls
   half-way, call setup, and release. These live in `session`, as ordinary
@@ -332,9 +340,9 @@ should add a CI check that fails if a file the controller compiles stops being
 | L3 ([opendectcell#69](https://github.com/openDECTcell/opendectcell/issues/69)) | **Change request:** `dect_lapc_next_deadline()`, so the controller doesn't read `last_tx_ms`/`retry_ms` directly (§6) | `cdect` |
 | L4 | ~~Internal pointers~~ **resolved:** none except the transient `dect_lapc_frame.info` (§5) | — |
 | L5 | ~~`assert`/`abort`~~ **resolved:** none (§8) | — |
-| L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | No version macro or function. **Change request:** `OPENDECTCELL_API_VERSION`, so `cdect` can refuse a submodule bump it wasn't written for | `cdect` |
+| L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | No version macro or function. **Change request:** `OPENDECTCELL_API_VERSION`, so `cdect` can refuse a submodule bump it wasn't written for. Agreed: a single integer, bumped on any public signature or struct-layout change (openDECTcell#70); header not yet chosen | `cdect` |
 | L7 | The openDECTcell repository is private: CI needs read access (deploy key or token) | B1 |
 | L8 | ~~Connection identifier~~ **resolved:** `handle` + 3-byte `tag` from `0x0203` (§3.1) | — |
 | L9 ([opendectcell#67](https://github.com/openDECTcell/opendectcell/issues/67)) | **Change request:** move the stack glue (§1.1) into `libopendectcell`, so `dect-stubd` and the controller share it instead of keeping two copies | `cdect`, openDECTcell |
 | L10 ([opendectcell#68](https://github.com/openDECTcell/opendectcell/issues/68)) | **Change request:** the MM layer hard-codes subscription slot 1 (`DECT_MM_REG_SLOT`) in the TPUI it assigns. Since openDECTcell#65 the TPUI is no longer derived from the slot at all: the controller assigns it from an installation-wide pool (`cell-protocol.md` §7.4), so `struct dect_mm_cfg` must take the **TPUI** (and the link signature follows from it), with the slot only where the cell writes the record | `core`, openDECTcell |
-| L11 ([opendectcell#71](https://github.com/openDECTcell/opendectcell/issues/71)) | `dect_cs.h` says to flush with `0x0202`, but `dect-stubd` found that `0x0202` drops the connection and sends `0x0244` alone. The header comment should be corrected upstream | openDECTcell docs |
+| L11 ([opendectcell#71](https://github.com/openDECTcell/opendectcell/issues/71)) | `dect_cs.h` says to flush with `0x0202`, but `dect-stubd` found that `0x0202` drops the connection and sends `0x0244` alone. The header comment should be corrected upstream. openDECTcell reports it fixed and `dect_cs_trigger_mail()` deprecated, but the change is not on openDECTcell `main` as of `fc7c203`; reopened on #71 | openDECTcell docs |

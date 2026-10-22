@@ -472,7 +472,11 @@ sequence openDECTcell runs after every test. A reset would also force reloading 
 STUB over the UART. Either way the chip's subscription table is lost, so after
 the controller returns and turns the radio back on it rewrites every slot
 (§7.4). The cell releases calls and audio **before** parking: parking with live
-calls has never been tested. A cell may park sooner than `orphan_s` if handsets
+calls has never been tested. If a release fails, the cell parks anyway: a
+parked radio with a stale chip-side call is recoverable, a beaconing cell
+without a controller is not. **The cell never unparks on its own**; only the
+controller turns the radio back on, after it has rewritten the slots (§7.4).
+openDECTcell has committed to this behaviour for M9 (openDECTcell#80). A cell may park sooner than `orphan_s` if handsets
 should roam sooner; the two thresholds differ only for user experience.
 
 **Why 7 s:** the radio link drops after ~10 s without progress, and that clock
@@ -631,10 +635,17 @@ identity at every move. So:
   hard-coded slot 1 (`DECT_MM_REG_SLOT`), so the controller needs the TPUI as
   a parameter; that is change request L10 (openDECTcell#68,
   `libopendectcell-integration.md` §11).
-- Not yet shown on hardware: that a handset handles a TPUI that does not match
-  the AVM pattern, and (only relevant when an installation migrates from the
-  old scheme) that it accepts a *changed* TPUI on re-locate **[cell?]**. Both
-  need two cells to test meaningfully.
+- **What else keys off the TPUI.** The page `0x0300 {page info, lo, hi}`
+  carries the TPUI's low 16 bits, so it follows the TPUI, not the slot. The
+  link signature is the same 16 bits [CR A-0023, A-0031]. Whether ciphering
+  or anything else silently relies on those bits equalling `0x11<slot>` is
+  **not established**: no call has ever run with a non-slot-derived TPUI
+  (openDECTcell#76). That is the main risk of this design.
+- Not yet shown on hardware: that a handset accepts a pool TPUI, and (only
+  relevant when an installation migrates from the old scheme) that it accepts
+  a *changed* TPUI on re-locate **[cell?]** (openDECTcell#76). The first test, on
+  one cell, is one handset with a unique non-slot-derived TPUI; reassignment
+  needs two cells.
 
 **Placement: which cells get a handset's record.**
 
@@ -714,8 +725,19 @@ chip also reports on other handles. The channel is the **low nibble of
 **Uplink audio works; downlink does not yet.** Handset → host audio is decoded
 correctly (G.722, §8.2). Host → handset audio is reproduced as loud noise while
 loopback is clean; the format is not in doubt, but how the chip wants to be fed
-is, and it is openDECTcell's top open defect (openDECTcell#64). No working host → handset
-path may be assumed until it is fixed.
+is, and it is openDECTcell's top open defect (openDECTcell#64, #77). No working host →
+handset path may be assumed until it is fixed.
+
+Ruled out so far: lane word, octet order and byte half, the two-frame hold,
+the supply rate, the encoder, the FIFO and the `0x0230` codec byte. What
+survives every run is that sources whose word changes coincide with the chip's
+own uplink transitions are clean, and sources on an independent clock are
+noise. openDECTcell's working assumption **[cell?]** is that the chip reads the
+downlink on its own media clock and an independently clocked writer laps it.
+If so, the cell must take its write cadence from the chip's receive side, not
+from a local timer, and absorb the difference to the controller's RTP clock in
+its jitter buffer. v1 already leaves pacing to the cell; `ptime_ms` may need
+to be revisited once this is measured.
 
 The controller then sends **MEDIA_OPEN** to tie that chip channel to a UDP
 flow:
@@ -746,8 +768,10 @@ MEDIA_OPEN (TLV)
   a 32-bit DMA word, carries a channel is chip-specific: the logical lane and
   the raw DMA word differ (`raw = logical ^ 1`), and two pairs of lanes share
   one word, one in each half [CR A-0035, openDECTcell#60]. The controller sends
-  only the chip's channel number. The channel → lane mapping is proven only for
-  channel 1; a cell that has no mapping for a channel answers status 1.
+  only the chip's channel number; openDECTcell agreed (openDECTcell#78). The channel →
+  lane mapping is proven only for channel 1, and every call so far was given
+  channel 1, so other channels may never occur. A cell that has no mapping for
+  a channel answers status 1.
 - **MEDIA_OPEN_ACK** (TLV): tag 1 `media_id` u32, tag 2 `status` u16 (0 ok,
   1 unknown channel, 2 format unsupported, 3 no capacity, 4 internal).
 - **MEDIA_CLOSE** (tag 1 `media_id`) → the cell stops the flow and answers
@@ -853,6 +877,8 @@ down and ~2 566 octets/s up (run F1, 180 s, no errors); the lane's raw capacity
 is not the limit, the chip's receive handling is, and its threshold is
 unmeasured. Expected demand fits easily: Cs carries at most 250 octets/s per
 connection (§2), and slot writes are 184 octets/s at their rate limit (§7.4).
+openDECTcell agreed to these values (openDECTcell#79). Only MAIL_DOWN counts against
+the budget; the chip's own mails share the lane in the other direction.
 Raising the shaper needs a deliberate ceiling measurement on the cell side
 first.
 
@@ -909,9 +935,18 @@ repeatable, `counter_id u16 | value u64`.
 | 19 | STUB link: resyncs |
 
 Counters 15–19 are the ones `dect-stubd` already keeps (`queue_drops`,
-`csum_errors`, `framing_errors`, `seq_gaps`, `resyncs`). They give the shaper
-in §9.3 feedback: the controller raises an alarm and halves the cell's shaping
-rate if any of 16–19 rises between two STATS reports.
+`csum_errors`, `framing_errors`, `seq_gaps`, `resyncs`), and openDECTcell will
+export them (openDECTcell#79). In healthy operation all five stay at zero. They mean
+different things:
+
+- **15 (queue drops) is back-pressure**: the cell could not hand a mail to the
+  chip in time. If it rises between two STATS reports, the controller halves
+  the cell's shaping rate (§9.3) and restores it step by step after 5 minutes
+  without drops.
+- **16–19 are link faults**: the wire corrupted or lost mails, which slowing
+  down may not fix (a bad STUB load or a chip needing re-initialisation also
+  cause them). A rise raises an admin alarm and does not touch the shaper.
+  `resyncs` means mails were lost, not just delayed.
 
 Unknown counter IDs are ignored, so new ones need no version bump.
 
@@ -962,13 +997,13 @@ fallback written into it.
 | # | Question | Answer | Still open |
 |---|---|---|---|
 | C1 | Does the chip's subscription table survive a reset? Can the host read it back? | No, it is lost whenever the radio is parked [CR A-0026]. No read-back primitive is known (openDECTcell#59) | — |
-| C2 ([opendectcell#58](https://github.com/openDECTcell/opendectcell/issues/58)) | Does `0xF604` reach the host, with identity, before the chip refuses a handset without a record? | Not established: never seen in any capture. Fallback (home set only) endorsed. §7.4 rule 3 | A bench run with an empty slot table; openDECTcell will report on the issue |
+| C2 ([opendectcell#58](https://github.com/openDECTcell/opendectcell/issues/58)) | Does `0xF604` reach the host, with identity, before the chip refuses a handset without a record? | Not established: never seen in any capture. Fallback (home set only) endorsed. §7.4 rule 3 | Bench run with an empty slot table, queued ([#74](https://github.com/openDECTcell/opendectcell/issues/74)) |
 | C3 ([opendectcell#59](https://github.com/openDECTcell/opendectcell/issues/59)) | Write confirm? Slot clear? `status`/`extra`? | No confirm observed; writes succeed silently. No clear known. `status`/`extra` unknown, `0x00` works. Byte layouts given. §7.4 | Whether another op value clears a slot (untested; not needed by §7.4) |
 | C4 | Which field identifies a radio connection? | `handle` (0..6) plus a 3-byte handset `tag` in `0x0203` (`dect_cs.h`) | — |
-| C5 ([opendectcell#60](https://github.com/openDECTcell/opendectcell/issues/60)) | How does `0x0242` identify the audio channel, and which PCM slot carries it? | Low nibble of octet 1 of the long form, matched on handle; lane mapping `raw = logical ^ 1`, lanes may share a word. §8.1 | Channel → lane for channels other than 1 (cell-internal) |
-| C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61)) | Will `dect-stubd` release calls itself when the grace period ends? | Recommended: release calls and audio at 7 s, then park the radio; do not reset the chip. §6.4 | What parking with live calls does (avoided) |
-| C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates on the target build are assumed: smoke test |
-| C8 ([opendectcell#63](https://github.com/openDECTcell/opendectcell/issues/63)) | Per-mail overhead on the TDM control channel? | `12 + plen`, rounded up to even; 16 000 octets/s raw. §9.3 | The chip's overrun threshold |
-| C9 ([opendectcell#64](https://github.com/openDECTcell/opendectcell/issues/64)) | Cell-link audio format? | Wideband is coded G.722 at 8 000 octets/s, narrowband A-law. §8.2 | Live narrowband call; the downlink feeding defect |
-| C10 ([opendectcell#65](https://github.com/openDECTcell/opendectcell/issues/65)) | Does a handset accept a different TPUI per cell? | The premise is wrong: a TPUI is per location area, and slot-derived TPUIs collide across cells. Decouple TPUI from slot. §7.4 | Handset behaviour with a non-AVM-pattern TPUI and on reassignment (needs two cells); `libopendectcell` change L10 |
+| C5 ([opendectcell#60](https://github.com/openDECTcell/opendectcell/issues/60), [#78](https://github.com/openDECTcell/opendectcell/issues/78)) | How does `0x0242` identify the audio channel, and which PCM slot carries it? | Low nibble of octet 1 of the long form, matched on handle; lane mapping `raw = logical ^ 1`, lanes may share a word. §8.1 | Channel → lane for channels other than 1 (cell-internal) |
+| C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61), [#80](https://github.com/openDECTcell/opendectcell/issues/80)) | Will `dect-stubd` release calls itself when the grace period ends? | Release calls and audio at 7 s, then park the radio; do not reset the chip. Committed for M9 (#80). §6.4 | Who rewrites the slots: reopened on #80 |
+| C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates on the target build are assumed: smoke test, which openDECTcell runs on the lab 7520 ([#75](https://github.com/openDECTcell/opendectcell/issues/75)) |
+| C8 ([opendectcell#63](https://github.com/openDECTcell/opendectcell/issues/63)) | Per-mail overhead on the TDM control channel? | `12 + plen`, rounded up to even; 16 000 octets/s raw. 3 000 octets/s and counters 15–19 agreed (#79). §9.3 | The chip's overrun threshold |
+| C9 ([opendectcell#64](https://github.com/openDECTcell/opendectcell/issues/64)) | Cell-link audio format? | Wideband is coded G.722 at 8 000 octets/s, narrowband A-law. §8.2 | Live narrowband call; the downlink feeding discipline ([#77](https://github.com/openDECTcell/opendectcell/issues/77), blocked behind the FP-originated call defect) |
+| C10 ([opendectcell#65](https://github.com/openDECTcell/opendectcell/issues/65)) | Does a handset accept a different TPUI per cell? | The premise is wrong: a TPUI is per location area, and slot-derived TPUIs collide across cells. Decouple TPUI from slot. §7.4 | Handset behaviour with a pool TPUI and on reassignment, and whether ciphering depends on the slot-shaped TPUI ([#76](https://github.com/openDECTcell/opendectcell/issues/76)); `libopendectcell` change L10 |
 | C11 ([opendectcell#66](https://github.com/openDECTcell/opendectcell/issues/66)) | One 5-octet Cs fragment per 10 ms frame? | No: at most one per 20 ms (`C_T` only in odd frames), so ≥ 280 ms for a 70-octet frame. §2 | openDECTcell's move of the LAPC timer to 2 s |
