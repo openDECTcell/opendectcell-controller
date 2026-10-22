@@ -63,8 +63,10 @@ func Parse(v uint8) (Class, Service) { return Class(v >> 4), Service(v & 0x0F) }
 // to SIP:
 //
 //   - 0x8 normal call: yes.
-//   - 0xA emergency call: yes. Emergency calls are never blocked
-//     (voip-requirements.md §3); the number goes to the PBX unchanged.
+//   - 0xA emergency call: yes, always. Emergency calls are never blocked
+//     (voip-requirements.md §3), and must not be gated behind anything
+//     else either (registration state, line policy); the number goes to the
+//     PBX unchanged. Upheld in review, 2026-10-22 (the maintainers' notes).
 //   - 0x9 internal call: not yet. Internal calls go through the SIP server
 //     like any other (architecture.md §6), but how a handset's INT key maps
 //     to a SIP destination is undesigned; until then it is refused.

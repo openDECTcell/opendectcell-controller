@@ -735,8 +735,12 @@ disconnect.
 answers `0x0230`; the short form reports later state changes and is not used
 for this. Accept it only if `handle` is the connection's handle, because the
 chip also reports on other handles. The channel is the **low nibble of
-`chan_flags`**: 0..3 ADPCM, 4..6 PCM, 7..9 wideband [CR avm_dect_analysis §6
-1.6]. `0x0` and `0xF` mean no channel, and the call fails.
+`chan_flags`**, 1..9; `0x0` and `0xF` mean no channel, and the call fails.
+**The number says nothing about the codec** (openDECTcell#81): the ranges 0..3 /
+4..6 / 7..9 once read as ADPCM / PCM / wideband are an allocation pool, and
+this host-facing link channel is a different namespace from the chip's
+internal channel. Every wideband call measured so far reports channel 1. The
+controller logs the channel and never branches on it.
 
 **Uplink audio works; downlink does not yet.** Handset → host audio is decoded
 correctly (G.722, §8.2). Host → handset audio is reproduced as loud noise while
@@ -849,10 +853,9 @@ Consequences:
   | 2, G.726 32 kbit/s | none yet: the controller refuses the media ("format unsupported") and logs the codec and the `0x0242` channel | whether the chip passes G.726 through or hands back A-law is **not measured**; format 7 is reserved for the first case |
   | 6, G.729.1 | not offered | — |
 
-  The cell side suggested deciding by the `0x0242` channel class instead
-  (7..9 G.722, 4..6 A-law, 0..3 none). That conflicts with the measured G.722
-  calls, which ran on channel 1, so it is held until openDECTcell#81 is answered;
-  the class is logged, not used.
+  The format is **not** derived from the `0x0242` channel number, although
+  #27 once suggested it; openDECTcell#81 confirmed that the number carries no
+  codec information (§8.1).
   `voip-requirements.md` §5 and `architecture.md` are corrected to match.
 
 ### 8.3 Packets and NAT
@@ -1038,7 +1041,7 @@ fallback written into it.
 | C2 ([opendectcell#58](https://github.com/openDECTcell/opendectcell/issues/58)) | Does `0xF604` reach the host, with identity, before the chip refuses a handset without a record? | Not established: never seen in any capture. Fallback (home set only) endorsed. §7.4 rule 3 | Bench run with an empty slot table, queued ([#74](https://github.com/openDECTcell/opendectcell/issues/74)) |
 | C3 ([opendectcell#59](https://github.com/openDECTcell/opendectcell/issues/59)) | Write confirm? Slot clear? `status`/`extra`? | No confirm observed; writes succeed silently. No clear known. `status`/`extra` unknown, `0x00` works. Byte layouts given. §7.4 | Whether another op value clears a slot (untested; not needed by §7.4) |
 | C4 | Which field identifies a radio connection? | `handle` (0..6) plus a 3-byte handset `tag` in `0x0203` (`dect_cs.h`) | — |
-| C5 ([opendectcell#60](https://github.com/openDECTcell/opendectcell/issues/60), [#78](https://github.com/openDECTcell/opendectcell/issues/78)) | How does `0x0242` identify the audio channel, and which PCM slot carries it? | Low nibble of octet 1 of the long form, matched on handle; lane mapping `raw = logical ^ 1`, lanes may share a word. §8.1 | Channel → lane for channels other than 1 (cell-internal) |
+| C5 ([opendectcell#60](https://github.com/openDECTcell/opendectcell/issues/60), [#78](https://github.com/openDECTcell/opendectcell/issues/78)) | How does `0x0242` identify the audio channel, and which PCM slot carries it? | Low nibble of octet 1 of the long form, matched on handle; lane mapping `raw = logical ^ 1`, lanes may share a word. The number is not a codec class ([#81](https://github.com/openDECTcell/opendectcell/issues/81)). §8.1 | Channel → lane for channels other than 1 (cell-internal) |
 | C6 ([opendectcell#61](https://github.com/openDECTcell/opendectcell/issues/61), [#80](https://github.com/openDECTcell/opendectcell/issues/80)) | Will `dect-stubd` release calls itself when the grace period ends? | Release calls and audio at 7 s, then park the radio; do not reset the chip. Committed for M9 (#80). §6.4 | — (also agreed in #80: the controller is the only slot writer and the only one that unparks; §7.4) |
 | C7 ([opendectcell#62](https://github.com/openDECTcell/opendectcell/issues/62)) | TLS library, TLS 1.3 + P-256, `TCP_NOTSENT_LOWAT`? | mbedTLS 3.6.6, already installed; `TCP_NOTSENT_LOWAT` available (kernel 6.12). §4, §9.1 | TLS 1.3 client certificates confirmed compiled in by binary evidence ([#75](https://github.com/openDECTcell/opendectcell/issues/75)); a real handshake is offered and wanted before C2 |
 | C8 ([opendectcell#63](https://github.com/openDECTcell/opendectcell/issues/63)) | Per-mail overhead on the TDM control channel? | `12 + plen`, rounded up to even; 16 000 octets/s raw. 3 000 octets/s and counters 15–19 agreed (#79). §9.3 | The chip's overrun threshold |
