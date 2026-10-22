@@ -109,7 +109,12 @@ func New(cfg Config, ep Endpoint) (*Manager, error) {
 	// sipgo puts this Contact on requests it builds itself (ACK for a
 	// 2xx); it must at least be well-formed. Our own requests carry the
 	// account's Contact.
-	m.dialogs = &sipgo.DialogUA{Client: m.client, ContactHDR: sip.ContactHeader{Address: sip.Uri{Scheme: "sip", User: "opendectcell",
+	// RewriteContact: without a Record-Route, in-dialog requests (ACK,
+	// re-INVITE, BYE) go to where the far end's INVITE or answer came from,
+	// not to its Contact. A PBX behind NAT often advertises an address it
+	// cannot be reached at (FreeSWITCH put the host's public IP there in
+	// the interop run), and the call then never gets its ACK.
+	m.dialogs = &sipgo.DialogUA{Client: m.client, RewriteContact: true, ContactHDR: sip.ContactHeader{Address: sip.Uri{Scheme: "sip", User: "opendectcell",
 		Host: primaryIP().String(), Port: m.udpPort}}}
 	if cfg.TCP != nil {
 		m.tcpPort = cfg.TCP.Addr().(*net.TCPAddr).Port
