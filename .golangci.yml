@@ -43,6 +43,9 @@ linters:
         linters: [errcheck, gosec, noctx, bodyclose]
       - path: internal/auth/oidctest/
         linters: [errcheck, gosec]
+      # SIP status codes look like HTTP ones but are not.
+      - path: internal/sip/
+        linters: [usestdlibvars]
 
 formatters:
   enable:
