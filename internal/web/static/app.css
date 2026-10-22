@@ -26,3 +26,6 @@ th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(-
 dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
 dl.kv dt { color: var(--muted); }
 .kvp { white-space: nowrap; font-size: .9em; }
+code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-select: all; }
+select { display: block; padding: .4rem; font: inherit; margin-top: .2rem; }
+label.check input { display: inline; width: auto; margin-right: .4rem; }

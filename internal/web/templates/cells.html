@@ -1,0 +1,21 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "cells.html"}}{{template "head" .}}
+<h1>Cells</h1>
+<p><a class="button" href="/enroll">Enroll a cell</a></p>
+<table>
+<thead><tr><th>Name</th><th>Location</th><th>State</th><th>Link</th><th>RTT p95</th><th>Software</th><th>Last seen</th></tr></thead>
+<tbody>
+{{range .Data}}
+<tr>
+  <td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{.Location}}</td><td>{{.State}}</td>
+  <td>{{.Live.Health}}</td>
+  <td>{{if .Live.Online}}{{ms .Live.RTTp95}}{{end}}</td>
+  <td>{{with .SoftwareVersion}}{{.}}{{end}}</td>
+  <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td>
+</tr>
+{{else}}
+<tr><td colspan="7" class="muted">No cells yet. Enroll one.</td></tr>
+{{end}}
+</tbody>
+</table>
+{{template "foot" .}}{{end}}

@@ -1,0 +1,41 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "cell.html"}}{{template "head" .}}
+{{with .Data}}
+<h1>{{.Name}}</h1>
+<dl class="kv">
+  <dt>State</dt><dd>{{.State}}</dd>
+  <dt>Link</dt><dd>{{.Live.Health}}{{if .Live.Online}} · since {{fmtTime .Live.Since}} from {{.Live.RemoteAddr}} · RTT p50 {{ms .Live.RTTp50}}, p95 {{ms .Live.RTTp95}}{{end}}</dd>
+  <dt>Software</dt><dd>{{with .SoftwareVersion}}{{.}}{{end}}{{with .StubVersion}} · STUB {{.}}{{end}}</dd>
+  <dt>Capacity announced</dt><dd>{{with .CapSubRecords}}{{.}} records{{end}}{{with .CapAudioNB}} · {{.}} narrowband{{end}}{{with .CapAudioWB}} · {{.}} wideband{{end}}</dd>
+  <dt>Certificate valid until</dt><dd>{{with .CertExpiresAt}}{{fmtTime .}}{{else}}—{{end}}</dd>
+  <dt>Enrolled</dt><dd>{{with .EnrolledAt}}{{fmtTime .}}{{end}}</dd>
+  {{if .Live.Stats}}<dt>Counters</dt><dd>{{range $k, $v := .Live.Stats}}<span class="kvp">{{$k}}={{$v}}</span> {{end}}</dd>{{end}}
+</dl>
+
+{{if eq .State "pending"}}
+<form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="active"><button type="submit">Approve</button></form>
+{{else if eq .State "active"}}
+<form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="disabled"><button type="submit">Disable</button></form>
+{{else if eq .State "disabled"}}
+<form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="active"><button type="submit">Enable</button></form>
+{{end}}
+
+{{if ne .State "revoked"}}
+<h2>Settings</h2>
+<form method="post" action="/cells/{{.ID}}" class="narrow">
+  <label>Name <input name="name" value="{{.Name}}" maxlength="64" required></label>
+  <label>Location <input name="location" value="{{.Location}}" maxlength="128"></label>
+  <label>Max concurrent calls <input name="max_calls" type="number" min="0" max="16" value="{{.MaxCalls}}"></label>
+  <label class="check"><input type="checkbox" name="allow_plain_rtp" {{if .AllowPlainRTP}}checked{{end}}> Allow unencrypted RTP (trusted LAN only)</label>
+  <button type="submit">Save</button>
+</form>
+
+<h2>Revoke</h2>
+<form method="post" action="/cells/{{.ID}}/revoke" class="narrow">
+  <p class="muted">The cell is disconnected at once and can never connect again with its certificate. Re-enrolling needs a new token.</p>
+  <label>Type <strong>{{.Name}}</strong> to confirm <input name="confirm" autocomplete="off" required></label>
+  <button type="submit">Revoke</button>
+</form>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

@@ -34,7 +34,8 @@ echoed in error messages or logs.
 | `OPENDECTCELL_OIDC_ADMIN_GROUPS` | `auth.oidc.admin_groups` | none | Groups that grant `admin` |
 | `OPENDECTCELL_OIDC_USER_GROUPS` | `auth.oidc.user_groups` | none | Groups that grant `user`. **Empty: every user the IdP authenticates for this client may log in** — restrict access at the IdP, or set this |
 | `OPENDECTCELL_OIDC_PROVIDER_NAME` | `auth.oidc.provider_name` | `Single sign-on` | Login button label |
-| `OPENDECTCELL_CELLS_LISTEN` | `cells.listen` | `:7300` | Cell control port (`cell-protocol.md` §1), used from C2 on |
+| `OPENDECTCELL_CELLS_LISTEN` | `cells.listen` | `:7300` | Cell control port (`cell-protocol.md` §1) |
+| `OPENDECTCELL_CELLS_PUBLIC_ADDRESS` | `cells.public_address` | base URL host + listen port | `host:port` as cells reach the control port; written into enrollment strings. Set it when cells connect through NAT or another name |
 
 For OIDC users, the role is recomputed from the groups at every login, so
 removing someone from the admin group takes effect at their next login.

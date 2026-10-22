@@ -4,6 +4,10 @@ package web
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,6 +22,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth/oidctest"
+	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/dbtest"
 )
@@ -28,9 +33,12 @@ type env struct {
 	srv   *httptest.Server
 	store *auth.Store
 	idp   *oidctest.Provider
+	cells *cell.Store
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, nil) }
+
+func newEnvWith(t *testing.T, setup func(*Server)) *env {
 	t.Helper()
 	pool := dbtest.Migrated(t)
 	store := &auth.Store{Pool: pool, Argon: auth.ArgonParams{MemoryKiB: 64, Time: 1, Threads: 1},
@@ -46,6 +54,10 @@ func newEnv(t *testing.T) *env {
 		Issuer: e.idp.Issuer(), ClientID: e.idp.ClientID, ClientSecret: e.idp.ClientSecret,
 		Scopes: []string{"openid"}, GroupsClaim: "groups", AdminGroups: []string{"ops"},
 	}}
+	if setup != nil {
+		setup(s)
+		e.cells = s.Cells
+	}
 	h, err := s.Handler()
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +93,21 @@ func (e *env) post(t *testing.T, c *http.Client, path string, form url.Values) *
 		t.Fatal(err)
 	}
 	return resp
+}
+
+func readBody(r *http.Response) string {
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	return string(b)
+}
+
+func testCSR(t *testing.T) []byte {
+	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{}, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
 }
 
 func (e *env) get(t *testing.T, c *http.Client, path string) (*http.Response, string) {

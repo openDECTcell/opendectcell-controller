@@ -11,6 +11,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -100,6 +101,26 @@ func (o OIDC) Enabled() bool { return o.Issuer != "" }
 type Cells struct {
 	// Listen is the address of the cell control port (docs/cell-protocol.md §1).
 	Listen string `yaml:"listen"`
+	// PublicAddress is host:port as cells reach the control port; it goes
+	// into enrollment strings. Default: the base URL's host and the
+	// listen port.
+	PublicAddress string `yaml:"public_address"`
+}
+
+// CellPublicAddress returns PublicAddress or its default.
+func (c Config) CellPublicAddress() string {
+	if c.Cells.PublicAddress != "" {
+		return c.Cells.PublicAddress
+	}
+	host := "localhost"
+	if u, err := url.Parse(c.HTTP.BaseURL); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	_, port, err := net.SplitHostPort(c.Cells.Listen)
+	if err != nil || port == "" {
+		port = "7300"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // Default returns the configuration used for anything not set.
@@ -209,6 +230,7 @@ func vars(c *Config) []envVar {
 		{"OIDC_USER_GROUPS", false, list(&c.Auth.OIDC.UserGroups)},
 		{"OIDC_PROVIDER_NAME", false, str(&c.Auth.OIDC.ProviderName)},
 		{"CELLS_LISTEN", false, str(&c.Cells.Listen)},
+		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
 	}
 }
 
@@ -319,6 +341,11 @@ func (c Config) Validate() error {
 		}
 		if !contains(o.Scopes, "openid") {
 			add("OIDC scopes must include openid")
+		}
+	}
+	if c.Cells.PublicAddress != "" {
+		if h, p, err := net.SplitHostPort(c.Cells.PublicAddress); err != nil || h == "" || p == "" {
+			add("cells public address %q must be host:port", c.Cells.PublicAddress)
 		}
 	}
 	if c.Database.MaxConns < 1 {

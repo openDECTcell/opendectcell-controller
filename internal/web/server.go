@@ -18,6 +18,7 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 )
 
 //go:embed templates/*.html
@@ -45,6 +47,8 @@ type Server struct {
 	TrustedProxies []netip.Prefix
 	Log            *slog.Logger
 	Version        string
+	Cells          *cell.Store // nil: no cell pages
+	CellLink       CellLink
 
 	tmpl *template.Template
 	mux  *http.ServeMux
@@ -57,6 +61,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	}
 	t, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.Local().Format("2006-01-02 15:04:05") },
+		"ms":      func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) + " ms" },
 	}).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -98,6 +103,7 @@ func (s *Server) routes() {
 
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
+	s.cellRoutes()
 }
 
 func cacheStatic(h http.Handler) http.Handler {

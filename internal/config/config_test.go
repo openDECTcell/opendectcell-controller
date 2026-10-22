@@ -167,3 +167,23 @@ func TestEveryVariableIsDocumented(t *testing.T) {
 		}
 	}
 }
+
+func TestCellPublicAddress(t *testing.T) {
+	c, err := Load("", env(minimal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.CellPublicAddress(); got != "dect.example.org:7300" {
+		t.Errorf("default: %s", got)
+	}
+	m := minimal()
+	m["OPENDECTCELL_CELLS_PUBLIC_ADDRESS"] = "cells.example.org:443"
+	c, _ = Load("", env(m))
+	if got := c.CellPublicAddress(); got != "cells.example.org:443" {
+		t.Errorf("override: %s", got)
+	}
+	m["OPENDECTCELL_CELLS_PUBLIC_ADDRESS"] = "no-port"
+	if _, err := Load("", env(m)); err == nil {
+		t.Error("address without port accepted")
+	}
+}

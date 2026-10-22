@@ -50,6 +50,9 @@ type User struct {
 // IsAdmin reports whether u has the admin role.
 func (u *User) IsAdmin() bool { return u != nil && u.Role == RoleAdmin }
 
+// CanAddCells reports whether u may enroll cells (see the package function).
+func (u *User) CanAddCells() bool { return CanAddCells(u) }
+
 // Name is what the UI shows.
 func (u *User) Name() string {
 	if u.DisplayName != "" {

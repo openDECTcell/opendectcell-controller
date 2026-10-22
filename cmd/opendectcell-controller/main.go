@@ -42,6 +42,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
@@ -222,19 +223,33 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	if err != nil {
 		return err
 	}
-	if _, err := db.LoadKeyring(ctx, pool, mk, old); err != nil {
+	kr, err := db.LoadKeyring(ctx, pool, mk, old)
+	if err != nil {
 		return err
 	}
 	if old != nil {
 		log.Warn("an old master key is configured; run `opendectcell-controller rekey`, then remove it")
 	}
 
-	store := authStore(cfg, pool)
+	cells, err := cell.Open(ctx, pool, kr, cfg.CellPublicAddress())
+	if err != nil {
+		return err
+	}
 	base, _ := url.Parse(cfg.HTTP.BaseURL)
+	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
+	cln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Cells.Listen)
+	if err != nil {
+		return fmt.Errorf("cell control port: %w", err)
+	}
+	cellErr := make(chan error, 1)
+	go func() { cellErr <- link.Serve(ctx, cln) }()
+
+	store := authStore(cfg, pool)
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
+		Cells: cells, CellLink: link,
 	}
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,
@@ -270,7 +285,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	errc := make(chan error, 1)
 	go func() { errc <- hs.ListenAndServe() }()
 	log.Info("controller started", "version", buildVersion(), "listen", cfg.HTTP.Listen, "base_url", cfg.HTTP.BaseURL,
-		"local_login", cfg.Auth.Local.Enabled, "oidc", cfg.Auth.OIDC.Enabled())
+		"local_login", cfg.Auth.Local.Enabled, "oidc", cfg.Auth.OIDC.Enabled(),
+		"cells_listen", cfg.Cells.Listen, "cells_public", cfg.CellPublicAddress(), "cell_ca_pin", cells.CA.Pin())
 	if err := audit.RecordAs(ctx, pool, audit.System, audit.Entry{Action: "controller.start", Details: map[string]any{"version": buildVersion()}}); err != nil {
 		log.Warn("audit", "err", err)
 	}
@@ -278,6 +294,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	select {
 	case err := <-errc:
 		return err
+	case err := <-cellErr:
+		return fmt.Errorf("cell control port: %w", err)
 	case <-ctx.Done():
 	}
 	log.Info("shutting down")
