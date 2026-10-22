@@ -1,0 +1,1059 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+openapi: 3.0.3
+info:
+  title: opendectcell-controller API
+  version: 1.0.0-draft
+  description: |
+    REST/JSON API of the controller (task A4). The web UI and scripts use it.
+    Status: draft, 2026-10-22, pending maintainer review.
+
+    **Authorisation.** Every operation carries `x-authz`, which names the
+    rule the server applies (AGENTS.md §5):
+
+    | Rule | Meaning |
+    |---|---|
+    | `any` | No login (health only) |
+    | `user` | Any logged-in user |
+    | `admin` | Role `admin` |
+    | `owner-or-admin` | The object's owner, or an admin. Shared objects (owner `null`) are admin-only. A user asking for an object they may not see gets **404**, never 403, so existence is not revealed |
+    | `may-add-cells` | Role `admin`, or a user with `may_add_cells` |
+
+    List endpoints apply the same rule per item: a user's list contains
+    only their own objects; an admin's contains everything and accepts
+    `owner` to filter.
+
+    **Authentication.** The browser session cookie. State-changing requests
+    from a browser must be same-origin (checked with Fetch metadata / Origin).
+    Personal API tokens (`bearerToken`) are planned for C7 and listed here so
+    that the shape is settled.
+
+    **Errors** are `application/problem+json` (RFC 9457) with a stable `code`.
+    Secrets are write-only: they are accepted on create/update and never
+    returned (`password`, `client_secret`), except one-time values that the
+    response says are shown once (enrollment token, registration PIN).
+
+    **Paging.** Lists are newest-first or name-ordered, `limit` ≤ 500
+    (default 50), and continue with `before` = the last item's cursor.
+  license:
+    name: AGPL-3.0-or-later
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+  - bearerToken: []
+
+tags:
+  - name: me
+  - name: users
+  - name: handsets
+  - name: registration
+  - name: sip-accounts
+  - name: cells
+  - name: enrollment
+  - name: calls
+  - name: stats
+  - name: audit
+  - name: settings
+  - name: health
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: health
+      summary: Process is alive
+      security: []
+      x-authz: any
+      servers: [{ url: / }]
+      responses:
+        "200": { description: OK }
+
+  /me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: The logged-in user
+      x-authz: user
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /me/password:
+    put:
+      tags: [me]
+      operationId: changeMyPassword
+      summary: Change the logged-in local user's password
+      description: Ends the user's other sessions. OIDC users get `409 managed_externally`.
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current, new]
+              properties:
+                current: { type: string, format: password, writeOnly: true }
+                new: { type: string, format: password, writeOnly: true, minLength: 10, maxLength: 256 }
+      responses:
+        "204": { description: Changed }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      x-authz: admin
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: before, in: query, schema: { type: string }, description: Username cursor }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/UserList" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [users]
+      operationId: createUser
+      summary: Create a local user
+      description: OIDC users are created on their first login instead.
+      x-authz: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, role]
+              properties:
+                username: { $ref: "#/components/schemas/Username" }
+                display_name: { type: string, maxLength: 128 }
+                email: { type: string, format: email }
+                password: { type: string, format: password, writeOnly: true, minLength: 10, maxLength: 256 }
+                role: { $ref: "#/components/schemas/Role" }
+                may_add_cells: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /users/{userId}:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      tags: [users]
+      operationId: getUser
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [users]
+      operationId: updateUser
+      description: |
+        For OIDC users, `role` is recomputed from groups at each login, so
+        changing it here lasts until their next login (`409` if attempted
+        while group mapping is configured). Disabling a user ends their
+        sessions. An admin cannot disable or demote themself.
+      x-authz: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string, maxLength: 128 }
+                email: { type: string, format: email }
+                role: { $ref: "#/components/schemas/Role" }
+                may_add_cells: { type: boolean }
+                disabled: { type: boolean }
+                password: { type: string, format: password, writeOnly: true, description: Local users only. Ends their sessions }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [users]
+      operationId: deleteUser
+      description: Refused with `409 has_objects` while the user owns handsets or SIP accounts; reassign or delete those first.
+      x-authz: admin
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /handsets:
+    get:
+      tags: [handsets]
+      operationId: listHandsets
+      x-authz: owner-or-admin
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Before" }
+        - { $ref: "#/components/parameters/OwnerFilter" }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/HandsetList" } } }
+  /handsets/{handsetId}:
+    parameters: [{ $ref: "#/components/parameters/HandsetId" }]
+    get:
+      tags: [handsets]
+      operationId: getHandset
+      x-authz: owner-or-admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Handset" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [handsets]
+      operationId: updateHandset
+      description: Changing `owner_id` (including to `null` = shared) is admin-only; lines whose account the new owner may not use are removed.
+      x-authz: owner-or-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string, maxLength: 64 }
+                default_line: { type: integer, enum: [1, 2], nullable: true }
+                dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
+                owner_id: { type: string, format: uuid, nullable: true, description: Admin only }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Handset" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [handsets]
+      operationId: deleteHandset
+      description: Deregisters the handset. Its subscription records are overwritten on every cell that held one (`cell-protocol.md` §7.4).
+      x-authz: owner-or-admin
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /handsets/{handsetId}/lines/{line}:
+    parameters:
+      - { $ref: "#/components/parameters/HandsetId" }
+      - { name: line, in: path, required: true, schema: { type: integer, enum: [1, 2] } }
+    put:
+      tags: [handsets]
+      operationId: setHandsetLine
+      description: |
+        Assigns a SIP account to line 1 or 2. The account must belong to the
+        handset's owner, or be shared (admin only). A user naming someone
+        else's account gets `404` for the account.
+      x-authz: owner-or-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sip_account_id]
+              properties:
+                sip_account_id: { type: string, format: uuid }
+                display_name: { type: string, maxLength: 32 }
+                enabled: { type: boolean, default: true }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/HandsetLine" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [handsets]
+      operationId: clearHandsetLine
+      x-authz: owner-or-admin
+      responses:
+        "204": { description: Cleared }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /handsets/{handsetId}/home-cells:
+    parameters: [{ $ref: "#/components/parameters/HandsetId" }]
+    put:
+      tags: [handsets]
+      operationId: setHomeCells
+      description: |
+        Replaces the handset's home set: the cells that always hold its
+        record (`cell-protocol.md` §7.4). Users may pick from the cells
+        listed to them by `listCells`.
+      x-authz: owner-or-admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cell_ids]
+              properties:
+                cell_ids: { type: array, items: { type: string, format: uuid }, minItems: 1, uniqueItems: true }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Handset" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /handsets/{handsetId}/features:
+    parameters: [{ $ref: "#/components/parameters/HandsetId" }]
+    get:
+      tags: [handsets]
+      operationId: listHandsetFeatures
+      description: Feature modules available for this handset's model and capabilities (`dect-features.md`), with their settings.
+      x-authz: owner-or-admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/FeatureSetting" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /handsets/{handsetId}/features/{feature}:
+    parameters:
+      - { $ref: "#/components/parameters/HandsetId" }
+      - { name: feature, in: path, required: true, schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,31}$" } }
+    put:
+      tags: [handsets]
+      operationId: setHandsetFeature
+      description: "`409 unsupported` if the handset's capabilities or model don't allow the feature."
+      x-authz: owner-or-admin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FeatureSettingInput" } } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/FeatureSetting" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /registration-windows:
+    post:
+      tags: [registration]
+      operationId: openRegistrationWindow
+      summary: Open a registration window and get its PIN
+      description: |
+        Opens a window (default 120 s) on the chosen cells and returns a
+        one-time PIN, **shown once**. The handset that registers within the
+        window belongs to `owner_id`: the caller, or (admins only) another
+        user or `null` for a shared handset. At most one open window per
+        caller (`409 window_open`).
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cell_ids]
+              properties:
+                cell_ids: { type: array, items: { type: string, format: uuid }, minItems: 1, uniqueItems: true }
+                owner_id: { type: string, format: uuid, nullable: true, description: Admin only. Default the caller }
+      responses:
+        "201":
+          description: Opened
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/RegistrationWindow" }
+                  - type: object
+                    required: [pin]
+                    properties:
+                      pin: { type: string, pattern: "^[0-9]{4,8}$", description: Shown once. Enter it on the handset }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /registration-windows/{windowId}:
+    parameters: [{ name: windowId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      tags: [registration]
+      operationId: getRegistrationWindow
+      description: Poll for the outcome. Visible to the user who opened it, and admins.
+      x-authz: owner-or-admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/RegistrationWindow" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [registration]
+      operationId: cancelRegistrationWindow
+      x-authz: owner-or-admin
+      responses:
+        "204": { description: Cancelled }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sip-accounts:
+    get:
+      tags: [sip-accounts]
+      operationId: listSipAccounts
+      x-authz: owner-or-admin
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Before" }
+        - { $ref: "#/components/parameters/OwnerFilter" }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountList" } } }
+    post:
+      tags: [sip-accounts]
+      operationId: createSipAccount
+      description: Owned by the caller; admins may set `owner_id` (or `null` = shared).
+      x-authz: user
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/SipAccount" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+  /sip-accounts/{accountId}:
+    parameters: [{ $ref: "#/components/parameters/AccountId" }]
+    get:
+      tags: [sip-accounts]
+      operationId: getSipAccount
+      x-authz: owner-or-admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/SipAccount" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [sip-accounts]
+      operationId: updateSipAccount
+      description: Omitting `password` keeps it; `""` clears it. `owner_id` is admin-only.
+      x-authz: owner-or-admin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/SipAccount" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [sip-accounts]
+      operationId: deleteSipAccount
+      description: "`409 in_use` while a handset line uses it."
+      x-authz: owner-or-admin
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /sip-accounts/{accountId}/status:
+    parameters: [{ $ref: "#/components/parameters/AccountId" }]
+    get:
+      tags: [sip-accounts]
+      operationId: getSipAccountStatus
+      summary: Live registration state
+      x-authz: owner-or-admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountStatus" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /cells:
+    get:
+      tags: [cells]
+      operationId: listCells
+      description: |
+        Admins get every cell with all fields. Users get the active cells
+        with `id`, `name`, `location` and `state` only, so they can pick a
+        home set; this is the one list that is not filtered by ownership,
+        because cells are not owned.
+      x-authz: user
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: state, in: query, schema: { $ref: "#/components/schemas/CellState" } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/CellList" } } }
+  /cells/{cellId}:
+    parameters: [{ $ref: "#/components/parameters/CellId" }]
+    get:
+      tags: [cells]
+      operationId: getCell
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Cell" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [cells]
+      operationId: updateCell
+      x-authz: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 64 }
+                location: { type: string, maxLength: 128 }
+                max_calls: { type: integer, minimum: 0, maximum: 16 }
+                allow_plain_rtp: { type: boolean }
+                state: { type: string, enum: [active, disabled], description: "Approve (pending → active), disable or re-enable. Revoke with revokeCell" }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Cell" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [cells]
+      operationId: deleteCell
+      description: Only a revoked cell can be deleted (`409` otherwise).
+      x-authz: admin
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /cells/{cellId}/revoke:
+    parameters: [{ $ref: "#/components/parameters/CellId" }]
+    post:
+      tags: [cells]
+      operationId: revokeCell
+      description: Immediate and final (`cell-protocol.md` §5.5). The link is closed with `GOODBYE REVOKED`.
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Cell" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /cells/{cellId}/slots:
+    parameters: [{ $ref: "#/components/parameters/CellId" }]
+    get:
+      tags: [cells]
+      operationId: listCellSlots
+      summary: The controller's view of the cell's subscription table
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CellSlot" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /cells/{cellId}/slots/{slot}:
+    parameters:
+      - { $ref: "#/components/parameters/CellId" }
+      - { name: slot, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 64 } }
+    patch:
+      tags: [cells]
+      operationId: updateCellSlot
+      description: Pin or unpin a slot, or (with `slot_policy = manual`) assign a handset to it.
+      x-authz: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pinned: { type: boolean }
+                handset_id: { type: string, format: uuid, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/CellSlot" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /cells/{cellId}/stats:
+    parameters: [{ $ref: "#/components/parameters/CellId" }]
+    get:
+      tags: [cells]
+      operationId: getCellStats
+      summary: Latest STATS counters and RTT (`cell-protocol.md` §10)
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/CellStats" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /enrollment-tokens:
+    get:
+      tags: [enrollment]
+      operationId: listEnrollmentTokens
+      description: Admins see all tokens; a user with `may_add_cells` sees the ones they created.
+      x-authz: may-add-cells
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/EnrollmentToken" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [enrollment]
+      operationId: createEnrollmentToken
+      description: |
+        Returns the enrollment string (token + CA pin, `cell-protocol.md` §5.1),
+        **shown once**. `auto_approve` is admin-only; a user's cells always
+        wait for an admin.
+      x-authz: may-add-cells
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 128 }
+                ttl_seconds: { type: integer, minimum: 300, maximum: 604800, default: 86400 }
+                auto_approve: { type: boolean, default: false, description: Admin only }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/EnrollmentToken" }
+                  - type: object
+                    required: [enrollment_string]
+                    properties:
+                      enrollment_string: { type: string, description: Shown once. Paste it into the cell's LuCI page }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /enrollment-tokens/{tokenId}:
+    parameters: [{ name: tokenId, in: path, required: true, schema: { type: string, format: uuid } }]
+    delete:
+      tags: [enrollment]
+      operationId: deleteEnrollmentToken
+      description: Its creator or an admin. Used tokens stay in the list as a record.
+      x-authz: owner-or-admin
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /calls:
+    get:
+      tags: [calls]
+      operationId: listCalls
+      x-authz: owner-or-admin
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: before, in: query, schema: { type: integer, format: int64 }, description: Call id cursor }
+        - { $ref: "#/components/parameters/OwnerFilter" }
+        - { name: handset_id, in: query, schema: { type: string, format: uuid } }
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/CallList" } } }
+
+  /stats/summary:
+    get:
+      tags: [stats]
+      operationId: getStatsSummary
+      summary: Installation overview for the admin dashboard
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/StatsSummary" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /audit:
+    get:
+      tags: [audit]
+      operationId: listAudit
+      x-authz: admin
+      parameters:
+        - { $ref: "#/components/parameters/Limit" }
+        - { name: before, in: query, schema: { type: integer, format: int64 } }
+        - { name: actor_id, in: query, schema: { type: string, format: uuid } }
+        - { name: object_type, in: query, schema: { type: string } }
+        - { name: object_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/AuditList" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      x-authz: admin
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Settings" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [settings]
+      operationId: updateSettings
+      x-authz: admin
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/Settings" } } }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Settings" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-opendectcell_session
+      description: The web UI's session (`opendectcell_session` when served over plain http).
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: Personal API token. Planned for C7.
+
+  parameters:
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+    Before: { name: before, in: query, schema: { type: string }, description: Cursor from the previous page's `next` }
+    OwnerFilter:
+      name: owner
+      in: query
+      description: Admins only (ignored for users). A user id, or `shared`.
+      schema: { type: string }
+    UserId: { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+    HandsetId: { name: handsetId, in: path, required: true, schema: { type: string, format: uuid } }
+    AccountId: { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }
+    CellId: { name: cellId, in: path, required: true, schema: { type: string, format: uuid } }
+
+  responses:
+    Unauthenticated:
+      description: Not logged in
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    NotFound:
+      description: Does not exist, or the caller may not see it
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Invalid:
+      description: Request failed validation
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    Conflict:
+      description: Conflicts with the current state
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+    RateLimited:
+      description: Too many attempts
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+
+  schemas:
+    Problem:
+      type: object
+      required: [status, code, title]
+      properties:
+        type: { type: string, default: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string, description: "Stable machine code, e.g. not_found, invalid, window_open, in_use, has_objects, unsupported, managed_externally, rate_limited" }
+        detail: { type: string }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+          description: Per-field validation messages
+
+    Username: { type: string, minLength: 1, maxLength: 128, pattern: "^[^\\s\\x00-\\x1f\\x7f]+$" }
+    Role: { type: string, enum: [admin, user] }
+    User:
+      type: object
+      required: [id, username, role, auth_source, disabled, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        username: { $ref: "#/components/schemas/Username" }
+        display_name: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        may_add_cells: { type: boolean }
+        auth_source: { type: string, enum: [local, oidc] }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_login_at: { type: string, format: date-time, nullable: true }
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/User" } }
+        next: { type: string, nullable: true }
+
+    DualRingPolicy: { type: string, enum: [call_waiting, busy] }
+    Handset:
+      type: object
+      required: [id, owner_id, display_name, registered_at, lines, home_cell_ids]
+      properties:
+        id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid, nullable: true, description: "null = shared, admin-managed" }
+        display_name: { type: string }
+        ipui_display: { type: string, description: "The identity in the form handsets show it, for telling handsets apart. Not a secret, but personal data" }
+        manufacturer_emc: { type: integer, nullable: true }
+        model: { type: string, nullable: true }
+        capabilities: { type: object, additionalProperties: true }
+        default_line: { type: integer, enum: [1, 2], nullable: true }
+        dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
+        lines: { type: array, maxItems: 2, items: { $ref: "#/components/schemas/HandsetLine" } }
+        home_cell_ids: { type: array, items: { type: string, format: uuid } }
+        last_seen_cell_id: { type: string, format: uuid, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+        registered_at: { type: string, format: date-time }
+    HandsetList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Handset" } }
+        next: { type: string, nullable: true }
+    HandsetLine:
+      type: object
+      required: [line, sip_account_id, enabled]
+      properties:
+        line: { type: integer, enum: [1, 2] }
+        sip_account_id: { type: string, format: uuid }
+        display_name: { type: string }
+        enabled: { type: boolean }
+    FeatureSettingInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        params: { type: object, additionalProperties: true }
+    FeatureSetting:
+      allOf:
+        - { $ref: "#/components/schemas/FeatureSettingInput" }
+        - type: object
+          required: [feature, supported]
+          properties:
+            feature: { type: string }
+            supported: { type: boolean, description: Whether this handset's capabilities and model allow it }
+
+    RegistrationWindow:
+      type: object
+      required: [id, state, opened_at, expires_at, cell_ids]
+      properties:
+        id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid, nullable: true }
+        state: { type: string, enum: [open, completed, expired, cancelled] }
+        opened_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        cell_ids: { type: array, items: { type: string, format: uuid } }
+        handset_id: { type: string, format: uuid, nullable: true, description: Set when completed }
+
+    SipAccountInput:
+      type: object
+      properties:
+        label: { type: string, minLength: 1, maxLength: 64 }
+        display_name: { type: string }
+        username: { type: string, minLength: 1 }
+        domain: { type: string, minLength: 1 }
+        auth_username: { type: string, nullable: true }
+        password: { type: string, format: password, writeOnly: true }
+        registrar: { type: string, nullable: true, description: "host[:port]; empty = resolve the domain (RFC 3263)" }
+        outbound_proxy: { type: string, nullable: true }
+        transport: { type: string, enum: [udp, tcp, tls] }
+        register: { type: boolean }
+        register_expiry: { type: integer, minimum: 60, maximum: 86400 }
+        keepalive: { type: string, enum: [auto, none, crlf, options] }
+        media_encryption: { type: string, enum: ["off", optional, mandatory] }
+        codecs: { type: array, items: { type: string, enum: [G722, PCMA, PCMU, opus] }, minItems: 1, uniqueItems: true }
+        dtmf_mode: { type: string, enum: [rfc4733, info, inband] }
+        caller_id_source: { type: string, enum: [auto, from, pai, rpid] }
+        tls_verify: { type: boolean }
+        tls_ca_pem: { type: string, nullable: true }
+        advanced: { $ref: "#/components/schemas/SipAdvanced" }
+        enabled: { type: boolean }
+        owner_id: { type: string, format: uuid, nullable: true, description: Admin only }
+    SipAccount:
+      allOf:
+        - { $ref: "#/components/schemas/SipAccountInput" }
+        - type: object
+          required: [id, label, username, domain, has_password, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            has_password: { type: boolean, description: The password itself is never returned }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+            warnings:
+              type: array
+              items: { type: string }
+              description: "e.g. srtp_without_tls: SDES keys would travel in clear (voip-requirements.md §7)"
+    SipAdvanced:
+      type: object
+      additionalProperties: false
+      description: The "should/later" parameters of voip-requirements.md §2
+      properties:
+        session_timers: { type: boolean }
+        session_expires: { type: integer, minimum: 90 }
+        user_agent: { type: string, maxLength: 128 }
+        identity_header: { type: string, enum: [none, ppi, pai] }
+        stun_server: { type: string }
+        public_address: { type: string, description: "Static public address[:port] override" }
+        local_port: { type: integer, minimum: 1, maximum: 65535 }
+        inter_digit_timeout_ms: { type: integer, minimum: 1000, maximum: 20000 }
+        line_prefix: { type: string, pattern: "^[*#0-9]{1,6}$", description: "Outgoing line selection on GAP handsets, e.g. *1#" }
+        prack: { type: boolean }
+    SipAccountStatus:
+      type: object
+      required: [registration]
+      properties:
+        registration: { type: string, enum: [disabled, registering, registered, failed, backoff] }
+        registered_until: { type: string, format: date-time, nullable: true }
+        last_error: { type: string, nullable: true, description: "e.g. 403 Forbidden from the registrar" }
+        server: { type: string, nullable: true, description: Address the registration went to }
+        transport: { type: string }
+    SipAccountList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/SipAccount" } }
+        next: { type: string, nullable: true }
+
+    CellState: { type: string, enum: [pending, active, disabled, revoked] }
+    Cell:
+      type: object
+      required: [id, name, state]
+      description: Users see only id, name, location and state.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        location: { type: string }
+        state: { $ref: "#/components/schemas/CellState" }
+        online: { type: boolean }
+        health: { type: string, enum: [ok, degraded, unfit, offline], description: "From RTT (cell-protocol.md §2, rule 5)" }
+        rtt_p95_ms: { type: integer, nullable: true }
+        enrolled_at: { type: string, format: date-time, nullable: true }
+        enrolled_by: { type: string, format: uuid, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
+        software_version: { type: string, nullable: true }
+        stub_version: { type: string, nullable: true }
+        capacity:
+          type: object
+          properties:
+            sub_records: { type: integer, nullable: true }
+            audio_nb: { type: integer, nullable: true }
+            audio_wb: { type: integer, nullable: true }
+        max_calls: { type: integer }
+        allow_plain_rtp: { type: boolean }
+        certificate_expires_at: { type: string, format: date-time, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+    CellList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Cell" } }
+        next: { type: string, nullable: true }
+    CellSlot:
+      type: object
+      required: [slot, state, pinned]
+      properties:
+        slot: { type: integer }
+        handset_id: { type: string, format: uuid, nullable: true }
+        state: { type: string, enum: [empty, writing, present, unknown] }
+        pinned: { type: boolean }
+        written_at: { type: string, format: date-time, nullable: true }
+        last_seen_at: { type: string, format: date-time, nullable: true }
+    CellStats:
+      type: object
+      properties:
+        reported_at: { type: string, format: date-time }
+        rtt_p50_ms: { type: integer }
+        rtt_p95_ms: { type: integer }
+        counters:
+          type: object
+          additionalProperties: { type: integer, format: int64 }
+          description: "STATS counters by name (cell-protocol.md §10), e.g. mails_up, stub_resyncs"
+
+    EnrollmentToken:
+      type: object
+      required: [id, created_at, expires_at, auto_approve]
+      properties:
+        id: { type: string, format: uuid }
+        note: { type: string }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        auto_approve: { type: boolean }
+        used_at: { type: string, format: date-time, nullable: true }
+        cell_id: { type: string, format: uuid, nullable: true }
+
+    Call:
+      type: object
+      required: [id, direction, started_at]
+      properties:
+        id: { type: integer, format: int64 }
+        handset_id: { type: string, format: uuid, nullable: true }
+        line: { type: integer, enum: [1, 2], nullable: true }
+        sip_account_id: { type: string, format: uuid, nullable: true }
+        direction: { type: string, enum: [in, out] }
+        remote_party: { type: string }
+        started_at: { type: string, format: date-time }
+        answered_at: { type: string, format: date-time, nullable: true }
+        ended_at: { type: string, format: date-time, nullable: true }
+        end_reason: { type: string, nullable: true }
+        cell_ids: { type: array, items: { type: string, format: uuid } }
+        sip_codec: { type: string, nullable: true }
+        cell_codec: { type: string, nullable: true }
+        sip_tls: { type: boolean, nullable: true }
+        srtp: { type: boolean, nullable: true }
+        quality: { type: object, additionalProperties: true, description: "Admins only: jitter, loss, MOS estimate" }
+    CallList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Call" } }
+        next: { type: string, nullable: true }
+
+    StatsSummary:
+      type: object
+      properties:
+        cells: { type: object, properties: { total: { type: integer }, online: { type: integer }, pending: { type: integer }, degraded: { type: integer } } }
+        handsets: { type: object, properties: { total: { type: integer }, seen_24h: { type: integer } } }
+        sip_accounts: { type: object, properties: { total: { type: integer }, registered: { type: integer }, failed: { type: integer } } }
+        calls: { type: object, properties: { active: { type: integer }, last_24h: { type: integer } } }
+
+    AuditEntry:
+      type: object
+      required: [id, at, actor_name, action]
+      properties:
+        id: { type: integer, format: int64 }
+        at: { type: string, format: date-time }
+        actor_id: { type: string, format: uuid, nullable: true }
+        actor_name: { type: string }
+        remote_addr: { type: string, nullable: true }
+        action: { type: string }
+        object_type: { type: string }
+        object_id: { type: string }
+        details: { type: object, additionalProperties: true }
+    AuditList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } }
+        next: { type: string, nullable: true }
+
+    Settings:
+      type: object
+      properties:
+        slot_policy: { type: string, enum: [auto, manual], description: "cell-protocol.md §7.4" }
+        registration_window_seconds: { type: integer, minimum: 30, maximum: 600, default: 120 }
+        registration_pin_digits: { type: integer, minimum: 4, maximum: 8, default: 6 }
+        default_max_calls: { type: integer, minimum: 0, maximum: 16, default: 1 }
+        audit_retention_days: { type: integer, minimum: 30, nullable: true, description: "null = keep forever" }

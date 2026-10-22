@@ -3,7 +3,7 @@
 # The controller does not link libopendectcell yet (C3), so the build is
 # CGO_ENABLED=0; when it does, this becomes a static cgo build.
 
-FROM golang:1.27.2-bookworm AS build
+FROM golang:1.27.3-bookworm AS build
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./

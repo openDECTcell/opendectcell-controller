@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
   GOLANGCI_LINT_VERSION: "v2.15.0"
 
 jobs:
@@ -20,13 +20,20 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: golangci/golangci-lint-action@v8
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          install-only: true
+      - name: Install golangci-lint
+        run: |
+          v=${GOLANGCI_LINT_VERSION#v}
+          base=https://github.com/golangci/golangci-lint/releases/download/$GOLANGCI_LINT_VERSION
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/golangci-lint-$v-linux-amd64.tar.gz"
+          curl -fsSLO "$base/golangci-lint-$v-checksums.txt"
+          grep " golangci-lint-$v-linux-amd64.tar.gz\$" "golangci-lint-$v-checksums.txt" | sha256sum -c
+          tar xzf "golangci-lint-$v-linux-amd64.tar.gz"
+          echo "$RUNNER_TEMP/golangci-lint-$v-linux-amd64" >> "$GITHUB_PATH"
       # cdect needs the private openDECTcell submodule (see the test job), so it
       # is left out here.
-      - run: golangci-lint run --timeout=5m $(go list ./... | grep -v /dect/cdect)
+      - name: Lint
+        run: golangci-lint run --timeout=5m $(go list ./... | grep -v /dect/cdect)
 
   test:
     runs-on: ubuntu-24.04
@@ -74,7 +81,7 @@ jobs:
             go test -race -count=1 $(go list ./... | grep -v /dect/cdect)
           fi
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./cmd/...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/...
 
   image:
     runs-on: ubuntu-24.04
