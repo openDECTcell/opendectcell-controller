@@ -536,4 +536,3 @@ func TestTLSRegistrationVerifiesTheDomain(t *testing.T) {
 	m3.SetAccounts([]sip.Account{lax})
 	waitFor(t, "unverified TLS registration", func() bool { st, _ := m3.Status(lax.ID); return st.State == sip.RegRegistered })
 }
-
