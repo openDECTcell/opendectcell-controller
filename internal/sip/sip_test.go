@@ -25,8 +25,6 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/sdp"
 )
 
-func init() { sip.FastTimers() }
-
 // endpoint stands in for the DECT side.
 type endpoint struct {
 	mu     sync.Mutex
