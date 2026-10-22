@@ -4,6 +4,7 @@ package sip_test
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"log/slog"
@@ -45,12 +46,17 @@ func (e *endpoint) IncomingCall(c *sip.Call) {
 
 func newManager(t *testing.T, ep sip.Endpoint, dns resolve.DNS) *sip.Manager {
 	t.Helper()
+	return newManagerRoots(t, ep, dns, nil)
+}
+
+func newManagerRoots(t *testing.T, ep sip.Endpoint, dns resolve.DNS, roots *x509.CertPool) *sip.Manager {
+	t.Helper()
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m, err := sip.New(sip.Config{UDP: conn, RTP: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 42000, Max: 42199},
-		DNS: dns, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
+		DNS: dns, TLSRoots: roots, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,4 +498,43 @@ func TestIncomingCancelRejectAndUnknown(t *testing.T) {
 	if err := cs.WaitAnswer(context.Background(), sipgo.AnswerOptions{}); !errors.As(err, &de) || de.Res.StatusCode != 404 {
 		t.Errorf("unknown user: %v", err)
 	}
+}
+
+func TestTLSRegistrationVerifiesTheDomain(t *testing.T) {
+	p := newPBX(t)
+	p.set(func() { p.users["340"] = "secret-340"; p.users["341"] = "secret-341"; p.users["342"] = "secret-342" })
+	roots, good := p.listenTLS(t, "pbx.test")
+	m := newManagerRoots(t, nil, nil, roots)
+	ok := account(p, "340")
+	ok.Transport, ok.Registrar, ok.TLSVerify = resolve.TLS, good.String(), true
+	m.SetAccounts([]sip.Account{ok})
+	waitFor(t, "TLS registration", func() bool {
+		st, _ := m.Status(ok.ID)
+		if st.LastError != "" {
+			t.Logf("state %s: %s", st.State, st.LastError)
+		}
+		return st.State == sip.RegRegistered
+	})
+	if st, _ := m.Status(ok.ID); st.Transport != resolve.TLS {
+		t.Errorf("transport %s", st.Transport)
+	}
+
+	// A certificate for another name is refused; with verification off
+	// it is accepted.
+	p2 := newPBX(t)
+	p2.set(func() { p2.users["341"] = "secret-341"; p2.users["342"] = "secret-342" })
+	roots2, wrong := p2.listenTLS(t, "evil.test")
+	m2 := newManagerRoots(t, nil, nil, roots2)
+	strict := account(p2, "341")
+	strict.Transport, strict.Registrar, strict.TLSVerify = resolve.TLS, wrong.String(), true
+	m2.SetAccounts([]sip.Account{strict})
+	waitFor(t, "TLS refusal", func() bool {
+		st, _ := m2.Status(strict.ID)
+		return st.State == sip.RegBackoff && strings.Contains(st.LastError, "not valid for")
+	})
+	m3 := newManagerRoots(t, nil, nil, roots2)
+	lax := account(p2, "342")
+	lax.Transport, lax.Registrar, lax.TLSVerify = resolve.TLS, wrong.String(), false
+	m3.SetAccounts([]sip.Account{lax})
+	waitFor(t, "unverified TLS registration", func() bool { st, _ := m3.Status(lax.ID); return st.State == sip.RegRegistered })
 }

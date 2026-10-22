@@ -4,7 +4,7 @@ package sip
 
 import (
 	"context"
-	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,9 +35,10 @@ type Config struct {
 	// TCP, if set, accepts incoming TCP connections. Outgoing TCP and TLS
 	// connections are made as needed.
 	TCP net.Listener
-	// TLS configures outgoing TLS (root CAs; verification per account).
-	TLS *tls.Config
-	RTP *rtp.Ports
+	// TLSRoots, if set, replaces the system roots for verifying SIP
+	// servers (tests, private PBX CAs).
+	TLSRoots *x509.CertPool
+	RTP      *rtp.Ports
 	// MediaIP, if valid, is advertised for RTP instead of the local
 	// address towards the peer (a static public address).
 	MediaIP   netip.Addr
@@ -51,6 +52,7 @@ type Config struct {
 type Manager struct {
 	cfg      Config
 	log      *slog.Logger
+	tlsv     *tlsVerifier
 	ua       *sipgo.UserAgent
 	client   *sipgo.Client
 	server   *sipgo.Server
@@ -86,12 +88,9 @@ func New(cfg Config, ep Endpoint) (*Manager, error) {
 	if cfg.UserAgent == "" {
 		cfg.UserAgent = "opendectcell-controller"
 	}
-	m := &Manager{cfg: cfg, log: cfg.Log, endpoint: ep, lines: map[uuid.UUID]*line{}, byContact: map[string]*line{}, calls: map[string]*Call{}}
-	opts := []sipgo.UserAgentOption{sipgo.WithUserAgent(cfg.UserAgent)}
-	if cfg.TLS != nil {
-		opts = append(opts, sipgo.WithUserAgenTLSConfig(cfg.TLS))
-	}
-	ua, err := sipgo.NewUA(opts...)
+	m := &Manager{cfg: cfg, log: cfg.Log, endpoint: ep, lines: map[uuid.UUID]*line{}, byContact: map[string]*line{}, calls: map[string]*Call{},
+		tlsv: &tlsVerifier{roots: cfg.TLSRoots}}
+	ua, err := sipgo.NewUA(sipgo.WithUserAgent(cfg.UserAgent), sipgo.WithUserAgenTLSConfig(m.tlsv.config()))
 	if err != nil {
 		return nil, err
 	}

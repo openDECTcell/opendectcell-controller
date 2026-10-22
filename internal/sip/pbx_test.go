@@ -4,10 +4,16 @@ package sip_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"io"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/netip"
 	"strconv"
@@ -285,4 +291,28 @@ func (p *pbx) call(t *testing.T, ctx context.Context, user string, offer []byte,
 		req.AppendHeader(h)
 	}
 	return p.dialogs.WriteInvite(ctx, req)
+}
+
+// listenTLS adds a TLS listener whose certificate (from a fresh test CA)
+// names the given hosts. It returns the CA pool and the listener address.
+func (p *pbx) listenTLS(t *testing.T, names ...string) (*x509.CertPool, netip.AddrPort) {
+	t.Helper()
+	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	caTmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test CA"}, IsCA: true,
+		BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	caDER, _ := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	ca, _ := x509.ParseCertificate(caDER)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: names[0]}, DNSNames: names,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, _ := x509.CreateCertificate(rand.Reader, tmpl, ca, &key.PublicKey, caKey)
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der, caDER}, PrivateKey: key}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go p.srv.ServeTLS(ln)
+	t.Cleanup(func() { ln.Close() })
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	return pool, ln.Addr().(*net.TCPAddr).AddrPort()
 }

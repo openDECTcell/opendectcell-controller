@@ -40,6 +40,7 @@ a loopback implementation stand in for it.
 | **G.722 passes through untranscoded** when both sides agree on it (`cell-protocol.md` §8.2) | Always transcode | The cell delivers coded G.722. Transcoding is only for a SIP peer without G.722 (C5) |
 | SRTP: SDES only with TLS signalling; policy *off / optional / mandatory* per account | DTLS-SRTP | `voip-requirements.md` §7: SDES is M, DTLS-SRTP is L |
 | Digest: MD5 and SHA-256, qop `auth`, 401 and 407 | — | `voip-requirements.md` §3 |
+| **TLS verified against the SIP domain (or the SRV target name)** by our own check, with system roots; per account it can be turned off | sipgo's default check | sipgo shares one TLS configuration and would check the certificate against the IP address we dial. We dial TLS servers by name (so SNI is sent), and registrars given as an IP literal share one expectation: any of their domains is accepted, and verification is on if any account asks for it |
 
 ## 3. Registration
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/netip"
 	"reflect"
 	"strconv"
@@ -350,7 +351,22 @@ func (l *line) baseHeaders(req *sip.Request, t resolve.Target, method sip.Reques
 		req.AppendHeader(r)
 	}
 	req.SetTransport(sipTransport(t.Transport))
-	req.SetDestination(t.Addr.String())
+	req.SetDestination(tlsDestination(t))
+	if t.Transport == resolve.TLS {
+		// RFC 5922: the certificate must name the SIP domain; the SRV
+		// target name is accepted too, as most providers' certificates
+		// carry both.
+		l.m.tlsv.expectFor(t.Host, l.acct.TLSVerify, l.acct.Domain, t.Host)
+	}
+}
+
+// tlsDestination is where to send: the address, except for TLS to a named
+// host, where the name is used so that sipgo verifies and sends SNI for it.
+func tlsDestination(t resolve.Target) string {
+	if t.Transport == resolve.TLS && tlsKey(t.Host) != "" {
+		return net.JoinHostPort(t.Host, strconv.Itoa(int(t.Addr.Port())))
+	}
+	return t.Addr.String()
 }
 
 // responseError is a final non-2xx response.
