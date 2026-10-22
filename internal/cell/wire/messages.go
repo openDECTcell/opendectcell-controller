@@ -603,3 +603,14 @@ func truncate(s string, n int) string {
 	}
 	return s[:n]
 }
+
+// Audio formats on the cell link (cell-protocol.md §8.2).
+const (
+	FormatL16_8k  uint8 = 1
+	FormatL16_16k uint8 = 2
+	FormatPCMA    uint8 = 3
+	FormatPCMU    uint8 = 4
+	FormatPCMA16k uint8 = 5
+	FormatG722    uint8 = 6
+	FormatG726_32 uint8 = 7 // reserved; unverified until a real G.726 call is measured
+)

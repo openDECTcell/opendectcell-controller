@@ -755,6 +755,13 @@ from a local timer, and absorb the difference to the controller's RTP clock in
 its jitter buffer. v1 already leaves pacing to the cell; `ptime_ms` may need
 to be revisited once this is measured.
 
+**Only voice calls get media.** A `{CC-SETUP}`…`{CC-CONNECT}` is also how a
+handset runs CAT-iq list access (phonebook, call list), and a Gigaset A540 does
+it several times per real call (openDECTcell `docs/notes-for-the-controller.md`,
+2026-10-22). The controller assigns an audio channel and dials SIP only for
+`<<BASIC-SERVICE>>` call class `0x8` (normal) and `0xA` (emergency); everything
+else, list access included, gets no audio (`internal/dect/callclass`).
+
 The controller then sends **MEDIA_OPEN** to tie that chip channel to a UDP
 flow:
 
@@ -808,6 +815,7 @@ the controller picks one per call.
 | 4 | PCMU, 8 kHz | 0 | 160 |
 | 5 | PCMA, 16 kHz (non-standard) | dynamic | 320 |
 | 6 | G.722 | 9 | 160 |
+| 7 | G.726-32 (reserved, **unverified**) | dynamic | 80 |
 | 0xF0–0xFF | experimental | dynamic | — |
 
 What the lane carries, as measured at G7 (openDECTcell#64):
@@ -831,6 +839,20 @@ Consequences:
   C-plane, which the controller runs, so it sets `format` from the agreed
   codec rather than the cell sniffing it.
 - **Defaults:** format 6 for a wideband call, format 3 for a narrowband one.
+- **From the agreed air codec to the format** (opendectcell-controller#27):
+
+  | `<<CODEC-LIST>>` codec | Format | Status |
+  |---|---|---|
+  | 3, G.722 64 kbit/s | 6 | measured |
+  | 4, G.711 A-law | 3 | narrowband A-law measured on loopback only |
+  | 5, G.711 µ-law | 4 | unverified |
+  | 2, G.726 32 kbit/s | none yet: the controller refuses the media ("format unsupported") and logs the codec and the `0x0242` channel | whether the chip passes G.726 through or hands back A-law is **not measured**; format 7 is reserved for the first case |
+  | 6, G.729.1 | not offered | — |
+
+  The cell side suggested deciding by the `0x0242` channel class instead
+  (7..9 G.722, 4..6 A-law, 0..3 none). That conflicts with the measured G.722
+  calls, which ran on channel 1, so it is held until openDECTcell#81 is answered;
+  the class is logged, not used.
   `voip-requirements.md` §5 and `architecture.md` are corrected to match.
 
 ### 8.3 Packets and NAT

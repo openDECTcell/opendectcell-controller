@@ -71,6 +71,13 @@ a loopback implementation stand in for it.
 Emergency numbers are dialled like any other number, never blocked
 (`voip-requirements.md` §3).
 
+**The DECT side dials SIP only for real calls.** The `<<BASIC-SERVICE>>` call
+class decides (`internal/dect/callclass.Bridge`): `0x8` normal and `0xA`
+emergency are bridged; `0x2` CAT-iq list access, ULE, SUOTA and the other data
+sessions run the same CC setup/connect sequence but never reach SIP. `0x9`
+internal calls are refused until their mapping to a SIP destination is
+designed.
+
 ## 5. Testing
 
 - Unit: resolver against an in-process DNS server; SDP offer/answer tables;
