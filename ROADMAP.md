@@ -11,21 +11,21 @@ measured so far and what is still unknown.
 - [x] Architecture draft, VoIP requirements, DECT feature framework (`docs/`)
 - [x] Core decisions: Go, Docker + PostgreSQL, multi-cell only, roles/OIDC, 0–2 lines per handset
 - [x] Cell↔controller wire protocol spec: framing, message types, enrollment, mTLS, heartbeat, SRTP key exchange (`docs/cell-protocol.md`, v1 draft; pending review)
-- [ ] Database schema (SQL) and migration strategy
-- [ ] REST/JSON API specification (OpenAPI) for web UI and admin
-- [ ] Threat model and secret handling (key management for UAK/DCK and SIP passwords)
-- [ ] UI mock-ups: user (handsets, lines, registration), admin (cells, stats, logs, policies)
-- [ ] Web frontend technology decision (Go templates + htmx vs SPA)
+- [x] Database schema (SQL) and migration strategy (`docs/schema.md`; pending review)
+- [x] REST/JSON API specification (OpenAPI) for web UI and admin (`docs/api/openapi.yaml`; pending review)
+- [x] Threat model and secret handling (key management for UAK/DCK and SIP passwords) (`docs/threat-model.md`; pending review)
+- [x] UI mock-ups: user (handsets, lines, registration), admin (cells, stats, logs, policies) (`docs/ui/`; pending review)
+- [x] Web frontend technology decision: Go templates + htmx (`docs/adr/0001-web-frontend.md`; pending review)
 - [x] Audio format on the cell link — settled by openDECTcell G7: coded G.722 (wideband) or A-law (narrowband), not linear (`docs/cell-protocol.md` §8.2; pending review)
 - [x] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection) — `docs/libopendectcell-integration.md`, proof of concept in `internal/dect/cdect`; pending review
 - [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record) — proposal in `docs/cell-protocol.md` §7.4, policy pending decision
 
-## C1: Skeleton (after G7)
-- [ ] Go module layout, linting, unit-test setup, CI (GitHub Actions)
-- [ ] Docker image and docker-compose with PostgreSQL
-- [ ] Database migrations and configuration handling (env/file, secret key)
-- [ ] Authentication: local accounts plus OIDC (Authentik), group→role mapping, users created on first login
-- [ ] Audit log
+## C1: Skeleton (G7 passed)
+- [x] Go module layout, linting, unit-test setup, CI (GitHub Actions)
+- [x] Docker image and docker-compose with PostgreSQL
+- [x] Database migrations and configuration handling (env/file, secret key)
+- [x] Authentication: local accounts plus OIDC (Authentik), group→role mapping, users created on first login
+- [x] Audit log
 
 ## C2: Cell manager
 - [ ] Enrollment: one-time tokens, CSR, certificate issuing, admin approval

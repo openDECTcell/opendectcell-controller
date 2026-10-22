@@ -169,16 +169,21 @@ the maintainers' notes):
 |---|---|---|
 | A1 Cell protocol | **Done, awaiting review** | `docs/cell-protocol.md` (v1 draft); cell answers C1–C11 folded in 2026-10-22, remaining unknowns in its §13 |
 | A2 libopendectcell integration | **Done, awaiting review** | `docs/libopendectcell-integration.md`; PoC in `internal/dect/cdect`; change requests for openDECTcell in its §11 |
-| A3 Schema | Not started | Needs the `cell_slot` table from `cell-protocol.md` §7.4, and question 3 below |
-| A4 API spec | Not started | |
-| A5 Threat model | Not started | `cell-protocol.md` §4–5 and `libopendectcell-integration.md` §5 already refer to it |
-| A6 Frontend ADR | Not started | |
-| A7 UI mock-ups | Not started | |
-| B1 Module layout, lint, CI | Started by A2 | `go.mod` exists, plus one package (`internal/dect/cdect`); no lint config and no CI yet. CI needs read access to the private openDECTcell repo |
-| B2–B5 | Not started | |
+| A3 Schema | **Done, awaiting review** | `docs/schema.md`, `internal/db/migrations/`. Question 3 answered with a proposal: many-to-many home set |
+| A4 API spec | **Done, awaiting review** | `docs/api/openapi.yaml`, validated by `internal/api` tests |
+| A5 Threat model | **Done, awaiting review** | `docs/threat-model.md` |
+| A6 Frontend ADR | **Done, awaiting review** | `docs/adr/0001-web-frontend.md`: Go templates + htmx |
+| A7 UI mock-ups | **Done, awaiting review** | `docs/ui/README.md` |
+| B1 Module layout, lint, CI | **Done** | `.golangci.yml`, `.github/workflows/ci.yml`. The cgo package is built in CI only once a `OPENDECTCELL_READ_TOKEN` secret exists (L7) |
+| B2 Docker and compose | **Done** | `Dockerfile`, `docker-compose.yml`, `docs/deployment.md`; smoke-tested in CI |
+| B3 Migrations and configuration | **Done** | `internal/db`, `internal/config`, `docs/configuration.md` |
+| B4 Authentication | **Done** | `internal/auth` (local + OIDC), `internal/web` |
+| B5 Audit log | **Done** | `internal/audit`; append-only by trigger |
 
-Per `AGENTS.md` §9, the next task is chosen by the maintainers after they
-review A1 and A2.
+Per `AGENTS.md` §10, the next task is chosen by the maintainers.
+*2026-10-22:* they did, in opendectcell-controller#46: C0 leftovers, C1, C4, C6/C7,
+and C2 except the mail tunnel; the libopendectcell integration is frozen until
+openDECTcell#67–#70 land.
 
 ### Part A — C0 design
 
