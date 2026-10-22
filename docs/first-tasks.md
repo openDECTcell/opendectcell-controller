@@ -167,7 +167,7 @@ the maintainers' notes):
 
 | Task | State | Where |
 |---|---|---|
-| A1 Cell protocol | **Done, awaiting review** | `docs/cell-protocol.md` (v1 draft); open cell questions in its §13 |
+| A1 Cell protocol | **Done, awaiting review** | `docs/cell-protocol.md` (v1 draft); cell answers C1–C11 folded in 2026-10-22, remaining unknowns in its §13 |
 | A2 libopendectcell integration | **Done, awaiting review** | `docs/libopendectcell-integration.md`; PoC in `internal/dect/cdect`; change requests for openDECTcell in its §11 |
 | A3 Schema | Not started | Needs the `cell_slot` table from `cell-protocol.md` §7.4, and question 3 below |
 | A4 API spec | Not started | |
@@ -303,7 +303,7 @@ provider, an audit trail, and green CI.
 
 | Item | Blocked on | Note |
 |---|---|---|
-| **Audio format on the cell link** (`ROADMAP.md` C0, `architecture.md` §8) | A measurement in progress on the cell side | Two bytes per frame at 8000 frames/s is equally consistent with 16-bit linear at 8 kHz, A-law at 16 kHz, or A-law in one byte. Specify the cell-link media negotiation so the format is a *parameter*, and leave the default open. *Update 2026-10-19:* narrowband is 8-bit A-law in the low byte on bench loopback; a live call still passes no decoded audio (openDECTcell `docs/call-g7.md`, v17). A1 makes the format negotiated (`cell-protocol.md` §8.2) |
+| **Audio format on the cell link** (`ROADMAP.md` C0, `architecture.md` §8) | A measurement in progress on the cell side | Two bytes per frame at 8000 frames/s is equally consistent with 16-bit linear at 8 kHz, A-law at 16 kHz, or A-law in one byte. Specify the cell-link media negotiation so the format is a *parameter*, and leave the default open. *Update 2026-10-19:* narrowband is 8-bit A-law in the low byte on bench loopback; a live call still passes no decoded audio (openDECTcell `docs/call-g7.md`, v17). A1 makes the format negotiated (`cell-protocol.md` §8.2). *Update 2026-10-22, answered* (openDECTcell#64): wideband is the coded G.722 bearer at 8 000 octets/s, not linear; narrowband is A-law. Defaults set in §8.2. Host → handset audio is still defective on the cell side |
 | **Mail tunnel semantics** (C2) | openDECTcell's cell mode, milestone M9 | `dect-stubd` currently runs standalone. The protocol spec (A1) can and should still define the tunnel; the implementation waits |
 | **Call ciphering** | Unresolved on the cell side | Does not affect C0/C1. *Update 2026-10-19:* the handset drops unencrypted calls only when its "Abhörsicher" (secure) setting is on; with it off, they hold. The DCK derivation is verified on hardware, and the chip-side cipher enable (`0x0208`) is still unproven (openDECTcell `docs/call-g7.md`) |
 | **DECT system identity (ARI/RPN) for multi-cell** | openDECTcell research item M11 | Affects C9 only |
@@ -329,6 +329,12 @@ Send these back rather than designing around them:
 1 (a 7 s grace period, `cell-protocol.md` §6.4) and 2 (automatic eviction
 with pins, plus a manual mode, §7.4), and reserves message types for 4 (§12).
 Question 3 is untouched and is needed for A3.
+*Update 2026-10-22:* the cell side's answers change the basis of 1 and 2 but
+not the questions. For 1, the cell now releases calls at 7 s and parks the
+radio at 60 s instead of resetting the chip. For 2, slot affinity is gone: the
+TPUI is no longer tied to a slot (`cell-protocol.md` §7.4), so eviction no
+longer has to keep a handset's index, and on-demand placement stays off until
+openDECTcell#58 is tested.
 
 ## 7. How we work together
 

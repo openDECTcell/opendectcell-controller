@@ -64,7 +64,7 @@ Priority: **M** = must have for 1.0, **S** = should have, **L** = later or optio
 
 | Item | Prio | Notes |
 |---|---|---|
-| **G.722** (wideband) | M | Matches DECT wideband (CAT-iq). The cell delivers 16 kHz linear audio |
+| **G.722** (wideband) | M | Matches DECT wideband (CAT-iq). The cell delivers the coded G.722 stream itself, so a G.722 SIP call needs no transcoding (`cell-protocol.md` §8.2) |
 | **G.711 A-law / µ-law** | M | Narrowband baseline |
 | Opus | L | Optional, at extra CPU cost |
 | G.729 | L | Licensing is no longer an issue, but it adds little value; only if demanded |
@@ -76,7 +76,7 @@ Priority: **M** = must have for 1.0, **S** = should have, **L** = later or optio
 | DSCP marking: EF for RTP, CS3/AF31 for SIP | S | Configurable |
 | Call statistics: MOS estimate, jitter, loss (RTCP) | S | For the admin UI |
 
-Transcoding happens in the controller between the cell's linear PCM and the negotiated SIP codec. DECT-side ADPCM/G.722 conversion stays in the STUB on the cell.
+The cell link carries G.722 for wideband calls and A-law for narrowband ones (`cell-protocol.md` §8.2, measured at openDECTcell G7). The controller passes the stream through when the SIP side negotiated the same codec, and transcodes otherwise (for example G.722 ↔ G.711 when the SIP peer offers no G.722). The cell never transcodes.
 
 ## 6. DTMF
 

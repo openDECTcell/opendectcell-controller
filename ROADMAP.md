@@ -16,7 +16,7 @@ measured so far and what is still unknown.
 - [ ] Threat model and secret handling (key management for UAK/DCK and SIP passwords)
 - [ ] UI mock-ups: user (handsets, lines, registration), admin (cells, stats, logs, policies)
 - [ ] Web frontend technology decision (Go templates + htmx vs SPA)
-- [ ] Audio format on the cell link (linear PCM vs G.722/G.711)
+- [x] Audio format on the cell link — settled by openDECTcell G7: coded G.722 (wideband) or A-law (narrowband), not linear (`docs/cell-protocol.md` §8.2; pending review)
 - [x] `libopendectcell` integration design (cgo boundary, threading, timers, transport injection) — `docs/libopendectcell-integration.md`, proof of concept in `internal/dect/cdect`; pending review
 - [ ] Subscription-slot allocation across cells (six records per chip; a handset is only usable on a cell holding its record) — proposal in `docs/cell-protocol.md` §7.4, policy pending decision
 
