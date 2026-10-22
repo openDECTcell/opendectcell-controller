@@ -174,7 +174,7 @@ the maintainers' notes):
 | A5 Threat model | **Done, awaiting review** | `docs/threat-model.md` |
 | A6 Frontend ADR | **Done, awaiting review** | `docs/adr/0001-web-frontend.md`: Go templates + htmx |
 | A7 UI mock-ups | **Done, awaiting review** | `docs/ui/README.md` |
-| B1 Module layout, lint, CI | **Done** | `.golangci.yml`, `.github/workflows/ci.yml`. The cgo package is built in CI only once a `OPENDECTCELL_READ_TOKEN` secret exists (L7) |
+| B1 Module layout, lint, CI | **Done** | `.golangci.yml`, `.github/workflows/ci.yml`. The cgo package is built in CI via the `OPENDECTCELL_READ_SSH_KEY` deploy key (L7, resolved) |
 | B2 Docker and compose | **Done** | `Dockerfile`, `docker-compose.yml`, `docs/deployment.md`; smoke-tested in CI |
 | B3 Migrations and configuration | **Done** | `internal/db`, `internal/config`, `docs/configuration.md` |
 | B4 Authentication | **Done** | `internal/auth` (local + OIDC), `internal/web` |

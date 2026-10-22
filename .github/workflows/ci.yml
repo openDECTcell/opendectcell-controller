@@ -51,17 +51,28 @@ jobs:
       CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Check out the opendectcell submodule (private; needs OPENDECTCELL_READ_TOKEN)
+      - name: Check out the opendectcell submodule (private; needs OPENDECTCELL_READ_SSH_KEY)
         id: sub
         env:
-          TOKEN: ${{ secrets.OPENDECTCELL_READ_TOKEN }}
+          KEY: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
         run: |
-          if [ -z "$TOKEN" ]; then
-            echo "::warning::OPENDECTCELL_READ_TOKEN is not set: the libopendectcell cgo package (internal/dect/cdect) is NOT built or tested. See docs/libopendectcell-integration.md §11, L7."
+          if [ -z "$KEY" ]; then
+            echo "::warning::OPENDECTCELL_READ_SSH_KEY is not set: the libopendectcell cgo package (internal/dect/cdect) is NOT built or tested. See docs/libopendectcell-integration.md §11, L7."
             echo "have=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+          # Read-only deploy key on openDECTcell/opendectcell. A deploy key is scoped to
+          # one repository, so this grants CI read on openDECTcell and nothing else.
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/opendectcell_ci && chmod 600 ~/.ssh/opendectcell_ci
+          # github.com's host key, pinned rather than trusted on first use.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            >> ~/.ssh/known_hosts
+          git config --global core.sshCommand 'ssh -i ~/.ssh/opendectcell_ci -o IdentitiesOnly=yes'
+          # .gitmodules uses a relative URL (../opendectcell.git), which git resolves
+          # against this repo's remote -- HTTPS under actions/checkout. Rewrite
+          # just that one resolved URL to SSH, so no other fetch is affected.
+          git config --global url."git@github.com:openDECTcell/opendectcell.git".insteadOf "https://github.com/openDECTcell/opendectcell.git"
           git submodule update --init --depth 1
           echo "have=true" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
