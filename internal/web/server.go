@@ -116,6 +116,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
 	s.cellRoutes()
 	s.sipRoutes()
+	s.userRoutes()
 }
 
 func cacheStatic(h http.Handler) http.Handler {
