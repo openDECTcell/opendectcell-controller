@@ -140,6 +140,17 @@ func (m *Manager) Start(ctx context.Context) {
 			m.log.Error("SIP UDP transport stopped", "err", err)
 		}
 	}()
+	// Wait until sipgo has the listener in its connection pool. Until
+	// then a request would make sipgo open a second socket on the same
+	// address, and the accounts registering at start-up would race it
+	// (found by the interop test with two accounts).
+	laddr := m.cfg.UDP.LocalAddr().String()
+	for i := 0; i < 200; i++ {
+		if c, err := m.ua.TransportLayer().GetConnection("udp", laddr); err == nil && c != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if m.cfg.TCP != nil {
 		m.wg.Add(1)
 		go func() {

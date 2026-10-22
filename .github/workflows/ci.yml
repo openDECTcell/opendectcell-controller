@@ -163,7 +163,8 @@ jobs:
         if: failure()
         run: |
           docker exec fs fs_cli -x "sofia status profile internal reg" || true
-          docker logs fs 2>&1 | grep -v '^$' | tail -n 1500 || true
+          # FreeSWITCH runs without a console (-nc): the trace is in its log file.
+          docker exec fs sh -c 'tail -n 3000 /var/log/freeswitch/freeswitch.log' || true
 
   image:
     runs-on: ubuntu-24.04
