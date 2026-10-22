@@ -73,7 +73,7 @@ func (e *env) browser() *http.Client {
 
 func (e *env) post(t *testing.T, c *http.Client, path string, form url.Values) *http.Response {
 	t.Helper()
-	req, _ := http.NewRequest("POST", e.srv.URL+path, strings.NewReader(form.Encode()))
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	resp, err := c.Do(req)
@@ -103,7 +103,7 @@ func TestHealthAndHeaders(t *testing.T) {
 	e := newEnv(t)
 	c := e.browser()
 	for _, p := range []string{"/healthz", "/readyz"} {
-		if resp, body := e.get(t, c, p); resp.StatusCode != 200 || body != "ok\n" {
+		if resp, body := e.get(t, c, p); resp.StatusCode != http.StatusOK || body != "ok\n" {
 			t.Errorf("%s: %d %q", p, resp.StatusCode, body)
 		}
 	}
@@ -111,7 +111,7 @@ func TestHealthAndHeaders(t *testing.T) {
 	if csp := resp.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'self'") || resp.Header.Get("X-Frame-Options") != "DENY" {
 		t.Errorf("security headers: %v", resp.Header)
 	}
-	if resp, _ := e.get(t, c, "/static/app.css"); resp.StatusCode != 200 {
+	if resp, _ := e.get(t, c, "/static/app.css"); resp.StatusCode != http.StatusOK {
 		t.Errorf("static: %d", resp.StatusCode)
 	}
 }
@@ -136,7 +136,7 @@ func TestLocalLoginFlow(t *testing.T) {
 		t.Errorf("cookie: %+v", ck)
 	}
 	resp, body := e.get(t, c, "/account")
-	if resp.StatusCode != 200 || !strings.Contains(body, "local account") || resp.Header.Get("Cache-Control") != "no-store" {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "local account") || resp.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("account: %d", resp.StatusCode)
 	}
 
@@ -161,7 +161,7 @@ func TestCrossOriginPostRefused(t *testing.T) {
 	e := newEnv(t)
 	c := e.browser()
 	e.login(t, c, "user", "user password")
-	req, _ := http.NewRequest("POST", e.srv.URL+"/logout", nil)
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/logout", nil)
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	resp, err := c.Do(req)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestCrossOriginPostRefused(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("cross-site POST: %d", resp.StatusCode)
 	}
-	if resp, _ := e.get(t, c, "/account"); resp.StatusCode != 200 {
+	if resp, _ := e.get(t, c, "/account"); resp.StatusCode != http.StatusOK {
 		t.Fatal("cross-site POST logged the user out")
 	}
 }
@@ -205,13 +205,13 @@ func TestPasswordChange(t *testing.T) {
 	other := e.browser()
 	e.login(t, other, "user", "user password")
 
-	if r := e.post(t, c, "/account/password", url.Values{"current": {"nope"}, "new": {"new password!"}, "confirm": {"new password!"}}); r.StatusCode != 400 {
+	if r := e.post(t, c, "/account/password", url.Values{"current": {"nope"}, "new": {"new password!"}, "confirm": {"new password!"}}); r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("wrong current: %d", r.StatusCode)
 	}
-	if r := e.post(t, c, "/account/password", url.Values{"current": {"user password"}, "new": {"new password!"}, "confirm": {"new password!"}}); r.StatusCode != 200 {
+	if r := e.post(t, c, "/account/password", url.Values{"current": {"user password"}, "new": {"new password!"}, "confirm": {"new password!"}}); r.StatusCode != http.StatusOK {
 		t.Fatalf("change: %d", r.StatusCode)
 	}
-	if resp, _ := e.get(t, c, "/account"); resp.StatusCode != 200 {
+	if resp, _ := e.get(t, c, "/account"); resp.StatusCode != http.StatusOK {
 		t.Error("current session ended")
 	}
 	if resp, _ := e.get(t, other, "/account"); resp.StatusCode != http.StatusSeeOther {
@@ -245,7 +245,7 @@ func TestOIDCBrowserFlowAndAudit(t *testing.T) {
 		t.Fatalf("landed at %s", loc)
 	}
 	resp, body := e.get(t, c, next)
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("admin page as OIDC admin: %d", resp.StatusCode)
 	}
 	for _, want := range []string{"user.create", "user.login", "frank"} {
@@ -275,7 +275,7 @@ func TestClientAddr(t *testing.T) {
 		{"10.1.1.1:5000", "garbage", "10.1.1.1"},
 		{"[::ffff:192.0.2.5]:1", "", "192.0.2.5"},
 	} {
-		r := httptest.NewRequest("GET", "/", nil)
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		r.RemoteAddr = c.remote
 		if c.xff != "" {
 			r.Header.Set("X-Forwarded-For", c.xff)

@@ -10,6 +10,8 @@
 //	opendectcell-controller user create --username NAME --role admin|user [--display-name N] [--email E] [--may-add-cells]
 //	opendectcell-controller user set-password --username NAME
 //	opendectcell-controller version
+//	opendectcell-controller healthcheck [--url URL]
+//	opendectcell-controller init-secrets --dir DIR [--db-host H] [--db-name N] [--db-user U]
 //
 // Every command except keygen and version reads the configuration from
 // --config FILE (or OPENDECTCELL_CONFIG) and the environment (docs/configuration.md).
@@ -24,10 +26,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -79,6 +83,8 @@ commands:
   user create --username NAME --role admin|user [--display-name N] [--email E] [--may-add-cells]
   user set-password --username NAME
   version
+  healthcheck [--url URL]  exit 0 if the controller answers /healthz (for container health checks)
+  init-secrets --dir DIR   create a master key and database credentials in DIR if missing (compose bring-up)
 `
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -106,6 +112,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		fmt.Fprintln(stdout, k)
 		return nil
+	case "healthcheck":
+		return healthcheck(rest)
+	case "init-secrets":
+		return initSecrets(rest, stdout)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return nil
@@ -141,7 +151,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 func newLogger(c config.Log, w io.Writer) *slog.Logger {
 	var lvl slog.Level
-	lvl.UnmarshalText([]byte(c.Level))
+	_ = lvl.UnmarshalText([]byte(c.Level)) // validated by config.Validate
 	opts := &slog.HandlerOptions{Level: lvl}
 	if c.Format == "json" {
 		return slog.New(slog.NewJSONHandler(w, opts))
@@ -261,7 +271,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	go func() { errc <- hs.ListenAndServe() }()
 	log.Info("controller started", "version", buildVersion(), "listen", cfg.HTTP.Listen, "base_url", cfg.HTTP.BaseURL,
 		"local_login", cfg.Auth.Local.Enabled, "oidc", cfg.Auth.OIDC.Enabled())
-	audit.RecordAs(ctx, pool, audit.System, audit.Entry{Action: "controller.start", Details: map[string]any{"version": buildVersion()}})
+	if err := audit.RecordAs(ctx, pool, audit.System, audit.Entry{Action: "controller.start", Details: map[string]any{"version": buildVersion()}}); err != nil {
+		log.Warn("audit", "err", err)
+	}
 
 	select {
 	case err := <-errc:
@@ -331,7 +343,9 @@ func keys(ctx context.Context, cmd string, cfg config.Config, pool *pgxpool.Pool
 		if err != nil {
 			return err
 		}
-		audit.RecordAs(ctx, pool, actor, audit.Entry{Action: "secrets.rekey", Details: map[string]any{"data_key_count": n, "kek_id": mk.ID()}})
+		if err := audit.RecordAs(ctx, pool, actor, audit.Entry{Action: "secrets.rekey", Details: map[string]any{"data_key_count": n, "kek_id": mk.ID()}}); err != nil {
+			return fmt.Errorf("rekey done, but the audit entry failed: %w", err)
+		}
 		fmt.Fprintf(out, "re-wrapped %d data key(s) under master key %s; remove OPENDECTCELL_MASTER_KEY_OLD now\n", n, mk.ID())
 	case "rotate-dek":
 		kr, err := db.LoadKeyring(ctx, pool, mk, old)
@@ -343,7 +357,9 @@ func keys(ctx context.Context, cmd string, cfg config.Config, pool *pgxpool.Pool
 			return err
 		}
 		id, _ := kr.ActiveID()
-		audit.RecordAs(ctx, pool, actor, audit.Entry{Action: "secrets.rotate_dek", Details: map[string]any{"value_count": n, "dek_id": id}})
+		if err := audit.RecordAs(ctx, pool, actor, audit.Entry{Action: "secrets.rotate_dek", Details: map[string]any{"value_count": n, "dek_id": id}}); err != nil {
+			return fmt.Errorf("rotation done, but the audit entry failed: %w", err)
+		}
 		fmt.Fprintf(out, "re-encrypted %d secret(s) under data key %d\n", n, id)
 	}
 	return nil
@@ -352,7 +368,7 @@ func keys(ctx context.Context, cmd string, cfg config.Config, pool *pgxpool.Pool
 func readPassword(stdin io.Reader, stderr io.Writer) (string, error) {
 	fmt.Fprint(stderr, "password (read from standard input): ")
 	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+	if err != nil && (!errors.Is(err, io.EOF) || line == "") {
 		return "", errors.New("no password on standard input")
 	}
 	fmt.Fprintln(stderr)
@@ -406,4 +422,93 @@ func userCmd(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, args []
 		return fmt.Errorf("user: unknown subcommand %q", args[0])
 	}
 	return nil
+}
+
+func healthcheck(args []string) error {
+	fs := flag.NewFlagSet("healthcheck", flag.ContinueOnError)
+	def := "http://127.0.0.1:8080/healthz"
+	if l := os.Getenv("OPENDECTCELL_HTTP_LISTEN"); l != "" {
+		if _, port, err := net.SplitHostPort(l); err == nil {
+			def = "http://127.0.0.1:" + port + "/healthz"
+		}
+	}
+	u := fs.String("url", def, "health URL")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// G704: the URL is the operator's own --url flag in a local health probe.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, *u, nil) //nolint:gosec // see above
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // see above
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s", resp.Status)
+	}
+	return nil
+}
+
+// initSecrets creates the files a compose bring-up needs, without ever
+// overwriting one: a master key, a database password, and a database URL
+// that uses it. Files are 0600, except db_password (0644), which the
+// database container reads as a different user; the volume is mounted only
+// into the database and the controller.
+func initSecrets(args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("init-secrets", flag.ContinueOnError)
+	dir := fs.String("dir", "", "directory to write the secrets to")
+	host := fs.String("db-host", "db", "database host for the URL")
+	name := fs.String("db-name", "opendectcell", "database name")
+	user := fs.String("db-user", "opendectcell", "database user")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *dir == "" {
+		return errors.New("init-secrets: --dir is required")
+	}
+	if err := os.MkdirAll(*dir, 0o700); err != nil {
+		return err
+	}
+	write := func(file string, mode os.FileMode, gen func() (string, error)) (string, error) {
+		p := filepath.Join(*dir, file)
+		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304: path built from the operator's --dir
+			return strings.TrimRight(string(b), "\r\n"), nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		v, err := gen()
+		if err != nil {
+			return "", err
+		}
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode) //nolint:gosec // G304: as above
+		if err == nil {
+			err = f.Chmod(mode) // not reduced by the umask
+		}
+		if err != nil {
+			return "", err
+		}
+		if _, err := f.WriteString(v + "\n"); err != nil {
+			f.Close()
+			return "", err
+		}
+		fmt.Fprintf(out, "created %s\n", p)
+		return v, f.Close()
+	}
+	if _, err := write("master_key", 0o600, secret.GenerateMasterKey); err != nil {
+		return err
+	}
+	pw, err := write("db_password", 0o644, func() (string, error) { return auth.NewToken() })
+	if err != nil {
+		return err
+	}
+	_, err = write("database_url", 0o600, func() (string, error) {
+		u := url.URL{Scheme: "postgres", User: url.UserPassword(*user, pw), Host: *host, Path: "/" + *name, RawQuery: "sslmode=disable"}
+		return u.String(), nil
+	})
+	return err
 }

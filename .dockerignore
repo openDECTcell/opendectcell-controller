@@ -1,0 +1,5 @@
+.git
+.github
+third_party
+docs
+*.md

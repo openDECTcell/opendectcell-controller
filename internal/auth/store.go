@@ -247,14 +247,15 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 	if lim, err := s.limited(ctx, keys); err != nil {
 		return nil, err
 	} else if lim {
-		audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": username}})
+		// Best effort: the outcome of a login must not depend on the audit write.
+		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": username}})
 		return nil, ErrRateLimited
 	}
 	fail := func() (*User, error) {
 		if err := s.recordFailure(ctx, keys); err != nil {
 			return nil, err
 		}
-		audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": username}})
+		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": username}})
 		return nil, ErrBadLogin
 	}
 	if len(password) > MaxPasswordLen {
@@ -267,7 +268,7 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 		Scan(&id, &hash, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) || hash == nil {
 		// Same work as a real check, so timing doesn't reveal which names exist.
-		VerifyPassword(s.dummy(), password)
+		_, _ = VerifyPassword(s.dummy(), password)
 		return fail()
 	}
 	if err != nil {
@@ -282,7 +283,8 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 	}
 	if NeedsRehash(*hash, s.Argon) {
 		if h, err := HashPassword(s.Argon, password); err == nil {
-			s.Pool.Exec(ctx, "UPDATE app_user SET password_hash = $2 WHERE id = $1", id, h)
+			// Best effort: the old hash keeps working if this fails.
+			_, _ = s.Pool.Exec(ctx, "UPDATE app_user SET password_hash = $2 WHERE id = $1", id, h)
 		}
 	}
 	return s.loggedIn(ctx, id, "local")
@@ -316,7 +318,7 @@ func (s *Store) CheckPassword(ctx context.Context, userID uuid.UUID, password, a
 	if err := s.recordFailure(ctx, keys); err != nil {
 		return err
 	}
-	audit.Record(ctx, s.Pool, audit.Entry{Action: "user.password_check_failed", ObjectType: "user", ObjectID: userID.String()})
+	_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.password_check_failed", ObjectType: "user", ObjectID: userID.String()})
 	return ErrBadLogin
 }
 
@@ -424,11 +426,11 @@ func (s *Store) LookupSession(ctx context.Context, tok string) (*Session, error)
 	}
 	u.Role = Role(role)
 	if u.Disabled || !now.Before(expires) || now.Sub(lastSeen) >= s.SessionIdle {
-		s.Pool.Exec(ctx, "DELETE FROM session WHERE token_hash = $1", h)
+		_, _ = s.Pool.Exec(ctx, "DELETE FROM session WHERE token_hash = $1", h) // Cleanup retries
 		return nil, ErrNoSession
 	}
 	if now.Sub(lastSeen) >= touchInterval {
-		s.Pool.Exec(ctx, "UPDATE session SET last_seen_at = $2 WHERE token_hash = $1", h, now)
+		_, _ = s.Pool.Exec(ctx, "UPDATE session SET last_seen_at = $2 WHERE token_hash = $1", h, now) // next request retries
 	}
 	sess.TokenHash, sess.User = h, &u
 	return &sess, nil

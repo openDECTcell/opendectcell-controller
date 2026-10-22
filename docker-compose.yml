@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Local bring-up: `docker compose up`. See docs/deployment.md.
+#
+# On first start, `init` creates a master key and database credentials in
+# the `secrets` volume. BACK UP THE MASTER KEY separately from the database
+# (docs/threat-model.md §4.1): docker compose cp controller:/secrets/master_key .
+# For production, replace the volume with your own secret files.
+
+name: opendectcell
+
+services:
+  init:
+    build: .
+    image: opendectcell-controller:local
+    command: ["init-secrets", "--dir", "/secrets"]
+    volumes:
+      - secrets:/secrets
+    restart: "no"
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: opendectcell
+      POSTGRES_USER: opendectcell
+      POSTGRES_PASSWORD_FILE: /secrets/db_password
+    volumes:
+      - secrets:/secrets:ro
+      - pgdata:/var/lib/postgresql
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opendectcell -d opendectcell"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  controller:
+    image: opendectcell-controller:local
+    environment:
+      OPENDECTCELL_DATABASE_URL_FILE: /secrets/database_url
+      OPENDECTCELL_MASTER_KEY_FILE: /secrets/master_key
+      OPENDECTCELL_HTTP_BASE_URL: ${OPENDECTCELL_HTTP_BASE_URL:-http://localhost:8080}
+    volumes:
+      - secrets:/secrets:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "7300:7300"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+volumes:
+  secrets:
+  pgdata:

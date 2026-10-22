@@ -63,7 +63,7 @@ func (s *Server) loginData(r *http.Request) loginData {
 
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if auth.UserFrom(r.Context()) != nil {
-		http.Redirect(w, r, auth.SafeReturnPath(r.FormValue("next")), http.StatusSeeOther)
+		http.Redirect(w, r, auth.SafeReturnPath(r.FormValue("next")), http.StatusSeeOther) //nolint:gosec // G710: SafeReturnPath allows local paths only
 		return
 	}
 	s.render(w, http.StatusOK, "login.html", page{Title: "Log in", Data: s.loginData(r)})
@@ -96,7 +96,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *auth.Us
 	// A fresh token at every login: an attacker-planted cookie never
 	// becomes an authenticated session (session fixation).
 	if old := sessionFrom(r.Context()); old != nil {
-		s.Auth.DeleteSession(r.Context(), old.TokenHash)
+		_ = s.Auth.DeleteSession(r.Context(), old.TokenHash) // the new token is what matters
 	}
 	tok, err := s.Auth.CreateSession(r.Context(), u, method)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *auth.Us
 		return
 	}
 	s.setCookie(w, tok)
-	http.Redirect(w, r, auth.SafeReturnPath(next), http.StatusSeeOther)
+	http.Redirect(w, r, auth.SafeReturnPath(next), http.StatusSeeOther) //nolint:gosec // G710: SafeReturnPath allows local paths only
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +113,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, r, err)
 			return
 		}
-		audit.Record(r.Context(), s.Pool, audit.Entry{Action: "user.logout", ObjectType: "user", ObjectID: sess.User.ID.String()})
+		_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "user.logout", ObjectType: "user", ObjectID: sess.User.ID.String()})
 	}
 	s.clearCookie(w)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -130,7 +130,7 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusBadGateway, "login.html", page{Title: "Log in", Error: "The sign-on provider is not reachable. Try again later.", Data: s.loginData(r)})
 		return
 	}
-	http.Redirect(w, r, u, http.StatusFound)
+	http.Redirect(w, r, u, http.StatusFound) //nolint:gosec // G710: u is the configured IdP's authorisation endpoint
 }
 
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {

@@ -124,7 +124,7 @@ func Default() Config {
 func Load(path string, getenv func(string) string) (Config, error) {
 	c := Default()
 	if path != "" {
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(path) //nolint:gosec // G304: the operator names the file
 		if err != nil {
 			return c, fmt.Errorf("config: %w", err)
 		}
@@ -237,7 +237,7 @@ func applyEnv(c *Config, getenv func(string) string) error {
 					errs = append(errs, fmt.Errorf("config: set %s or %s_FILE, not both", name, name))
 					continue
 				}
-				b, err := os.ReadFile(f)
+				b, err := os.ReadFile(f) //nolint:gosec // G304: the operator names the file
 				if err != nil {
 					errs = append(errs, fmt.Errorf("config: %s_FILE: %w", name, err))
 					continue
@@ -257,7 +257,7 @@ func applyEnv(c *Config, getenv func(string) string) error {
 			if v.secret {
 				errs = append(errs, fmt.Errorf("config: %s: invalid value", name))
 			} else {
-				errs = append(errs, fmt.Errorf("config: %s=%q: %v", name, val, err))
+				errs = append(errs, fmt.Errorf("config: %s=%q: %w", name, val, err))
 			}
 		}
 	}

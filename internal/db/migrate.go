@@ -146,7 +146,14 @@ func (m *Migrator) withLock(ctx context.Context, fn func(*pgx.Conn) error) error
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockID); err != nil {
 		return err
 	}
-	defer conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", migrationLockID)
+	defer func() {
+		// If the unlock fails, close the connection: returning it to the
+		// pool would keep the lock held and block every later migration.
+		bg := context.WithoutCancel(ctx)
+		if _, err := conn.Exec(bg, "SELECT pg_advisory_unlock($1)", migrationLockID); err != nil {
+			conn.Close(bg)
+		}
+	}()
 	if _, err := conn.Exec(ctx, createMigrationTable); err != nil {
 		return err
 	}

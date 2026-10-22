@@ -152,3 +152,18 @@ func TestEnvNamesIncludeFileVariants(t *testing.T) {
 		t.Error("non-secret has a _FILE variant")
 	}
 }
+
+func TestEveryVariableIsDocumented(t *testing.T) {
+	b, err := os.ReadFile("../../docs/configuration.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range EnvNames() {
+		if strings.HasSuffix(n, "_FILE") {
+			continue // covered by the 🔒 rule
+		}
+		if !strings.Contains(string(b), "`"+n+"`") {
+			t.Errorf("%s is not in docs/configuration.md", n)
+		}
+	}
+}

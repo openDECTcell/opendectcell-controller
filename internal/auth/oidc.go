@@ -197,7 +197,7 @@ func MapRole(cfg config.OIDC, groups []string) (Role, bool) {
 func (o *OIDC) upsert(ctx context.Context, issuer string, c Claims) (*User, error) {
 	role, ok := MapRole(o.Config, c.Groups)
 	if !ok {
-		audit.Record(ctx, o.Store.Pool, audit.Entry{Action: "user.login_denied", ObjectType: "user",
+		_ = audit.Record(ctx, o.Store.Pool, audit.Entry{Action: "user.login_denied", ObjectType: "user",
 			Details: map[string]any{"reason": "no matching group", "subject_hash": shortHash(issuer + "\x00" + c.Subject)}})
 		return nil, ErrNotAuthorized
 	}
@@ -263,8 +263,8 @@ func (o *OIDC) username(ctx context.Context, tx pgx.Tx, issuer string, c Claims)
 		name = strings.ToValidUTF8(name[:100], "")
 	}
 	var taken bool
-	tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM app_user WHERE lower(username) = lower($1))", name).Scan(&taken)
-	if taken {
+	err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM app_user WHERE lower(username) = lower($1))", name).Scan(&taken)
+	if taken || err != nil { // on error, take the always-unique name
 		name += "-" + shortHash(issuer+"\x00"+c.Subject)
 	}
 	return name

@@ -134,7 +134,7 @@ func (s *Server) withRecover(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler {
+				if err, ok := v.(error); ok && errors.Is(err, http.ErrAbortHandler) {
 					panic(v)
 				}
 				s.Log.Error("panic in handler", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
@@ -241,7 +241,8 @@ func sessionFrom(ctx context.Context) *auth.Session {
 }
 
 func (s *Server) setCookie(w http.ResponseWriter, tok string) {
-	http.SetCookie(w, &http.Cookie{
+	// Secure is off only when the base URL is plain http (development).
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: see above
 		Name: s.cookieName(), Value: tok, Path: "/",
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode,
 		MaxAge: int(s.Auth.SessionMaxAge / time.Second),
@@ -249,7 +250,7 @@ func (s *Server) setCookie(w http.ResponseWriter, tok string) {
 }
 
 func (s *Server) clearCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: "", Path: "/", MaxAge: -1,
+	http.SetCookie(w, &http.Cookie{Name: s.cookieName(), Value: "", Path: "/", MaxAge: -1, //nolint:gosec // G124: as setCookie
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode})
 }
 
