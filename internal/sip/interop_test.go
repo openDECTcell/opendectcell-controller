@@ -3,14 +3,23 @@
 //go:build interop
 
 // Interop against a real PBX (AGENTS.md §7). CI runs it against Asterisk
-// configured by test/asterisk/:
+// (test/asterisk/) and FreeSWITCH (vanilla configuration):
 //
 //	OPENDECTCELL_INTEROP_SIP=127.0.0.1:5060 go test -tags interop -run Interop ./internal/sip/
+//
+// Optional: OPENDECTCELL_INTEROP_USERS ("user:password,user:password", the
+// caller first), OPENDECTCELL_INTEROP_DOMAIN, OPENDECTCELL_INTEROP_BIND (local IP for
+// SIP and RTP) and OPENDECTCELL_INTEROP_TRANSPORTS ("udp,tcp").
 package sip_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
+	"net"
+	"net/netip"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,30 +27,56 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/resolve"
+	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/sdp"
 )
 
-func interopAccount(user, transport string) sip.Account {
-	return sip.Account{ID: uuid.New(), Label: user, Username: user, Domain: "127.0.0.1", Password: "interop-" + user,
+func env(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func interopAccount(cred, transport string) sip.Account {
+	user, pw, _ := strings.Cut(cred, ":")
+	return sip.Account{ID: uuid.New(), Label: user, Username: user, Domain: env("OPENDECTCELL_INTEROP_DOMAIN", "127.0.0.1"), Password: pw,
 		Registrar: os.Getenv("OPENDECTCELL_INTEROP_SIP"), Transport: resolve.Transport(transport), Register: true, RegisterExpiry: 120,
 		Keepalive: "none", Encryption: sdp.EncOff, Codecs: []string{"G722", "PCMA", "PCMU"}, DTMFMode: "rfc4733",
 		CallerIDSource: "auto", Enabled: true}
 }
 
-func TestInteropAsterisk(t *testing.T) {
+func TestInteropPBX(t *testing.T) {
 	if os.Getenv("OPENDECTCELL_INTEROP_SIP") == "" {
 		t.Skip("OPENDECTCELL_INTEROP_SIP not set")
 	}
-	for _, tr := range []string{"udp", "tcp"} {
+	for _, tr := range strings.Split(env("OPENDECTCELL_INTEROP_TRANSPORTS", "udp,tcp"), ",") {
 		t.Run(tr, func(t *testing.T) { interop(t, tr) })
 	}
+}
+
+func interopManager(t *testing.T, ep sip.Endpoint) *sip.Manager {
+	bind := netip.MustParseAddr(env("OPENDECTCELL_INTEROP_BIND", "127.0.0.1"))
+	conn, err := net.ListenPacket("udp", netip.AddrPortFrom(bind, 0).String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := sip.New(sip.Config{UDP: conn, RTP: &rtp.Ports{IP: bind, Min: 42000, Max: 42199},
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Start(context.Background())
+	t.Cleanup(func() { m.Close() })
+	return m
 }
 
 func interop(t *testing.T, transport string) {
 	ep := &endpoint{calls: make(chan *sip.Call, 4)}
 	ep.action = func(c *sip.Call) { c.Ringing(); time.Sleep(200 * time.Millisecond); c.Answer() }
-	m := newManager(t, ep, nil)
-	a, b := interopAccount("6001", transport), interopAccount("6002", transport)
+	m := interopManager(t, ep)
+	creds := strings.Split(env("OPENDECTCELL_INTEROP_USERS", "6001:interop-6001,6002:interop-6002"), ",")
+	a, b := interopAccount(creds[0], transport), interopAccount(creds[1], transport)
 	m.SetAccounts([]sip.Account{a, b})
 	for _, acc := range []sip.Account{a, b} {
 		waitFor(t, acc.Username+" registered", func() bool {
@@ -53,8 +88,8 @@ func interop(t *testing.T, transport string) {
 		})
 	}
 
-	// 6001 calls 6002 through Asterisk.
-	out, err := m.Dial(context.Background(), a.ID, "6002")
+	// The first user calls the second through the PBX.
+	out, err := m.Dial(context.Background(), a.ID, b.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,16 +97,16 @@ func interop(t *testing.T, transport string) {
 	select {
 	case in = <-ep.calls:
 	case <-time.After(10 * time.Second):
-		t.Fatal("6002 never rang")
+		t.Fatal(b.Username + " never rang")
 	}
-	if in.AccountID != b.ID || in.Remote != "6001" {
+	if in.AccountID != b.ID || in.Remote != a.Username {
 		t.Errorf("incoming leg: account %v, from %q", in.AccountID, in.Remote)
 	}
 	nextEvent(t, out, sip.EvAnswered)
 	nextEvent(t, in, sip.EvAnswered)
 	t.Logf("codecs: out %s, in %s", out.Negotiated().Codec.Name, in.Negotiated().Codec.Name)
 
-	// Audio both ways through Asterisk's media relay.
+	// Audio both ways through the PBX's media relay.
 	exchangeAudio(t, out.Media(), in.Media(), out.Negotiated().Codec.PT)
 
 	// DTMF from one leg reaches the other.

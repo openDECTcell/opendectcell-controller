@@ -125,6 +125,43 @@ jobs:
           sudo asterisk -rx "core show channels" || true
           sudo tail -n 200 /var/log/asterisk/messages* || true
 
+  interop-freeswitch:
+    # SIP interop against FreeSWITCH (AGENTS.md §7). No Ubuntu package
+    # exists, so a community image pinned by digest; its vanilla
+    # configuration provides users 1000-1019 and generates a password.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Start FreeSWITCH 1.10.12
+        run: |
+          docker run -d --name fs --network host \
+            safarov/freeswitch@sha256:b31c743f4c911a19687c61e3214968f2a24f93f9d3d667cc26284192e158ffc6
+          ip=$(hostname -I | awk '{print $1}')
+          for i in $(seq 60); do
+            docker exec fs fs_cli -x "sofia status profile internal" 2>/dev/null | grep -q RUNNING && break
+            sleep 2
+          done
+          pw=$(docker logs fs 2>&1 | sed -n "s/.*password for SIP calls set to '\(.*\)'.*/\1/p" | head -1)
+          test -n "$pw"
+          echo "::add-mask::$pw"
+          {
+            echo "OPENDECTCELL_INTEROP_SIP=$ip:5060"
+            echo "OPENDECTCELL_INTEROP_DOMAIN=$ip"
+            echo "OPENDECTCELL_INTEROP_BIND=$ip"
+            echo "OPENDECTCELL_INTEROP_USERS=1000:$pw,1001:$pw"
+          } >> "$GITHUB_ENV"
+          docker exec fs fs_cli -x "version"
+      - name: Interop test
+        run: go test -tags interop -count=1 -v -run Interop ./internal/sip/
+      - name: FreeSWITCH state on failure
+        if: failure()
+        run: |
+          docker exec fs fs_cli -x "sofia status profile internal reg" || true
+          docker logs fs 2>&1 | tail -n 200 || true
+
   image:
     runs-on: ubuntu-24.04
     steps:
