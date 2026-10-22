@@ -1,0 +1,28 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+:root { --fg: #1d2125; --muted: #5f6b76; --bg: #fff; --line: #d9dee3; --accent: #1f5fa8; --err: #a3261f; --ok: #1e6b35; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e6e9ec; --muted: #9aa5b0; --bg: #16191c; --line: #343a40; --accent: #7fb0ef; --err: #f08a82; --ok: #7fd197; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+header.top { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; padding: .6rem 1rem; border-bottom: 1px solid var(--line); }
+header.top nav { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+.brand { font-weight: 600; color: var(--fg); text-decoration: none; }
+main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+footer { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; color: var(--muted); font-size: .85rem; }
+a { color: var(--accent); }
+.narrow { max-width: 24rem; }
+label { display: block; margin: .6rem 0; }
+input { display: block; width: 100%; padding: .4rem; margin-top: .2rem; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+button, .button { display: inline-block; padding: .45rem 1rem; font: inherit; color: #fff; background: var(--accent); border: 0; border-radius: 4px; cursor: pointer; text-decoration: none; }
+button.link { padding: 0; color: var(--accent); background: none; text-decoration: underline; }
+form.inline { display: inline; }
+.msg { padding: .5rem .8rem; border-radius: 4px; border: 1px solid; }
+.msg.error { color: var(--err); }
+.msg.notice { color: var(--ok); }
+.muted, .or { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+dl.kv dt { color: var(--muted); }
+.kvp { white-space: nowrap; font-size: .9em; }

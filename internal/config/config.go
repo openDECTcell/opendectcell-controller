@@ -11,6 +11,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -36,6 +37,9 @@ type HTTP struct {
 	// BaseURL is the external URL users reach the controller at. It sets
 	// cookie Secure flags and the OIDC redirect URL.
 	BaseURL string `yaml:"base_url"`
+	// TrustedProxies are the reverse proxies (CIDRs) whose X-Forwarded-For
+	// header is believed. Empty: the client address is the TCP peer.
+	TrustedProxies []string `yaml:"trusted_proxies"`
 }
 
 type Database struct {
@@ -182,6 +186,7 @@ func vars(c *Config) []envVar {
 	return []envVar{
 		{"HTTP_LISTEN", false, str(&c.HTTP.Listen)},
 		{"HTTP_BASE_URL", false, str(&c.HTTP.BaseURL)},
+		{"HTTP_TRUSTED_PROXIES", false, list(&c.HTTP.TrustedProxies)},
 		{"DATABASE_URL", true, str(&c.Database.URL)},
 		{"DATABASE_MAX_CONNS", false, uintN(&c.Database.MaxConns, 31)},
 		{"MASTER_KEY", true, str(&c.Secrets.MasterKey)},
@@ -275,6 +280,11 @@ func (c Config) Validate() error {
 	} else if u, err := url.Parse(c.HTTP.BaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		add("base URL %q must be an absolute http(s) URL", c.HTTP.BaseURL)
 	}
+	for _, p := range c.HTTP.TrustedProxies {
+		if _, err := netip.ParsePrefix(p); err != nil {
+			add("trusted proxy %q is not a CIDR prefix (e.g. 172.16.0.0/12)", p)
+		}
+	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -328,6 +338,17 @@ func contains(xs []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// TrustedProxyPrefixes returns TrustedProxies parsed; Validate has checked them.
+func (c Config) TrustedProxyPrefixes() []netip.Prefix {
+	var out []netip.Prefix
+	for _, p := range c.HTTP.TrustedProxies {
+		if pf, err := netip.ParsePrefix(p); err == nil {
+			out = append(out, pf.Masked())
+		}
+	}
+	return out
 }
 
 // SecureCookies reports whether cookies get the Secure flag.

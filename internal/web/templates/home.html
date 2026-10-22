@@ -1,0 +1,6 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "home.html"}}{{template "head" .}}
+<h1>Overview</h1>
+<p>Logged in as <strong>{{.User.Name}}</strong> ({{.User.Role}}).</p>
+<p class="muted">Handsets, SIP accounts and cells will appear here as the controller's milestones land (ROADMAP C2–C7).</p>
+{{template "foot" .}}{{end}}

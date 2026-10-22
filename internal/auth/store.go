@@ -288,6 +288,56 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 	return s.loggedIn(ctx, id, "local")
 }
 
+// CheckPassword re-verifies a logged-in local user's password, e.g. before
+// a password change. It is rate-limited like a login but records no login.
+func (s *Store) CheckPassword(ctx context.Context, userID uuid.UUID, password, addr string) error {
+	var name string
+	var hash *string
+	err := s.Pool.QueryRow(ctx, "SELECT username, password_hash FROM app_user WHERE id = $1 AND auth_source = 'local'", userID).Scan(&name, &hash)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && hash == nil) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	keys := rateKeys(name, addr)
+	if lim, err := s.limited(ctx, keys); err != nil {
+		return err
+	} else if lim {
+		return ErrRateLimited
+	}
+	if len(password) <= MaxPasswordLen {
+		if ok, err := VerifyPassword(*hash, password); err != nil {
+			return err
+		} else if ok {
+			return nil
+		}
+	}
+	if err := s.recordFailure(ctx, keys); err != nil {
+		return err
+	}
+	audit.Record(ctx, s.Pool, audit.Entry{Action: "user.password_check_failed", ObjectType: "user", ObjectID: userID.String()})
+	return ErrBadLogin
+}
+
+// ListUsers returns every user, by username.
+func (s *Store) ListUsers(ctx context.Context) ([]*User, error) {
+	rows, err := s.Pool.Query(ctx, "SELECT "+userCols+" FROM app_user ORDER BY lower(username)")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) dummy() string {
 	s.dummyOnce.Do(func() { s.dummyHash, _ = HashPassword(s.Argon, "dummy password for timing") })
 	return s.dummyHash

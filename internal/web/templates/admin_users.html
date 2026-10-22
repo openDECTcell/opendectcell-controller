@@ -1,0 +1,18 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_users.html"}}{{template "head" .}}
+<h1>Users</h1>
+<table>
+<thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Sign-in</th><th>May add cells</th><th>Last login</th><th>Status</th></tr></thead>
+<tbody>
+{{range .Data}}
+<tr>
+  <td>{{.Username}}</td><td>{{.DisplayName}}</td><td>{{.Role}}</td><td>{{.AuthSource}}</td>
+  <td>{{if .MayAddCells}}yes{{else}}no{{end}}</td>
+  <td>{{with .LastLoginAt}}{{fmtTime .}}{{else}}never{{end}}</td>
+  <td>{{if .Disabled}}disabled{{else}}active{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+<p class="muted">Creating and editing users from the UI comes with the admin UI (ROADMAP C7). Until then: <code>opendectcell-controller user create</code>.</p>
+{{template "foot" .}}{{end}}
