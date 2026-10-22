@@ -35,8 +35,9 @@ DDL: `internal/db/migrations/`. Requires PostgreSQL ≥ 15 (tested on 18).
 | `sip_account` | SIP accounts | `owner_user_id` NULL = shared. Password encrypted. The **M** parameters of `voip-requirements.md` §2 are columns; the S/L ones (session timers, User-Agent, identity headers, STUN, port overrides, digit-collection timeouts, line prefix) live in `advanced` (JSON), validated by the application |
 | `handset_line` | Line 1 / 2 → SIP account | 0–2 per handset. One account can serve several handsets |
 | `registration_window` (+ `_cell`) | Open registration windows | PIN hashed; at most one open window per user |
-| `call_log` | Call history | `owner_user_id` is a snapshot, so a user keeps their history after deleting a handset |
+| `call_log` | Call history | `owner_user_id` is a snapshot, so a user keeps their history after deleting a handset. `missed_read_at` (0002) is the one read mark of a missed call, shared by the line's handsets |
 | `feature_setting` | Per-handset feature modules | `dect-features.md` |
+| `contact` + `contact_number` (0002) | Phonebook entries for CAT-iq list access | `owner_user_id` NULL = shared. Up to 5 typed numbers, one default (`list-access.md`) |
 | `audit_log` | Audit trail | **Append-only, enforced by trigger**: no UPDATE, DELETE or TRUNCATE, except DELETE inside a transaction that sets `opendectcell.audit_purge = 'on'` (retention). No foreign key on the actor, so entries outlive the user; `actor_name` is a snapshot |
 
 `architecture.md` §3 entities: all represented. `user` → `app_user`;

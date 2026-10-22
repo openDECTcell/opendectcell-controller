@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/getkin/kin-openapi/routers/legacy"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
+	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
@@ -101,6 +103,7 @@ func TestAPI(t *testing.T) {
 			t.Fatal(err)
 		}
 		s.SIPAccounts, s.SIP = &sipaccount.Store{Pool: s.Pool, Keyring: kr}, fakeSIP{}
+		s.Contacts = &contacts.Store{Pool: s.Pool}
 		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
 			t.Fatal(err)
 		}
@@ -178,6 +181,40 @@ func TestAPI(t *testing.T) {
 	if m := admin.do("GET", "/audit?limit=5", nil, http.StatusOK); len(m["items"].([]any)) != 5 || m["next"] == nil {
 		t.Errorf("audit page: %v", m)
 	}
+
+	// Contacts: personal and shared; handset lists; missed-call read mark.
+	c := user.do("POST", "/contacts", map[string]any{"last_name": "Meyer", "first_name": "Eva",
+		"numbers": []map[string]any{{"number": "030 1234567", "kind": "fixed"}}}, http.StatusCreated)
+	if nums := c["numbers"].([]any); nums[0].(map[string]any)["number"] != "0301234567" {
+		t.Errorf("contact %v", c)
+	}
+	cid := strconv.FormatInt(int64(c["id"].(float64)), 10)
+	user.do("PUT", "/contacts/"+cid, map[string]any{"last_name": "Meyer", "numbers": []map[string]any{{"number": "+491711234567", "kind": "mobile"}}}, http.StatusOK)
+	user.do("POST", "/contacts", map[string]any{"last_name": "x", "owner_id": nil}, http.StatusForbidden)
+	user.do("POST", "/contacts", map[string]any{"numbers": []map[string]any{{"number": "abc"}}}, http.StatusBadRequest)
+	sh := admin.do("POST", "/contacts", map[string]any{"last_name": "Reception", "owner_id": nil, "numbers": []map[string]any{{"number": "100"}}}, http.StatusCreated)
+	shid := strconv.FormatInt(int64(sh["id"].(float64)), 10)
+	user.do("GET", "/contacts/"+shid, nil, http.StatusOK)
+	user.do("PUT", "/contacts/"+shid, map[string]any{"last_name": "Mine now"}, http.StatusForbidden)
+	carl.do("GET", "/contacts/"+cid, nil, http.StatusNotFound)
+	if m := user.do("GET", "/contacts", nil, http.StatusOK); len(m["items"].([]any)) != 2 {
+		t.Errorf("contacts list %v", m)
+	}
+
+	u := mustUser(t, e, "user")
+	var hid string
+	e.store.Pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\\x01', 1, '\\x') RETURNING id::text", u.ID).Scan(&hid)
+	var callID int64
+	e.store.Pool.QueryRow(ctx, "INSERT INTO call_log (handset_id, owner_user_id, direction, remote_party, started_at) VALUES ($1, $2, 'out', '100', now()) RETURNING id", hid, u.ID).Scan(&callID)
+	if m := user.do("GET", "/handsets/"+hid+"/lists/contacts", nil, http.StatusOK); len(m["items"].([]any)) != 2 {
+		t.Errorf("handset contacts %v", m)
+	}
+	if m := user.do("GET", "/handsets/"+hid+"/lists/outgoing_calls", nil, http.StatusOK); m["items"].([]any)[0].(map[string]any)["name"] != "Reception" {
+		t.Errorf("outgoing with contact name: %v", m)
+	}
+	carl.do("GET", "/handsets/"+hid+"/lists/contacts", nil, http.StatusNotFound)
+	user.do("POST", "/calls/"+strconv.FormatInt(callID, 10)+"/read", nil, http.StatusConflict) // outgoing: not a missed call
+	user.do("DELETE", "/contacts/"+cid, nil, http.StatusNoContent)
 
 	// Cross-site writes are refused, as for the pages.
 	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+apiPrefix+"/sip-accounts", strings.NewReader("{}"))

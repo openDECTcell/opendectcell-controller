@@ -27,6 +27,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
+	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 )
 
@@ -51,6 +52,7 @@ type Server struct {
 	Cells          *cell.Store // nil: no cell pages
 	CellLink       CellLink
 	SIPAccounts    *sipaccount.Store // nil: no SIP pages
+	Contacts       *contacts.Store   // nil: no contact API
 	SIP            SIPStatus
 
 	tmpl *template.Template
@@ -118,6 +120,7 @@ func (s *Server) routes() {
 	s.sipRoutes()
 	s.userRoutes()
 	s.apiRoutes()
+	s.contactRoutes()
 }
 
 func cacheStatic(h http.Handler) http.Handler {
