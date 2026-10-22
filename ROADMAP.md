@@ -40,9 +40,9 @@ measured so far and what is still unknown.
 - [ ] **[hw]** A handset registers through the controller
 
 ## C4: SIP user agents
-- [ ] One UA per handset line (0–2), registration incl. SRV/NAPTR, outbound proxy, NAT keep-alive
-- [ ] Calls in/out, early media, hold/resume, digit collection, DTMF modes
-- [ ] SIP over TLS; SRTP (SDES); per-account encryption policy
+- [x] One UA per handset line (0–2), registration incl. SRV/NAPTR, outbound proxy, NAT keep-alive (per account; binding to handset lines waits for C3)
+- [ ] Calls in/out, early media, hold/resume, digit collection, DTMF modes (done except digit collection and in-band DTMF; Asterisk interop in CI)
+- [x] SIP over TLS; SRTP (SDES); per-account encryption policy (TLS calls not yet interop-tested)
 - [ ] Dual-ring policy (call waiting vs busy) and outgoing line selection (CAT-iq line id or prefix)
 
 ## C5: Media engine

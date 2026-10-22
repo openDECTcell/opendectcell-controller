@@ -460,3 +460,114 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	_, err = s.Pool.Exec(ctx, "DELETE FROM oidc_login WHERE expires_at <= $1", now)
 	return err
 }
+
+// UserUpdate holds the editable fields; nil leaves a field unchanged.
+type UserUpdate struct {
+	DisplayName, Email *string
+	Role               *Role
+	MayAddCells        *bool
+	Disabled           *bool
+}
+
+// ErrSelf means an admin tried to demote, disable or delete themself.
+var ErrSelf = errors.New("auth: you cannot do that to your own account")
+
+// ErrHasObjects means the user still owns handsets or SIP accounts.
+var ErrHasObjects = errors.New("auth: the user still owns handsets or SIP accounts")
+
+// UpdateUser changes a user (admins only). Disabling ends the user's
+// sessions. For OIDC users the role is recomputed at their next login.
+func (s *Store) UpdateUser(ctx context.Context, admin *User, id uuid.UUID, up UserUpdate) (*User, error) {
+	if RequireAdmin(admin) != nil {
+		return nil, ErrForbidden
+	}
+	if id == admin.ID && ((up.Role != nil && *up.Role != RoleAdmin) || (up.Disabled != nil && *up.Disabled)) {
+		return nil, ErrSelf
+	}
+	if up.Role != nil && *up.Role != RoleAdmin && *up.Role != RoleUser {
+		return nil, errors.New("role must be admin or user")
+	}
+	var u *User
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		old, err := scanUser(tx.QueryRow(ctx, "SELECT "+userCols+" FROM app_user WHERE id = $1 FOR UPDATE", id))
+		if err != nil {
+			return err
+		}
+		var role *string
+		if up.Role != nil {
+			r := string(*up.Role)
+			role = &r
+		}
+		u, err = scanUser(tx.QueryRow(ctx, `UPDATE app_user SET display_name = coalesce($2, display_name),
+			email = CASE WHEN $3::text IS NULL THEN email ELSE nullif($3, '') END, role = coalesce($4, role),
+			may_add_cells = coalesce($5, may_add_cells), disabled = coalesce($6, disabled) WHERE id = $1 RETURNING `+userCols,
+			id, up.DisplayName, up.Email, role, up.MayAddCells, up.Disabled))
+		if err != nil {
+			return err
+		}
+		if u.Disabled && !old.Disabled {
+			if _, err := tx.Exec(ctx, "DELETE FROM session WHERE user_id = $1", id); err != nil {
+				return err
+			}
+		}
+		var fields []string
+		d := map[string]any{}
+		if old.Role != u.Role {
+			d["role_from"], d["role_to"] = string(old.Role), string(u.Role)
+		}
+		if old.Disabled != u.Disabled {
+			d["disabled"] = u.Disabled
+		}
+		if old.MayAddCells != u.MayAddCells {
+			d["may_add_cells"] = u.MayAddCells
+		}
+		if old.DisplayName != u.DisplayName {
+			fields = append(fields, "display_name")
+		}
+		if old.Email != u.Email {
+			fields = append(fields, "email")
+		}
+		if len(fields) > 0 {
+			d["fields"] = fields
+		}
+		if len(d) == 0 {
+			return nil
+		}
+		return audit.Record(ctx, tx, audit.Entry{Action: "user.update", ObjectType: "user", ObjectID: id.String(), Details: d})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// DeleteUser removes a user (admins only) who owns no handsets or SIP
+// accounts; their sessions go with them.
+func (s *Store) DeleteUser(ctx context.Context, admin *User, id uuid.UUID) error {
+	if RequireAdmin(admin) != nil {
+		return ErrForbidden
+	}
+	if id == admin.ID {
+		return ErrSelf
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var name string
+		if err := tx.QueryRow(ctx, "SELECT username FROM app_user WHERE id = $1 FOR UPDATE", id).Scan(&name); errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		var owns bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM handset WHERE owner_user_id = $1)
+			OR EXISTS (SELECT 1 FROM sip_account WHERE owner_user_id = $1)`, id).Scan(&owns); err != nil {
+			return err
+		}
+		if owns {
+			return ErrHasObjects
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM app_user WHERE id = $1", id); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Action: "user.delete", ObjectType: "user", ObjectID: id.String(), Details: map[string]any{"username": name}})
+	})
+}

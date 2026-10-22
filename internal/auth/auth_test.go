@@ -306,3 +306,52 @@ func TestOIDCLogin(t *testing.T) {
 		t.Errorf("wrong nonce: %v", err)
 	}
 }
+
+func TestUserAdministration(t *testing.T) {
+	s, _ := newStore(t)
+	adminCtx := ctx
+	admin, _ := s.CreateLocalUser(adminCtx, auth.NewLocalUser{Username: "boss", Password: "long enough pw", Role: auth.RoleAdmin})
+	u, _ := s.CreateLocalUser(adminCtx, auth.NewLocalUser{Username: "dora", Password: "long enough pw", Role: auth.RoleUser})
+	tok, _ := s.CreateSession(ctx, u, "local")
+
+	if _, err := s.UpdateUser(ctx, u, admin.ID, auth.UserUpdate{Disabled: ptr(true)}); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("user acting as admin: %v", err)
+	}
+	for _, up := range []auth.UserUpdate{{Role: ptr(auth.RoleUser)}, {Disabled: ptr(true)}} {
+		if _, err := s.UpdateUser(ctx, admin, admin.ID, up); !errors.Is(err, auth.ErrSelf) {
+			t.Fatalf("admin demoting/disabling self: %v", err)
+		}
+	}
+	got, err := s.UpdateUser(ctx, admin, u.ID, auth.UserUpdate{Role: ptr(auth.RoleAdmin), MayAddCells: ptr(true), Email: ptr("dora@example.org")})
+	if err != nil || got.Role != auth.RoleAdmin || !got.MayAddCells || got.Email != "dora@example.org" {
+		t.Fatalf("update: %+v %v", got, err)
+	}
+	if _, err := s.UpdateUser(ctx, admin, u.ID, auth.UserUpdate{Disabled: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.LookupSession(ctx, tok); err == nil {
+		t.Fatal("disabled user's session survived")
+	}
+	// Deleting: not oneself, not while owning things.
+	if err := s.DeleteUser(ctx, admin, admin.ID); !errors.Is(err, auth.ErrSelf) {
+		t.Fatalf("self delete: %v", err)
+	}
+	s.Pool.Exec(ctx, "INSERT INTO sip_account (owner_user_id, label, username, domain) VALUES ($1, 'x', 'u', 'd')", u.ID)
+	if err := s.DeleteUser(ctx, admin, u.ID); !errors.Is(err, auth.ErrHasObjects) {
+		t.Fatalf("owner delete: %v", err)
+	}
+	s.Pool.Exec(ctx, "DELETE FROM sip_account")
+	if err := s.DeleteUser(ctx, admin, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := audit.List(ctx, s.Pool, audit.Filter{ObjectType: "user", ObjectID: u.ID.String()})
+	var actions []string
+	for _, r := range rows {
+		actions = append(actions, r.Action)
+	}
+	if !strings.Contains(strings.Join(actions, ","), "user.delete") || !strings.Contains(strings.Join(actions, ","), "user.update") {
+		t.Errorf("audit: %v", actions)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
