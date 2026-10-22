@@ -154,13 +154,14 @@ jobs:
             echo "OPENDECTCELL_INTEROP_USERS=1000:$pw,1001:$pw"
           } >> "$GITHUB_ENV"
           docker exec fs fs_cli -x "version"
+          docker exec fs fs_cli -x "sofia global siptrace on"
       - name: Interop test
         run: go test -tags interop -count=1 -v -run Interop ./internal/sip/
       - name: FreeSWITCH state on failure
         if: failure()
         run: |
           docker exec fs fs_cli -x "sofia status profile internal reg" || true
-          docker logs fs 2>&1 | tail -n 200 || true
+          docker logs fs 2>&1 | grep -v '^$' | tail -n 1500 || true
 
   image:
     runs-on: ubuntu-24.04
