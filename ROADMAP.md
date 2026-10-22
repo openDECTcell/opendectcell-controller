@@ -28,8 +28,8 @@ measured so far and what is still unknown.
 - [x] Audit log
 
 ## C2: Cell manager
-- [ ] Enrollment: one-time tokens, CSR, certificate issuing, admin approval
-- [ ] mTLS control channel, heartbeat, reconnect, cell status
+- [x] Enrollment: one-time tokens, CSR, certificate issuing, admin approval
+- [x] mTLS control channel, heartbeat, reconnect, cell status (CA rotation and expiry warnings still open)
 - [ ] Mail tunnel to/from `dect-stubd` (cell mode in openDECTcell M9)
 - [ ] **[hw]** One cell connected and reporting status
 
