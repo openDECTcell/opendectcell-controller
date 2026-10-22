@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -34,4 +36,12 @@ func Open(ctx context.Context, url string, maxConns int32) (*pgxpool.Pool, error
 		return nil, fmt.Errorf("db: cannot reach database: %w", err)
 	}
 	return pool, nil
+}
+
+// Querier is what both *pgxpool.Pool and pgx.Tx provide, so code can run
+// inside or outside a transaction.
+type Querier interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
