@@ -25,6 +25,11 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+        # Deadlines fail only on a closed connection, where the next read or
+        # write fails anyway.
+        - (*crypto/tls.Conn).SetDeadline
+        - (*crypto/tls.Conn).SetReadDeadline
+        - (*crypto/tls.Conn).SetWriteDeadline
     gosec:
       excludes:
         - G104 # unhandled errors: errcheck covers this, with the exclusions above

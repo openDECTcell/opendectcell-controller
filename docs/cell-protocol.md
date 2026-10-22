@@ -232,7 +232,12 @@ Senders send only types that are in the peer's announced capabilities, so
 SHA-256 matches one of the cell's pinned CA hashes (from enrollment, or added
 by TRUST_UPDATE), and the leaf must carry the controller URI SAN. Hostnames are
 not checked; the pin replaces them, so cells can reach the controller by IP or
-through port forwarding.
+through port forwarding. **The pin check must also run on resumed TLS
+sessions**: a verification callback that only runs on full handshakes is
+bypassed by resumption. In mbedTLS, either disable session tickets on the cell
+or keep the peer certificate (`MBEDTLS_SSL_KEEP_PEER_CERTIFICATE`) and check
+it after every handshake. The reference cell in `internal/cell/celltest` uses
+Go's `VerifyConnection`, which runs on both.
 
 **Controller verifies a cell**, in this order:
 
