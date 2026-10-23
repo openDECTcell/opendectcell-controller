@@ -1,0 +1,1346 @@
+{
+  "noise-25/g722-alaw-up/burst": {
+    "level_db": -25.41,
+    "env_r": 0.921,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "aa96e38d6aa70d48"
+  },
+  "noise-25/g722-alaw-up/clean": {
+    "level_db": -25.41,
+    "env_r": 0.921,
+    "snr_db": 28.3,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "aa96e38d6aa70d48"
+  },
+  "noise-25/g722-alaw-up/jitter60": {
+    "level_db": -25.41,
+    "env_r": 0.554,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "eb4f3f16be30a78c"
+  },
+  "noise-25/g722-alaw-up/loss5": {
+    "level_db": -25.43,
+    "env_r": 0.847,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "12193fcec5d6b7fa"
+  },
+  "noise-25/g722-l16-down/burst": {
+    "level_db": -28.46,
+    "env_r": 0.92,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "7ece74a83d94b461"
+  },
+  "noise-25/g722-l16-down/clean": {
+    "level_db": -28.46,
+    "env_r": 0.92,
+    "snr_db": 21.8,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "7ece74a83d94b461"
+  },
+  "noise-25/g722-l16-down/jitter60": {
+    "level_db": -28.44,
+    "env_r": 0.609,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "ba8192bad282e5b6"
+  },
+  "noise-25/g722-l16-down/loss5": {
+    "level_db": -28.46,
+    "env_r": 0.781,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "f073316f8efb68d0"
+  },
+  "noise-25/g722-l16-up/burst": {
+    "level_db": -25.42,
+    "env_r": 0.925,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "c23cd6b275ca36f9"
+  },
+  "noise-25/g722-l16-up/clean": {
+    "level_db": -25.42,
+    "env_r": 0.925,
+    "snr_db": 28.8,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "c23cd6b275ca36f9"
+  },
+  "noise-25/g722-l16-up/jitter60": {
+    "level_db": -25.41,
+    "env_r": 0.562,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "7bbcc219265b0641"
+  },
+  "noise-25/g722-l16-up/loss5": {
+    "level_db": -25.43,
+    "env_r": 0.847,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "ee10df6d57eb9475"
+  },
+  "noise-25/g722-pass-down/burst": {
+    "level_db": -25.22,
+    "env_r": 0.737,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "38167dca560bac57"
+  },
+  "noise-25/g722-pass-down/clean": {
+    "level_db": -25.22,
+    "env_r": 0.737,
+    "snr_db": 11,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "38167dca560bac57"
+  },
+  "noise-25/g722-pass-down/jitter60": {
+    "level_db": -25.36,
+    "env_r": 0.117,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "3c3d1af847d43399"
+  },
+  "noise-25/g722-pass-down/loss5": {
+    "level_db": -25.35,
+    "env_r": 0.142,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "d73ce378a2a295ba"
+  },
+  "noise-25/pcma-l16-down/burst": {
+    "level_db": -25.28,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "521b2771d9172b7e"
+  },
+  "noise-25/pcma-l16-down/clean": {
+    "level_db": -25.28,
+    "env_r": 0.999,
+    "snr_db": 37.5,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "521b2771d9172b7e"
+  },
+  "noise-25/pcma-l16-down/jitter60": {
+    "level_db": -25.28,
+    "env_r": 0.542,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "8a83cd8bbc289e1a"
+  },
+  "noise-25/pcma-l16-down/loss5": {
+    "level_db": -25.3,
+    "env_r": 0.921,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "0132b55a80aaeff3"
+  },
+  "noise-25/pcma-l16-up/burst": {
+    "level_db": -25.29,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "552a503046cdffb7"
+  },
+  "noise-25/pcma-l16-up/clean": {
+    "level_db": -25.29,
+    "env_r": 0.999,
+    "snr_db": 37.5,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "552a503046cdffb7"
+  },
+  "noise-25/pcma-l16-up/jitter60": {
+    "level_db": -25.28,
+    "env_r": 0.541,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "c3c30e3690ad3649"
+  },
+  "noise-25/pcma-l16-up/loss5": {
+    "level_db": -25.29,
+    "env_r": 0.922,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "d2a3084eef4042cf"
+  },
+  "noise-25/pcmu-l16-down/burst": {
+    "level_db": -25.28,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "93307be5d6ab9d2d"
+  },
+  "noise-25/pcmu-l16-down/clean": {
+    "level_db": -25.28,
+    "env_r": 0.999,
+    "snr_db": 36.8,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "93307be5d6ab9d2d"
+  },
+  "noise-25/pcmu-l16-down/jitter60": {
+    "level_db": -25.27,
+    "env_r": 0.543,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "798271063a1dfdfd"
+  },
+  "noise-25/pcmu-l16-down/loss5": {
+    "level_db": -25.29,
+    "env_r": 0.922,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "e809c024ad55dbc9"
+  },
+  "silence/g722-alaw-up/burst": {
+    "level_db": -69.46,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "7fc05ca89cd55682"
+  },
+  "silence/g722-alaw-up/clean": {
+    "level_db": -69.46,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "7fc05ca89cd55682"
+  },
+  "silence/g722-alaw-up/jitter60": {
+    "level_db": -69.42,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "520ff730de681b05"
+  },
+  "silence/g722-alaw-up/loss5": {
+    "level_db": -69.48,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "3926286e7cb3137b"
+  },
+  "silence/g722-l16-down/burst": {
+    "level_db": -85.26,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "5d80bb1abaee4afc"
+  },
+  "silence/g722-l16-down/clean": {
+    "level_db": -85.26,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "5d80bb1abaee4afc"
+  },
+  "silence/g722-l16-down/jitter60": {
+    "level_db": -82.05,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "ea2d03eb7da2e603"
+  },
+  "silence/g722-l16-down/loss5": {
+    "level_db": -77.27,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "d0b81b13e3a3dd1d"
+  },
+  "silence/g722-l16-up/burst": {
+    "level_db": -84.86,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b61fe3320373e91d"
+  },
+  "silence/g722-l16-up/clean": {
+    "level_db": -84.86,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b61fe3320373e91d"
+  },
+  "silence/g722-l16-up/jitter60": {
+    "level_db": -84.86,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "b61fe3320373e91d"
+  },
+  "silence/g722-l16-up/loss5": {
+    "level_db": -84.86,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "b61fe3320373e91d"
+  },
+  "silence/g722-pass-down/burst": {
+    "level_db": -84.85,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "718dbb6d04056e88"
+  },
+  "silence/g722-pass-down/clean": {
+    "level_db": -84.85,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "718dbb6d04056e88"
+  },
+  "silence/g722-pass-down/jitter60": {
+    "level_db": -81.7,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "f04170884d4f8110"
+  },
+  "silence/g722-pass-down/loss5": {
+    "level_db": -77.35,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "497d8ff928be6cce"
+  },
+  "silence/pcma-l16-down/burst": {
+    "level_db": -69.61,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "5f1f5e1c7b9ff5dc"
+  },
+  "silence/pcma-l16-down/clean": {
+    "level_db": -69.61,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "5f1f5e1c7b9ff5dc"
+  },
+  "silence/pcma-l16-down/jitter60": {
+    "level_db": -69.58,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "708af178440c65e1"
+  },
+  "silence/pcma-l16-down/loss5": {
+    "level_db": -69.63,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "3c1f74ed549283f6"
+  },
+  "silence/pcma-l16-up/burst": {
+    "level_db": -69.24,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "dafa3c9e3d2896fa"
+  },
+  "silence/pcma-l16-up/clean": {
+    "level_db": -69.24,
+    "env_r": 0,
+    "snr_db": -999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "dafa3c9e3d2896fa"
+  },
+  "silence/pcma-l16-up/jitter60": {
+    "level_db": -69.24,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "dafa3c9e3d2896fa"
+  },
+  "silence/pcma-l16-up/loss5": {
+    "level_db": -69.24,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "dafa3c9e3d2896fa"
+  },
+  "silence/pcmu-l16-down/burst": {
+    "level_db": -999,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b4b1a4eb0baf0ec3"
+  },
+  "silence/pcmu-l16-down/clean": {
+    "level_db": -999,
+    "env_r": 0,
+    "snr_db": 999,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b4b1a4eb0baf0ec3"
+  },
+  "silence/pcmu-l16-down/jitter60": {
+    "level_db": -999,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "b4b1a4eb0baf0ec3"
+  },
+  "silence/pcmu-l16-down/loss5": {
+    "level_db": -999,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "b4b1a4eb0baf0ec3"
+  },
+  "speech-10/g722-alaw-up/burst": {
+    "level_db": -12.58,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "27872863f28d9ff9"
+  },
+  "speech-10/g722-alaw-up/clean": {
+    "level_db": -12.58,
+    "env_r": 0.998,
+    "snr_db": 25.8,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "27872863f28d9ff9"
+  },
+  "speech-10/g722-alaw-up/jitter60": {
+    "level_db": -12.57,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "2e2ee2f42cf1143a"
+  },
+  "speech-10/g722-alaw-up/loss5": {
+    "level_db": -12.53,
+    "env_r": 0.994,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "e08a57ccc1c21182"
+  },
+  "speech-10/g722-l16-down/burst": {
+    "level_db": -12.46,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "f11ddd373aba92a9"
+  },
+  "speech-10/g722-l16-down/clean": {
+    "level_db": -12.46,
+    "env_r": 1,
+    "snr_db": 29.9,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "f11ddd373aba92a9"
+  },
+  "speech-10/g722-l16-down/jitter60": {
+    "level_db": -12.49,
+    "env_r": 0.992,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "3937cdc10ddfa7a8"
+  },
+  "speech-10/g722-l16-down/loss5": {
+    "level_db": -12.8,
+    "env_r": 0.996,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "bcbe08289695d77e"
+  },
+  "speech-10/g722-l16-up/burst": {
+    "level_db": -12.58,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "754a908a6b58a72b"
+  },
+  "speech-10/g722-l16-up/clean": {
+    "level_db": -12.58,
+    "env_r": 0.998,
+    "snr_db": 26,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "754a908a6b58a72b"
+  },
+  "speech-10/g722-l16-up/jitter60": {
+    "level_db": -12.57,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "285f180feb9a4866"
+  },
+  "speech-10/g722-l16-up/loss5": {
+    "level_db": -12.53,
+    "env_r": 0.994,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "6e9a7de479dcdf23"
+  },
+  "speech-10/g722-pass-down/burst": {
+    "level_db": -12.08,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d3e2e86ec5fea233"
+  },
+  "speech-10/g722-pass-down/clean": {
+    "level_db": -12.08,
+    "env_r": 0.998,
+    "snr_db": 29.3,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "d3e2e86ec5fea233"
+  },
+  "speech-10/g722-pass-down/jitter60": {
+    "level_db": -12.2,
+    "env_r": 0.927,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "fff6f9959f97a036"
+  },
+  "speech-10/g722-pass-down/loss5": {
+    "level_db": -12.56,
+    "env_r": 0.914,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "09ccdf2affc28932"
+  },
+  "speech-10/pcma-l16-down/burst": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "55948b230f4933c0"
+  },
+  "speech-10/pcma-l16-down/clean": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 37.4,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "55948b230f4933c0"
+  },
+  "speech-10/pcma-l16-down/jitter60": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "fc5f8d7ed4679bd5"
+  },
+  "speech-10/pcma-l16-down/loss5": {
+    "level_db": -12.35,
+    "env_r": 0.996,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "27644eb4865e736f"
+  },
+  "speech-10/pcma-l16-up/burst": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "1f1cd769e8c0b3ae"
+  },
+  "speech-10/pcma-l16-up/clean": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 37.4,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "1f1cd769e8c0b3ae"
+  },
+  "speech-10/pcma-l16-up/jitter60": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "8769afe0321c3a4b"
+  },
+  "speech-10/pcma-l16-up/loss5": {
+    "level_db": -12.35,
+    "env_r": 0.996,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "0570df357fcb971b"
+  },
+  "speech-10/pcmu-l16-down/burst": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "0b65344de92875c5"
+  },
+  "speech-10/pcmu-l16-down/clean": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 36.6,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "0b65344de92875c5"
+  },
+  "speech-10/pcmu-l16-down/jitter60": {
+    "level_db": -12.4,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "5b6bd12c63ca0bbf"
+  },
+  "speech-10/pcmu-l16-down/loss5": {
+    "level_db": -12.36,
+    "env_r": 0.996,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "88d6d32beda6f167"
+  },
+  "speech-26/g722-alaw-up/burst": {
+    "level_db": -27.61,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d3f2024fb61f65d7"
+  },
+  "speech-26/g722-alaw-up/clean": {
+    "level_db": -27.61,
+    "env_r": 0.999,
+    "snr_db": 33.7,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "d3f2024fb61f65d7"
+  },
+  "speech-26/g722-alaw-up/jitter60": {
+    "level_db": -27.52,
+    "env_r": 0.988,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "a9c6f2e4b2d24e49"
+  },
+  "speech-26/g722-alaw-up/loss5": {
+    "level_db": -27.64,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "8b1bcfa181dd3eaa"
+  },
+  "speech-26/g722-l16-down/burst": {
+    "level_db": -27.14,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "68115dc9a6204fc0"
+  },
+  "speech-26/g722-l16-down/clean": {
+    "level_db": -27.14,
+    "env_r": 0.998,
+    "snr_db": 45.9,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "68115dc9a6204fc0"
+  },
+  "speech-26/g722-l16-down/jitter60": {
+    "level_db": -27.07,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "2cf22a72b45f573c"
+  },
+  "speech-26/g722-l16-down/loss5": {
+    "level_db": -27.09,
+    "env_r": 0.978,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "f719dcb188e4a207"
+  },
+  "speech-26/g722-l16-up/burst": {
+    "level_db": -27.62,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "6731965f925e64c2"
+  },
+  "speech-26/g722-l16-up/clean": {
+    "level_db": -27.62,
+    "env_r": 0.999,
+    "snr_db": 36.1,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "6731965f925e64c2"
+  },
+  "speech-26/g722-l16-up/jitter60": {
+    "level_db": -27.52,
+    "env_r": 0.988,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "6ff5dd4365c7bcbe"
+  },
+  "speech-26/g722-l16-up/loss5": {
+    "level_db": -27.64,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "9ca18ddeaf72de7e"
+  },
+  "speech-26/g722-pass-down/burst": {
+    "level_db": -26.86,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "c0df3bee371a295f"
+  },
+  "speech-26/g722-pass-down/clean": {
+    "level_db": -26.86,
+    "env_r": 0.998,
+    "snr_db": 45.1,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "c0df3bee371a295f"
+  },
+  "speech-26/g722-pass-down/jitter60": {
+    "level_db": -26.86,
+    "env_r": 0.969,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "03b3d869b6eec6f7"
+  },
+  "speech-26/g722-pass-down/loss5": {
+    "level_db": -26.89,
+    "env_r": 0.895,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "5aa0bb6dedb61592"
+  },
+  "speech-26/pcma-l16-down/burst": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d3129a3f473a5629"
+  },
+  "speech-26/pcma-l16-down/clean": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 36.8,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "d3129a3f473a5629"
+  },
+  "speech-26/pcma-l16-down/jitter60": {
+    "level_db": -27.52,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "99be5de528d66069"
+  },
+  "speech-26/pcma-l16-down/loss5": {
+    "level_db": -27.66,
+    "env_r": 0.992,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "8188fd2c6496d15a"
+  },
+  "speech-26/pcma-l16-up/burst": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "1d6c837696829cd2"
+  },
+  "speech-26/pcma-l16-up/clean": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 36.8,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "1d6c837696829cd2"
+  },
+  "speech-26/pcma-l16-up/jitter60": {
+    "level_db": -27.52,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "db0b42de17e0a222"
+  },
+  "speech-26/pcma-l16-up/loss5": {
+    "level_db": -27.66,
+    "env_r": 0.992,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "b5cb850e146403c7"
+  },
+  "speech-26/pcmu-l16-down/burst": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "2fdfa9e191b79b71"
+  },
+  "speech-26/pcmu-l16-down/clean": {
+    "level_db": -27.63,
+    "env_r": 1,
+    "snr_db": 36.8,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "2fdfa9e191b79b71"
+  },
+  "speech-26/pcmu-l16-down/jitter60": {
+    "level_db": -27.52,
+    "env_r": 0.99,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "972aa160a5edeab2"
+  },
+  "speech-26/pcmu-l16-down/loss5": {
+    "level_db": -27.66,
+    "env_r": 0.992,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "acaf051ae98c0ded"
+  },
+  "speech-36/g722-alaw-up/burst": {
+    "level_db": -37.58,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "593689e04e4399b2"
+  },
+  "speech-36/g722-alaw-up/clean": {
+    "level_db": -37.58,
+    "env_r": 0.998,
+    "snr_db": 32.3,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "593689e04e4399b2"
+  },
+  "speech-36/g722-alaw-up/jitter60": {
+    "level_db": -37.47,
+    "env_r": 0.982,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "3ceb9db6bcb9afce"
+  },
+  "speech-36/g722-alaw-up/loss5": {
+    "level_db": -37.61,
+    "env_r": 0.995,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "a9514411abd7f91e"
+  },
+  "speech-36/g722-l16-down/burst": {
+    "level_db": -38.9,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b05ff372d3d58cc8"
+  },
+  "speech-36/g722-l16-down/clean": {
+    "level_db": -38.9,
+    "env_r": 0.999,
+    "snr_db": 42.2,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "b05ff372d3d58cc8"
+  },
+  "speech-36/g722-l16-down/jitter60": {
+    "level_db": -38.68,
+    "env_r": 0.989,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "74dfabe5f9d923db"
+  },
+  "speech-36/g722-l16-down/loss5": {
+    "level_db": -38.88,
+    "env_r": 0.988,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "a4ded9970c0da90f"
+  },
+  "speech-36/g722-l16-up/burst": {
+    "level_db": -37.59,
+    "env_r": 0.998,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "b03e5363f2bb6e1a"
+  },
+  "speech-36/g722-l16-up/clean": {
+    "level_db": -37.59,
+    "env_r": 0.998,
+    "snr_db": 36,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "b03e5363f2bb6e1a"
+  },
+  "speech-36/g722-l16-up/jitter60": {
+    "level_db": -37.48,
+    "env_r": 0.982,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "92d066eab82be98e"
+  },
+  "speech-36/g722-l16-up/loss5": {
+    "level_db": -37.62,
+    "env_r": 0.995,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "c877c2dc900d830f"
+  },
+  "speech-36/g722-pass-down/burst": {
+    "level_db": -38.5,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "a749f778a10b07b4"
+  },
+  "speech-36/g722-pass-down/clean": {
+    "level_db": -38.5,
+    "env_r": 0.999,
+    "snr_db": 39.9,
+    "delay_ms": 21.38,
+    "concealed": 6,
+    "hash_amd64": "a749f778a10b07b4"
+  },
+  "speech-36/g722-pass-down/jitter60": {
+    "level_db": -38.4,
+    "env_r": 0.966,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "89b737fb1c2b7c3e"
+  },
+  "speech-36/g722-pass-down/loss5": {
+    "level_db": -38.55,
+    "env_r": 0.974,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "08c94002fac50521"
+  },
+  "speech-36/pcma-l16-down/burst": {
+    "level_db": -37.61,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "0cc9486560b346e8"
+  },
+  "speech-36/pcma-l16-down/clean": {
+    "level_db": -37.61,
+    "env_r": 1,
+    "snr_db": 34.1,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "0cc9486560b346e8"
+  },
+  "speech-36/pcma-l16-down/jitter60": {
+    "level_db": -37.49,
+    "env_r": 0.981,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "ceeeda43a242a731"
+  },
+  "speech-36/pcma-l16-down/loss5": {
+    "level_db": -37.64,
+    "env_r": 0.995,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "3329696d10ceca29"
+  },
+  "speech-36/pcma-l16-up/burst": {
+    "level_db": -37.61,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "79a5a3f68d99af49"
+  },
+  "speech-36/pcma-l16-up/clean": {
+    "level_db": -37.61,
+    "env_r": 1,
+    "snr_db": 34.1,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "79a5a3f68d99af49"
+  },
+  "speech-36/pcma-l16-up/jitter60": {
+    "level_db": -37.49,
+    "env_r": 0.981,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "b9a257baded2c209"
+  },
+  "speech-36/pcma-l16-up/loss5": {
+    "level_db": -37.64,
+    "env_r": 0.995,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "8a4345193f8bf09b"
+  },
+  "speech-36/pcmu-l16-down/burst": {
+    "level_db": -37.6,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "21d893955b75efd4"
+  },
+  "speech-36/pcmu-l16-down/clean": {
+    "level_db": -37.6,
+    "env_r": 1,
+    "snr_db": 35.7,
+    "delay_ms": 20,
+    "concealed": 6,
+    "hash_amd64": "21d893955b75efd4"
+  },
+  "speech-36/pcmu-l16-down/jitter60": {
+    "level_db": -37.49,
+    "env_r": 0.98,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "386d0664ed344937"
+  },
+  "speech-36/pcmu-l16-down/loss5": {
+    "level_db": -37.64,
+    "env_r": 0.995,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "1008232e57840c9a"
+  },
+  "tone1k-10/g722-alaw-up/burst": {
+    "level_db": -10.33,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "a6ef0cd52941b2a6"
+  },
+  "tone1k-10/g722-alaw-up/clean": {
+    "level_db": -10.33,
+    "env_r": 1,
+    "snr_db": 39.1,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "a6ef0cd52941b2a6"
+  },
+  "tone1k-10/g722-alaw-up/jitter60": {
+    "level_db": -10.3,
+    "env_r": 0.997,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "b8e776de75574084"
+  },
+  "tone1k-10/g722-alaw-up/loss5": {
+    "level_db": -10.35,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "80a3401bb89e9034"
+  },
+  "tone1k-10/g722-l16-down/burst": {
+    "level_db": -10.37,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d37553dd90a21bae"
+  },
+  "tone1k-10/g722-l16-down/clean": {
+    "level_db": -10.37,
+    "env_r": 1,
+    "snr_db": 39.4,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d37553dd90a21bae"
+  },
+  "tone1k-10/g722-l16-down/jitter60": {
+    "level_db": -10.33,
+    "env_r": 0.997,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "1ea9cd3ab6d86eec"
+  },
+  "tone1k-10/g722-l16-down/loss5": {
+    "level_db": -10.39,
+    "env_r": 0.999,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "2092844d3d02991b"
+  },
+  "tone1k-10/g722-l16-up/burst": {
+    "level_db": -10.36,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "1f5f0f5155450b61"
+  },
+  "tone1k-10/g722-l16-up/clean": {
+    "level_db": -10.36,
+    "env_r": 1,
+    "snr_db": 45.9,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "1f5f0f5155450b61"
+  },
+  "tone1k-10/g722-l16-up/jitter60": {
+    "level_db": -10.34,
+    "env_r": 0.997,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "e5e0ea301628c06f"
+  },
+  "tone1k-10/g722-l16-up/loss5": {
+    "level_db": -10.39,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "dd67fa674d34cf72"
+  },
+  "tone1k-10/g722-pass-down/burst": {
+    "level_db": -10,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d547ecf2cce83976"
+  },
+  "tone1k-10/g722-pass-down/clean": {
+    "level_db": -10,
+    "env_r": 0,
+    "snr_db": 47.4,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "d547ecf2cce83976"
+  },
+  "tone1k-10/g722-pass-down/jitter60": {
+    "level_db": -10.11,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "ec6556a2716c784d"
+  },
+  "tone1k-10/g722-pass-down/loss5": {
+    "level_db": -10.22,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "78bc23179f3953d1"
+  },
+  "tone1k-10/pcma-l16-down/burst": {
+    "level_db": -10.33,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "0e763c92645ec336"
+  },
+  "tone1k-10/pcma-l16-down/clean": {
+    "level_db": -10.33,
+    "env_r": -0,
+    "snr_db": 40.3,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "0e763c92645ec336"
+  },
+  "tone1k-10/pcma-l16-down/jitter60": {
+    "level_db": -10.3,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "fbcd9d54dbb17a6a"
+  },
+  "tone1k-10/pcma-l16-down/loss5": {
+    "level_db": -10.36,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "85662cf911f53d22"
+  },
+  "tone1k-10/pcma-l16-up/burst": {
+    "level_db": -10.33,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "7ce911a91a07d406"
+  },
+  "tone1k-10/pcma-l16-up/clean": {
+    "level_db": -10.33,
+    "env_r": -0,
+    "snr_db": 40.3,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "7ce911a91a07d406"
+  },
+  "tone1k-10/pcma-l16-up/jitter60": {
+    "level_db": -10.31,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "1a4e8a53c47e5860"
+  },
+  "tone1k-10/pcma-l16-up/loss5": {
+    "level_db": -10.36,
+    "env_r": -0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "0a36f97c9e2fb33e"
+  },
+  "tone1k-10/pcmu-l16-down/burst": {
+    "level_db": -10.31,
+    "env_r": 1,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "3eaa044871b941c2"
+  },
+  "tone1k-10/pcmu-l16-down/clean": {
+    "level_db": -10.31,
+    "env_r": 1,
+    "snr_db": 40.9,
+    "delay_ms": 0,
+    "concealed": 6,
+    "hash_amd64": "3eaa044871b941c2"
+  },
+  "tone1k-10/pcmu-l16-down/jitter60": {
+    "level_db": -10.29,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 10,
+    "hash_amd64": "27df5ebc0adb598e"
+  },
+  "tone1k-10/pcmu-l16-down/loss5": {
+    "level_db": -10.34,
+    "env_r": 0,
+    "snr_db": 0,
+    "delay_ms": 0,
+    "concealed": 13,
+    "hash_amd64": "f97f9fe9fec16c37"
+  }
+}

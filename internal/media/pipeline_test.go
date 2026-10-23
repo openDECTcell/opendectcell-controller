@@ -61,17 +61,19 @@ func (l *fakeLeg) decoded(c *codec.Codec) []int16 {
 // the input leg's codec every 20 ms, delivered with the given network
 // behaviour, and the pipeline ticks every 10 ms.
 type sim struct {
-	t      *testing.T
-	p      *Pipeline
-	sip    *fakeLeg
-	cell   *fakeLeg
-	start  time.Time
-	loss   float64       // probability a packet is lost
-	jitter time.Duration // uniform extra delay, 0..jitter
-	rng    *rand.Rand
-	sipPT  uint8
-	cellPT uint8
-	plan   Plan
+	t        *testing.T
+	p        *Pipeline
+	sip      *fakeLeg
+	cell     *fakeLeg
+	start    time.Time
+	loss     float64       // probability a packet is lost
+	lossRun  int           // with lossProb: losses come in runs of this length
+	lossProb float64       // probability a run starts
+	jitter   time.Duration // uniform extra delay, 0..jitter
+	rng      *rand.Rand
+	sipPT    uint8
+	cellPT   uint8
+	plan     Plan
 }
 
 func newSim(t *testing.T, plan Plan, events EventSender) *sim {
@@ -102,9 +104,17 @@ func (s *sim) run(fromCell bool, in *codec.Codec, src []int16) {
 	if fromCell {
 		pt = s.cellPT
 	}
+	run := 0 // packets left in a burst loss
 	for i := 0; i+n <= len(src); i += n {
 		k := i / n
 		payload := enc.Encode(nil, src[i:i+n])
+		if s.lossRun > 0 && run == 0 && s.rng.Float64() < s.lossProb {
+			run = s.lossRun
+		}
+		if run > 0 {
+			run--
+			continue
+		}
 		if s.rng.Float64() < s.loss {
 			continue
 		}
