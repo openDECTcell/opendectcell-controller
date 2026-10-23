@@ -5,7 +5,10 @@ package codec
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"testing"
+
+	"github.com/gotranspile/g722"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/media/quality"
 )
@@ -151,5 +154,21 @@ func TestCodecArithmetic(t *testing.T) {
 	}
 	if c, err := ByName("G722"); err != nil || c != G722 {
 		t.Error("ByName(G722)")
+	}
+}
+
+// A talker who clips at full scale overloads the G.722 encoder without
+// the headroom limit (3.5 dB SNR); with it, what remains is the source's
+// own clipping.
+func TestG722Overload(t *testing.T) {
+	x := quality.SpeechLike(-10, 16000, 32000, 5) // peaks clip at ±32767
+	y := G722.NewDecoder().Decode(nil, G722.NewEncoder().Encode(nil, x))
+	if snr := quality.SNR(x, y, 22); snr < 20 {
+		t.Errorf("clipping talker through G.722: SNR %.1f dB, want ≥ 20", snr)
+	}
+	// Below the limit nothing changes.
+	z := quality.Sine(1000, -3, 16000, 3200)
+	if !slices.Equal(G722.NewEncoder().Encode(nil, z), g722.Encode(z, g722.Rate64000, 0)) {
+		t.Error("the limit changed a signal below it")
 	}
 }
