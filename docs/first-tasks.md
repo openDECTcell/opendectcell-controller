@@ -179,11 +179,18 @@ the maintainers' notes):
 | B3 Migrations and configuration | **Done** | `internal/db`, `internal/config`, `docs/configuration.md` |
 | B4 Authentication | **Done** | `internal/auth` (local + OIDC), `internal/web` |
 | B5 Audit log | **Done** | `internal/audit`; append-only by trigger |
+| C5.1 Media facts | **Done** | `voip-requirements.md` §5, `cell-protocol.md` §8.2: per-direction formats; HELLO tag 16 and MEDIA_OPEN tag 13 asked in openDECTcell#82 |
+| C5.2 Audio pipeline | **Done** (no hardware) | `internal/media`, `docs/media-engine.md` |
+| C5.3 Call quality | **Done** (no call writes it yet: C3) | `media.Summarise`, `internal/calllog`, `/admin/calls` |
+| C5.4 Wideband as a capability | **Done** | `media.Choose`, `CellCaps.Wideband` |
+| C5.5 Regression corpus | **Done** | `internal/media/corpus_test.go`, its own CI step |
 
 Per `AGENTS.md` §10, the next task is chosen by the maintainers.
 *2026-10-22:* they did, in opendectcell-controller#46: C0 leftovers, C1, C4, C6/C7,
 and C2 except the mail tunnel; the libopendectcell integration is frozen until
 openDECTcell#67–#70 land.
+*2026-10-23:* C5, the media engine (the maintainers' notes), done as above; the next
+choice is the maintainers' again.
 
 ### Part A — C0 design
 

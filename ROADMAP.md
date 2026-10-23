@@ -46,10 +46,11 @@ measured so far and what is still unknown.
 - [ ] Dual-ring policy (call waiting vs busy) and outgoing line selection (CAT-iq line id or prefix)
 
 ## C5: Media engine
-- [ ] Cell audio ↔ RTP bridge, jitter buffer, PLC
-- [ ] G.711 and G.722 transcoding; SRTP on the cell link
-- [ ] Call quality statistics (RTCP)
-- [ ] **[hw]** End-to-end call: handset ↔ cell ↔ controller ↔ PBX
+- [x] Cell audio ↔ RTP bridge, jitter buffer, PLC (`internal/media`, `docs/media-engine.md`; not yet driven by C3)
+- [x] G.711 and G.722 transcoding; SRTP on the cell link; wideband as a capability the cell reports
+- [x] Call quality statistics (RTCP), per leg, in `call_log` and on `/admin/calls`
+- [x] Regression corpus in CI
+- [ ] **[hw]** End-to-end call: handset ↔ cell ↔ controller ↔ PBX (needs C3)
 
 ## C6: Web UI (user)
 - [ ] Handset list and registration flow
