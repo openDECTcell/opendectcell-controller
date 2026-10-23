@@ -189,6 +189,11 @@ func runCase(t *testing.T, sig corpusSignal, path corpusPath, nw corpusNet) (cor
 }
 
 func TestCorpus(t *testing.T) {
+	if raceDetector {
+		// It runs on one goroutine, so the detector finds nothing, and it is
+		// ten times slower; CI runs it in a step of its own without -race.
+		t.Skip("the corpus does not run under -race")
+	}
 	golden := map[string]corpusResult{}
 	if b, err := os.ReadFile(goldenPath); err == nil {
 		if err := json.Unmarshal(b, &golden); err != nil {

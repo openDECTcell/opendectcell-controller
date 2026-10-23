@@ -91,6 +91,9 @@ jobs:
           else
             go test -race -count=1 $(go list ./... | grep -v /dect/cdect)
           fi
+      - name: Media regression corpus
+        # Skipped under -race (single goroutine, ten times slower).
+        run: go test -count=1 -run Corpus ./internal/media/
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/...
 
