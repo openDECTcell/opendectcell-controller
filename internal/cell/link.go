@@ -101,6 +101,11 @@ type Status struct {
 	Resumes     int
 	Supersedes  int
 	LastGoodbye string
+	// Audio as announced in HELLO (cell-protocol.md §8.2), for the media
+	// engine: formats accepted (downlink) and sent (uplink), preferred
+	// first, and the host audio endpoints per bandwidth.
+	AudioDown, AudioUp     []uint8
+	CapAudioNB, CapAudioWB uint8
 }
 
 // Health classifies the RTT as in §2 rule 5.
@@ -699,6 +704,11 @@ func (s *Server) attach(ss *session, h wire.HelloMsg) (resumed bool, token [16]b
 	st.Online, st.Since, st.RemoteAddr, st.SWVersion = true, time.Now(), ss.addr.String(), h.SWVersion
 	st.RadioState = h.RadioState
 	st.ChipEpoch = h.ChipEpoch
+	st.AudioDown, st.AudioUp = h.AudioFormats, h.AudioFormatsUp
+	if st.AudioUp == nil {
+		st.AudioUp = h.AudioFormats // tag 16 absent: the same list
+	}
+	st.CapAudioNB, st.CapAudioWB = h.CapAudioNB, h.CapAudioWB
 	rec.status = st
 	return resumed, token, nil
 }

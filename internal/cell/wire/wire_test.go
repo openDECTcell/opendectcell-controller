@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net/netip"
 	"reflect"
 	"testing"
 )
@@ -94,7 +95,7 @@ func TestTLV(t *testing.T) {
 func TestHelloRoundTrip(t *testing.T) {
 	m := HelloMsg{Major: 1, Minor: 0, SWVersion: "dect-stubd 0.9", HWModel: "FRITZ!Box 7520",
 		BootID: [16]byte{1, 2, 3}, ChipEpoch: 2, Capabilities: CapMail | CapMedia | CapSRTP | CapStats,
-		CapSubRecords: 6, CapRadioContexts: 6, CapAudioNB: 4, CapAudioWB: 4, AudioFormats: []uint8{3, 6},
+		CapSubRecords: 6, CapRadioContexts: 6, CapAudioNB: 4, CapAudioWB: 0, AudioFormats: []uint8{1}, AudioFormatsUp: []uint8{3, 1},
 		ResumeToken: bytes.Repeat([]byte{7}, 16), RadioState: 1, CellTimeMs: 1761134400000}
 	got, err := DecodeHello(m.Encode())
 	if err != nil {
@@ -102,6 +103,13 @@ func TestHelloRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, m) {
 		t.Errorf("got %+v\nwant %+v", got, m)
+	}
+	if _, err := DecodeHello(new(Builder).Bytes(0, nil).Build()); err == nil {
+		t.Error("empty HELLO accepted")
+	}
+	bad := append(m.Encode(), 16, 0, 0) // tag 16, length 0
+	if _, err := DecodeHello(bad); !errors.Is(err, ErrMalformed) {
+		t.Errorf("empty audio_formats_up: %v", err)
 	}
 	m.AudioFormats = nil
 	if _, err := DecodeHello(m.Encode()); !errors.Is(err, ErrMalformed) {
@@ -173,4 +181,29 @@ func FuzzReadFrameAndTLV(f *testing.F) {
 			_, _ = DecodeStats(fr.Body)
 		}
 	})
+}
+
+func TestMediaOpenRoundTrip(t *testing.T) {
+	for _, m := range []MediaOpenMsg{
+		{MediaID: 1, AudioChannel: 1, Format: FormatL16_8k, PayloadType: 96, CtlAddr: netip.MustParseAddrPort("192.0.2.1:40000"),
+			SSRCUp: 5, SSRCDown: 6, SRTPProfile: SRTPAES128SHA80, KeyUp: bytes.Repeat([]byte{1}, 30), KeyDown: bytes.Repeat([]byte{2}, 30)},
+		{MediaID: 2, AudioChannel: 1, Format: FormatL16_8k, FormatUp: FormatPCMA, PtimeMs: 20, PayloadType: 96,
+			CtlAddr: netip.MustParseAddrPort("[2001:db8::1]:40002"), SSRCUp: 7, SSRCDown: 8, SRTPProfile: SRTPNone, DSCP: 46},
+	} {
+		got, err := DecodeMediaOpen(m.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, m) {
+			t.Errorf("got %+v\nwant %+v", got, m)
+		}
+	}
+	m := MediaOpenMsg{Format: FormatL16_8k}
+	if m.Uplink() != FormatL16_8k {
+		t.Error("absent format_up is not the downlink format")
+	}
+	short := MediaOpenMsg{MediaID: 1, Format: 1, CtlAddr: netip.MustParseAddrPort("192.0.2.1:1"), SRTPProfile: SRTPAEAD128GCM, KeyUp: make([]byte, 30), KeyDown: make([]byte, 30)}
+	if _, err := DecodeMediaOpen(short.Encode()); !errors.Is(err, ErrMalformed) {
+		t.Errorf("GCM with 30-octet keys: %v", err)
+	}
 }

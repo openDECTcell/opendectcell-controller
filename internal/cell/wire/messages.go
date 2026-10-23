@@ -5,6 +5,7 @@ package wire
 import (
 	"encoding/binary"
 	"fmt"
+	"net/netip"
 )
 
 // ProtoMajor and ProtoMinor are the protocol version this package speaks.
@@ -69,8 +70,9 @@ type HelloMsg struct {
 	CapRadioContexts uint8
 	CapAudioNB       uint8
 	CapAudioWB       uint8
-	AudioFormats     []uint8
-	ResumeToken      []byte // nil or 16 bytes
+	AudioFormats     []uint8 // tag 12: what the cell accepts (downlink), preferred first
+	AudioFormatsUp   []uint8 // tag 16: what it sends (uplink); nil = same as AudioFormats
+	ResumeToken      []byte  // nil or 16 bytes
 	RadioState       uint8
 	CellTimeMs       uint64 // 0 if absent
 }
@@ -94,6 +96,9 @@ func (m HelloMsg) Encode() []byte {
 	w.U8(14, m.RadioState)
 	if m.CellTimeMs != 0 {
 		w.U64(15, m.CellTimeMs)
+	}
+	if len(m.AudioFormatsUp) > 0 {
+		w.Bytes(16, m.AudioFormatsUp)
 	}
 	return w.Build()
 }
@@ -154,6 +159,12 @@ func DecodeHello(b []byte) (HelloMsg, error) {
 		if m.CellTimeMs, err = t.U64(15); err != nil {
 			return m, err
 		}
+	}
+	if f, ok := t.Get(16); ok {
+		if len(f) == 0 || len(f) > 16 {
+			return m, fmt.Errorf("%w: audio_formats_up must list 1 to 16 formats", ErrMalformed)
+		}
+		m.AudioFormatsUp = append([]uint8(nil), f...)
 	}
 	return m, nil
 }
@@ -614,3 +625,124 @@ const (
 	FormatG722    uint8 = 6
 	FormatG726_32 uint8 = 7 // reserved; unverified until a real G.726 call is measured
 )
+
+// SRTP profiles on the cell link (§8.1 MEDIA_OPEN tag 9).
+const (
+	SRTPNone        uint8 = 0
+	SRTPAES128SHA80 uint8 = 1 // AES_CM_128_HMAC_SHA1_80: 16-octet key ‖ 14-octet salt
+	SRTPAEAD128GCM  uint8 = 2 // AEAD_AES_128_GCM: 16-octet key ‖ 12-octet salt
+)
+
+// SRTPKeyLen is the master key ‖ salt length of a profile, 0 if unknown.
+func SRTPKeyLen(profile uint8) int {
+	switch profile {
+	case SRTPAES128SHA80:
+		return 30
+	case SRTPAEAD128GCM:
+		return 28
+	}
+	return 0
+}
+
+// MediaOpenMsg is MEDIA_OPEN (§8.1). FormatUp 0 means the same as Format.
+type MediaOpenMsg struct {
+	MediaID      uint32
+	AudioChannel uint8
+	Format       uint8 // downlink, and uplink unless FormatUp is set
+	FormatUp     uint8 // tag 13, proposed (opendectcell#82)
+	PtimeMs      uint8 // 0 = default 20
+	PayloadType  uint8
+	CtlAddr      netip.AddrPort
+	SSRCUp       uint32
+	SSRCDown     uint32
+	SRTPProfile  uint8
+	KeyUp        []byte
+	KeyDown      []byte
+	DSCP         uint8 // 0 = default 46
+}
+
+// Uplink is the format the cell sends.
+func (m MediaOpenMsg) Uplink() uint8 {
+	if m.FormatUp != 0 {
+		return m.FormatUp
+	}
+	return m.Format
+}
+
+func (m MediaOpenMsg) Encode() []byte {
+	w := new(Builder).U32(1, m.MediaID).U8(2, m.AudioChannel).U8(3, m.Format)
+	if m.PtimeMs != 0 {
+		w.U8(4, m.PtimeMs)
+	}
+	w.U8(5, m.PayloadType)
+	a := m.CtlAddr.Addr().Unmap()
+	fam := []byte{4}
+	if a.Is6() {
+		fam = []byte{6}
+	}
+	addr := append(append(fam, a.AsSlice()...), byte(m.CtlAddr.Port()>>8), byte(m.CtlAddr.Port()))
+	w.Bytes(6, addr).U32(7, m.SSRCUp).U32(8, m.SSRCDown).U8(9, m.SRTPProfile)
+	if m.SRTPProfile != SRTPNone {
+		w.Bytes(10, m.KeyUp).Bytes(11, m.KeyDown)
+	}
+	if m.DSCP != 0 {
+		w.U8(12, m.DSCP)
+	}
+	if m.FormatUp != 0 && m.FormatUp != m.Format {
+		w.U8(13, m.FormatUp)
+	}
+	return w.Build()
+}
+
+func DecodeMediaOpen(b []byte) (MediaOpenMsg, error) {
+	var m MediaOpenMsg
+	t, err := ParseTLV(b)
+	if err != nil {
+		return m, err
+	}
+	if m.MediaID, err = t.U32(1); err != nil {
+		return m, err
+	}
+	for tag, p := range map[uint8]*uint8{2: &m.AudioChannel, 3: &m.Format, 5: &m.PayloadType, 9: &m.SRTPProfile} {
+		if *p, err = t.U8(tag); err != nil {
+			return m, err
+		}
+	}
+	for tag, p := range map[uint8]*uint8{4: &m.PtimeMs, 12: &m.DSCP, 13: &m.FormatUp} {
+		if t.Has(tag) {
+			if *p, err = t.U8(tag); err != nil {
+				return m, err
+			}
+		}
+	}
+	a, ok := t.Get(6)
+	switch {
+	case !ok:
+		return m, fmt.Errorf("%w: no ctl_addr", ErrMalformed)
+	case len(a) == 7 && a[0] == 4:
+		m.CtlAddr = netip.AddrPortFrom(netip.AddrFrom4([4]byte(a[1:5])), uint16(a[5])<<8|uint16(a[6]))
+	case len(a) == 19 && a[0] == 6:
+		m.CtlAddr = netip.AddrPortFrom(netip.AddrFrom16([16]byte(a[1:17])), uint16(a[17])<<8|uint16(a[18]))
+	default:
+		return m, fmt.Errorf("%w: bad ctl_addr", ErrMalformed)
+	}
+	if m.SSRCUp, err = t.U32(7); err != nil {
+		return m, err
+	}
+	if m.SSRCDown, err = t.U32(8); err != nil {
+		return m, err
+	}
+	if m.SRTPProfile != SRTPNone {
+		n := SRTPKeyLen(m.SRTPProfile)
+		if n == 0 {
+			return m, fmt.Errorf("%w: unknown SRTP profile %d", ErrMalformed, m.SRTPProfile)
+		}
+		if m.KeyUp, err = t.Fixed(10, n); err != nil {
+			return m, err
+		}
+		if m.KeyDown, err = t.Fixed(11, n); err != nil {
+			return m, err
+		}
+	}
+	return m, nil
+}
