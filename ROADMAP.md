@@ -31,6 +31,7 @@ measured so far and what is still unknown.
 - [x] Enrollment: one-time tokens, CSR, certificate issuing, admin approval
 - [x] mTLS control channel, heartbeat, reconnect, cell status (CA rotation and expiry warnings still open)
 - [ ] Mail tunnel to/from `dect-stubd` (cell mode in openDECTcell M9)
+- [ ] **Diagnostics transport**: carry the cell's `dect_diag` (per handset: identity, subscription slot and whether the chip really holds it, in range / connected, model, field strength, signal quality, slot type, time slot, carrier, codec, encryption; per base: RFPI, radio state, dummy-bearer slot, carrier, power). `docs/cell-protocol.md` has no diagnostics message today and needs one. See `../opendectcell/docs/diagnostics.md` for the field list and which parts are blocked upstream.
 - [ ] **[hw]** One cell connected and reporting status
 
 ## C3: DECT core
@@ -49,6 +50,7 @@ measured so far and what is still unknown.
 - [x] Cell audio ↔ RTP bridge, jitter buffer, PLC (`internal/media`, `docs/media-engine.md`; not yet driven by C3)
 - [x] G.711 and G.722 transcoding; SRTP on the cell link; wideband as a capability the cell reports
 - [x] Call quality statistics (RTCP), per leg, in `call_log` and on `/admin/calls`
+- [ ] **Join the DECT-side quality to the RTP-side quality.** RTCP covers controller↔PBX; it says nothing about the air. A call that sounded bad because the handset was at the edge of range looks identical in RTCP to one that sounded bad because of packet loss, and the two have opposite fixes. Needs the C2 diagnostics transport.
 - [x] Regression corpus in CI
 - [ ] **[hw]** End-to-end call: handset ↔ cell ↔ controller ↔ PBX (needs C3)
 
@@ -61,6 +63,11 @@ measured so far and what is still unknown.
 - [ ] Cells: status, enrollment, policy "who may add cells"
 - [ ] Statistics, call log, logs
 - [ ] User and role management
+- [ ] **DECT diagnostics across cells.** The single-cell view is the LuCI page in openDECTcell M9; this is what one cell cannot see:
+  - **which cell a handset is on**, and its field strength there — the input to any future roaming decision (C9)
+  - **history**: per-call quality in `call_log`, so "it was bad last Tuesday" is answerable rather than a shrug
+  - **alerting**: a handset whose subscription audit fails on its cell, or that has not been seen for *n* hours, is a support call waiting to happen. Both are things the cell knows and nobody currently asks it
+  - rationale and field list: `../opendectcell/docs/diagnostics.md`
 
 ## C8: Release 1.0
 - [ ] Interop matrix: Asterisk, FreeSWITCH, 3CX, FRITZ!Box registrar, one public provider
