@@ -10,6 +10,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
@@ -67,8 +68,13 @@ func (s *Server) Handler() (http.Handler, error) {
 	t, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.Local().Format("2006-01-02 15:04:05") },
 		"ms":      func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) + " ms" },
-		"join":    strings.Join,
-		"list":    func(xs ...string) []string { return xs },
+		"dur": func(d time.Duration) string {
+			return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+		},
+		"f1":    func(f float64) string { return strconv.FormatFloat(f, 'f', 1, 64) },
+		"deref": func(b *bool) bool { return b != nil && *b },
+		"join":  strings.Join,
+		"list":  func(xs ...string) []string { return xs },
 		"fieldErr": func(m map[string]string, k string) string {
 			if m == nil {
 				return ""
@@ -116,6 +122,7 @@ func (s *Server) routes() {
 
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
+	s.mux.Handle("GET /admin/calls", s.requireAdmin(s.adminCalls))
 	s.cellRoutes()
 	s.sipRoutes()
 	s.userRoutes()

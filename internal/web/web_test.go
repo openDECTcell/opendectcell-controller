@@ -168,7 +168,7 @@ func TestLocalLoginFlow(t *testing.T) {
 	}
 
 	// A user does not see admin pages, and cannot tell they exist.
-	for _, p := range []string{"/admin/users", "/admin/audit"} {
+	for _, p := range []string{"/admin/users", "/admin/audit", "/admin/calls"} {
 		if resp, _ := e.get(t, c, p); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("user on %s: %d", p, resp.StatusCode)
 		}

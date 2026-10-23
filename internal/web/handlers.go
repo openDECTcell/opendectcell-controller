@@ -10,6 +10,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
 )
 
 // page is what every template receives.
@@ -231,4 +232,28 @@ func (s *Server) adminAudit(w http.ResponseWriter, r *http.Request, u *auth.User
 		d.NextBefore = rows[len(rows)-1].ID
 	}
 	s.render(w, http.StatusOK, "admin_audit.html", page{Title: "Audit log", User: u, Data: d})
+}
+
+type callsData struct {
+	Rows       []calllog.Call
+	NextBefore int64
+}
+
+// adminCalls lists recent calls with their media quality on both legs
+// (docs/media-engine.md §7).
+func (s *Server) adminCalls(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	f := calllog.Filter{Limit: 100}
+	if b, err := strconv.ParseInt(r.FormValue("before"), 10, 64); err == nil {
+		f.Before = b
+	}
+	rows, err := (&calllog.Store{Pool: s.Pool}).List(r.Context(), f)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	d := callsData{Rows: rows}
+	if len(rows) == f.Limit {
+		d.NextBefore = rows[len(rows)-1].ID
+	}
+	s.render(w, http.StatusOK, "admin_calls.html", page{Title: "Calls", User: u, Data: d})
 }
