@@ -29,8 +29,11 @@ type Codec struct {
 	ClockRate  int    // of the RTP timestamp; 8000 for G.722 (RFC 3551 §4.5.2)
 	// BitsPerSample is the payload size per audio sample.
 	BitsPerSample int
-	newEnc        func() Encoder
-	newDec        func() Decoder
+	// Stateful codecs (G.722) have adaptive state that the far decoder
+	// tracks, so a bitstream cannot be spliced from two encoders.
+	Stateful bool
+	newEnc   func() Encoder
+	newDec   func() Decoder
 }
 
 // NewEncoder returns a fresh encoder.
@@ -59,7 +62,7 @@ func (c *Codec) String() string { return c.Name }
 var (
 	PCMA   = &Codec{Name: "PCMA", SampleRate: 8000, ClockRate: 8000, BitsPerSample: 8, newEnc: func() Encoder { return alawEnc{} }, newDec: func() Decoder { return alawDec{} }}
 	PCMU   = &Codec{Name: "PCMU", SampleRate: 8000, ClockRate: 8000, BitsPerSample: 8, newEnc: func() Encoder { return ulawEnc{} }, newDec: func() Decoder { return ulawDec{} }}
-	G722   = &Codec{Name: "G722", SampleRate: 16000, ClockRate: 8000, BitsPerSample: 4, newEnc: newG722Enc, newDec: newG722Dec}
+	G722   = &Codec{Name: "G722", SampleRate: 16000, ClockRate: 8000, BitsPerSample: 4, Stateful: true, newEnc: newG722Enc, newDec: newG722Dec}
 	L16    = &Codec{Name: "L16", SampleRate: 8000, ClockRate: 8000, BitsPerSample: 16, newEnc: func() Encoder { return l16{} }, newDec: func() Decoder { return l16{} }}
 	L16_16 = &Codec{Name: "L16/16000", SampleRate: 16000, ClockRate: 16000, BitsPerSample: 16, newEnc: func() Encoder { return l16{} }, newDec: func() Decoder { return l16{} }}
 )

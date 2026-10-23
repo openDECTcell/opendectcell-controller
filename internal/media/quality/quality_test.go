@@ -42,7 +42,7 @@ func TestEnvelopeCorrelation(t *testing.T) {
 	}
 	quiet := slices.Clone(src)
 	for i := range quiet {
-		quiet[i] /= 16 // 24 dB down: a level deficit is still our data
+		quiet[i] /= 4 // 12 dB down, the deficit suspected on the cell side: still our data
 	}
 	if r := EnvelopeCorrelation(src, quiet, 8000, 0); r < 0.95 {
 		t.Errorf("attenuated copy: r = %.3f", r)

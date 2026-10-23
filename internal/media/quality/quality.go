@@ -65,13 +65,18 @@ func BestSNR(ref, got []int16, maxLag int) (snr float64, lag int) {
 	return snr, lag
 }
 
-// Envelope is the loudness in dB of consecutive windows of win samples.
-// Silence is floored at -100 dB so that it still correlates.
+// EnvelopeFloor is the lowest level an envelope records, in dBFS. Below it
+// is silence for telephony purposes, and a codec's idle noise (A-law decodes
+// silence to ±8, about -72 dBFS) must not count as a difference from a
+// digitally silent source.
+const EnvelopeFloor = -60.0
+
+// Envelope is the loudness in dBFS of consecutive windows of win samples,
+// floored at EnvelopeFloor.
 func Envelope(x []int16, win int) []float64 {
 	env := make([]float64, 0, len(x)/win)
 	for i := 0; i+win <= len(x); i += win {
-		r := RMS(x[i : i+win])
-		env = append(env, 20*math.Log10(max(r, 1e-5)))
+		env = append(env, max(DBFS(x[i:i+win]), EnvelopeFloor))
 	}
 	return env
 }

@@ -357,6 +357,14 @@ func (e *Endpoint) Write(pt uint8, payload []byte, samples uint32, marker bool) 
 	return err
 }
 
+// Skip advances the timestamp by samples without sending, for time in which
+// the media engine has nothing to send (a lost packet it forwards untouched).
+func (e *Endpoint) Skip(samples uint32) {
+	e.mu.Lock()
+	e.ts += samples
+	e.mu.Unlock()
+}
+
 func (e *Endpoint) writeLocked(pt uint8, payload []byte, ts uint32, marker bool) error {
 	if e.closed {
 		return net.ErrClosed
