@@ -22,7 +22,7 @@
 | **DECT core** | `libopendectcell` instances: DLC links, LCE/MM/CC per handset, the registration window (PIN), authentication and ciphering, idle-roaming bookkeeping (which cell last saw the handset) |
 | **Feature framework** | Optional DECT features per handset model (see `dect-features.md`) |
 | **SIP stack** | One UA per handset line (≤ 2 per handset): registration, calls, MWI subscription, encryption (see `voip-requirements.md`) |
-| **Media engine** | Audio bridging cell ↔ RTP: jitter buffer, pass-through or transcoding between the cell-link codec (G.722 or A-law) and the SIP codec, SRTP, statistics |
+| **Media engine** | Audio bridging cell ↔ RTP: jitter buffer, pass-through or transcoding between the cell-link format (per direction and per cell: L16 8 kHz today, G.722 if a cell reports it) and the SIP codec (`media-engine.md`), SRTP, statistics |
 | **Database** | Users, handsets, SIP accounts, cells, call log and statistics (secrets encrypted) |
 | **Web/API** | Users manage their handsets and accounts; admins see stats, logs and cells and manage policies. REST/JSON API used by the web frontend |
 | **Auth** | Local accounts plus OIDC (Authentik and others); roles `admin`, `user`; optional per-user permission "may add cells" |
@@ -47,7 +47,7 @@
   - tunnelled STUB mails (opaque, length-prefixed)
   - cell management (hello, version, config, heartbeat, status, statistics)
   - media session setup, including SRTP keys
-- **Audio: UDP**, one flow per active call. RTP framing, carrying G.722 (wideband) or A-law (narrowband) as the chip delivers it (`cell-protocol.md` §8.2). Encrypted with **SRTP** (keys exchanged over the TLS control channel) or DTLS. Plain RTP only on trusted LANs, by explicit admin choice.
+- **Audio: UDP**, one flow per active call. RTP framing, in the format the cell reports for each direction: L16 at 8 kHz for narrowband, G.722 for wideband if the cell can carry it (`cell-protocol.md` §8.2). Encrypted with **SRTP** (keys exchanged over the TLS control channel) or DTLS. Plain RTP only on trusted LANs, by explicit admin choice.
 - **Enrollment:**
   1. An admin (or a permitted user) creates a one-time token in the web UI.
   2. The cell sends the token together with its certificate signing request.

@@ -64,7 +64,7 @@ Priority: **M** = must have for 1.0, **S** = should have, **L** = later or optio
 
 | Item | Prio | Notes |
 |---|---|---|
-| **G.722** (wideband) | M | Matches DECT wideband (CAT-iq). The cell delivers the coded G.722 stream itself, so a G.722 SIP call needs no transcoding (`cell-protocol.md` §8.2) |
+| **G.722** (wideband) | M | Matches DECT wideband (CAT-iq). On the SIP side it is always offered. Whether the **cell link** can carry G.722 is a property each cell reports, not an assumption: on current cells it is unproven and may never work (`cell-protocol.md` §8.2), and then a G.722 SIP call is transcoded to narrowband |
 | **G.711 A-law / µ-law** | M | Narrowband baseline |
 | Opus | L | Optional, at extra CPU cost |
 | G.729 | L | Licensing is no longer an issue, but it adds little value; only if demanded |
@@ -76,7 +76,14 @@ Priority: **M** = must have for 1.0, **S** = should have, **L** = later or optio
 | DSCP marking: EF for RTP, CS3/AF31 for SIP | S | Configurable |
 | Call statistics: MOS estimate, jitter, loss (RTCP) | S | For the admin UI |
 
-The cell link carries G.722 for wideband calls and A-law for narrowband ones (`cell-protocol.md` §8.2, measured at openDECTcell G7). The controller passes the stream through when the SIP side negotiated the same codec, and transcodes otherwise (for example G.722 ↔ G.711 when the SIP peer offers no G.722). The cell never transcodes.
+The cell link's audio format is **per direction and per cell** (`cell-protocol.md` §8.2), and the media engine is told it, never assumes it:
+
+| Call | Air codec | Downlink (controller → handset) | Uplink (handset → controller) |
+|---|---|---|---|
+| Narrowband | G.726 32 kbit/s, encoded by the chip | **L16, 8 kHz** (format 1), measured 2026-10-23 | **not yet measured**; L16 8 kHz is the leading candidate, A-law the fallback. Taken from what the cell reports |
+| Wideband | G.722 | G.722 (format 6), *if* the cell reports it. The chip has no G.722 encoder, so the controller supplies the octets | G.722 (format 6), if reported |
+
+The controller passes the stream through when the SIP side negotiated the same codec and the cell reports it in both directions, and transcodes otherwise (for example G.722 on the SIP side ↔ L16 8 kHz on a narrowband-only cell). The cell never transcodes. A narrowband call shows no HD symbol on the handset; that is correct, not a defect.
 
 ## 6. DTMF
 
