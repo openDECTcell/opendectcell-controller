@@ -180,3 +180,56 @@ func TestPortsExhaust(t *testing.T) {
 	b.Close()
 	c.Close()
 }
+
+// Both ends exchange reports: the receiver's report about our stream comes
+// back with the loss we caused and a round-trip time, plain and with SRTCP.
+func TestRTCP(t *testing.T) {
+	for _, suite := range []string{"", "AES_CM_128_HMAC_SHA1_80"} {
+		a, b := pair(t, suite)
+		for i := 0; i < 50; i++ {
+			if i == 20 || i == 30 {
+				a.mu.Lock()
+				a.seq++ // a packet that never leaves: the peer sees a gap
+				a.mu.Unlock()
+				continue
+			}
+			if err := a.Write(8, make([]byte, 160), 160, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for i := 0; i < 48; i++ {
+			if _, err := b.Read(time.Now().Add(time.Second)); err != nil {
+				t.Fatalf("%q read: %v", suite, err)
+			}
+		}
+		if s := b.Stats().Received; s.Lost != 2 || s.Received != 47 {
+			t.Errorf("%q: receiver stats %+v", suite, s)
+		}
+		// a sends an SR; once b has it, b's RR carries LSR/DLSR back.
+		if err := a.SendReport(); err != nil {
+			t.Fatal(err)
+		}
+		// b reports until one of its reports carries the SR's timestamp.
+		waitFor(t, func() bool {
+			if err := b.SendReport(); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(20 * time.Millisecond)
+			return a.Stats().Peer.RTT > 0
+		})
+		p := a.Stats().Peer
+		if p.Lost != 2 || p.RTT <= 0 || p.RTT > time.Second {
+			t.Errorf("%q: peer report %+v", suite, p)
+		}
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if cond() {
+			return
+		}
+	}
+	t.Fatal("timed out")
+}

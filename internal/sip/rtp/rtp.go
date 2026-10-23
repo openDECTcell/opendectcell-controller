@@ -3,6 +3,10 @@
 // Package rtp is the SIP side's media endpoint: one RTP/SRTP socket pair per
 // call, symmetric RTP (RFC 4961), SDES-keyed SRTP and RFC 4733 DTMF events
 // (docs/sip-ua.md §1). The media engine (C5) reads and writes payloads.
+//
+// RTCP (RFC 3550 §6) runs on the odd port beside the RTP port: the endpoint
+// sends a sender or receiver report every 5 s on average and reads the
+// peer's, which gives the call-quality statistics (Stats).
 package rtp
 
 import (
@@ -16,9 +20,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/rtcp"
 	prtp "github.com/pion/rtp"
 	"github.com/pion/srtp/v3"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/media/rtpstats"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/sdp"
 )
 
@@ -79,15 +85,24 @@ func (p *Ports) release(port int) {
 
 // Endpoint is one call's media socket pair.
 type Endpoint struct {
-	ports      *Ports
-	rtp, rtcp  *net.UDPConn
-	localPort  int
-	mu         sync.Mutex
-	remote     netip.AddrPort
-	sdpRemote  netip.AddrPort
-	latched    bool
-	sendCtx    *srtp.Context
-	recvCtx    *srtp.Context
+	ports     *Ports
+	rtp, rtcp *net.UDPConn
+	localPort int
+	mu        sync.Mutex
+	remote    netip.AddrPort
+	sdpRemote netip.AddrPort
+	latched   bool
+	sendCtx   *srtp.Context
+	recvCtx   *srtp.Context
+	// recvMu serialises recvCtx between the RTP and RTCP readers: an SRTP
+	// context is not safe for concurrent use.
+	recvMu     sync.Mutex
+	rtcpRemote netip.AddrPort // latched from the peer's RTCP; else remote port + 1
+	rx         *rtpstats.Receiver
+	tx         rtpstats.Sender
+	peer       rtpstats.PeerReport
+	cname      string
+	done       chan struct{}
 	secure     bool
 	ssrc       uint32
 	seq        uint16
@@ -108,13 +123,16 @@ func (p *Ports) Open(ctx context.Context) (*Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Endpoint{ports: p, rtp: a, rtcp: b, localPort: a.LocalAddr().(*net.UDPAddr).Port}
-	var buf [10]byte
+	e := &Endpoint{ports: p, rtp: a, rtcp: b, localPort: a.LocalAddr().(*net.UDPAddr).Port,
+		rx: rtpstats.NewReceiver(clockRate), done: make(chan struct{})}
+	var buf [18]byte
 	_, _ = rand.Read(buf[:])
 	e.ssrc = binary.BigEndian.Uint32(buf[0:4])
 	e.seq = binary.BigEndian.Uint16(buf[4:6])
 	e.ts = binary.BigEndian.Uint32(buf[6:10])
-	go e.drainRTCP()
+	e.cname = fmt.Sprintf("%x@opendectcell", buf[10:18]) // random, RFC 7022
+	go e.readRTCP()
+	go e.sendRTCP()
 	return e, nil
 }
 
@@ -124,15 +142,138 @@ func (e *Endpoint) LocalPort() int { return e.localPort }
 // SSRC is the sending SSRC.
 func (e *Endpoint) SSRC() uint32 { return e.ssrc }
 
-// drainRTCP reads and discards RTCP. Sending and evaluating RTCP is C5
-// (call quality statistics).
-func (e *Endpoint) drainRTCP() {
+// clockRate is the RTP clock of every codec the SIP side offers (G.711 and
+// G.722 both count 8000 Hz, RFC 3551 §4.5.2), and of telephone-event.
+const clockRate = 8000
+
+// RTCPInterval is the mean reporting interval (RFC 3550 §6.2 minimum).
+var RTCPInterval = 5 * time.Second
+
+// readRTCP reads the peer's reports.
+func (e *Endpoint) readRTCP() {
 	buf := make([]byte, 1500)
 	for {
-		if _, _, err := e.rtcp.ReadFrom(buf); err != nil {
+		n, from, err := e.rtcp.ReadFromUDPAddrPort(buf)
+		if err != nil {
 			return
 		}
+		from = netip.AddrPortFrom(from.Addr().Unmap(), from.Port())
+		e.mu.Lock()
+		secure, recv, sdpRemote := e.secure, e.recvCtx, e.sdpRemote
+		e.mu.Unlock()
+		b := buf[:n]
+		if secure {
+			e.recvMu.Lock()
+			b, err = recv.DecryptRTCP(nil, b, nil)
+			e.recvMu.Unlock()
+			if err != nil {
+				continue
+			}
+		} else if !sdpRemote.IsValid() || from.Addr() != sdpRemote.Addr() {
+			continue // plain RTCP only from the signalled peer
+		}
+		pkts, err := rtcp.Unmarshal(b)
+		if err != nil {
+			continue
+		}
+		now := time.Now()
+		e.mu.Lock()
+		e.rtcpRemote = from
+		e.mu.Unlock()
+		for _, p := range pkts {
+			var reports []rtcp.ReceptionReport
+			switch p := p.(type) {
+			case *rtcp.SenderReport:
+				e.rx.SenderReport(p.NTPTime, now)
+				reports = p.Reports
+			case *rtcp.ReceiverReport:
+				reports = p.Reports
+			}
+			for _, r := range reports {
+				if r.SSRC == e.ssrc {
+					pr := rtpstats.FromReception(r, clockRate, now)
+					e.mu.Lock()
+					if pr.RTT == 0 {
+						pr.RTT = e.peer.RTT // keep the last measurement
+					}
+					e.peer = pr
+					e.mu.Unlock()
+				}
+			}
+		}
 	}
+}
+
+// sendRTCP sends a report at randomised intervals around RTCPInterval
+// (0.5 to 1.5 times, RFC 3550 §6.3.1).
+func (e *Endpoint) sendRTCP() {
+	for {
+		var b [1]byte
+		_, _ = rand.Read(b[:])
+		d := RTCPInterval/2 + RTCPInterval*time.Duration(b[0])/255
+		select {
+		case <-e.done:
+			return
+		case <-time.After(d):
+		}
+		_ = e.SendReport()
+	}
+}
+
+// SendReport sends one compound RTCP packet now: a sender report if we have
+// sent media, else a receiver report, with a reception report about the
+// peer's stream and our CNAME.
+func (e *Endpoint) SendReport() error {
+	now := time.Now()
+	var pkts []rtcp.Packet
+	var reports []rtcp.ReceptionReport
+	if rr, ok := e.rx.Report(now); ok {
+		reports = append(reports, rr)
+	}
+	if sr, ok := e.tx.Report(e.ssrc, clockRate, now); ok {
+		sr.Reports = reports
+		pkts = append(pkts, &sr)
+	} else {
+		pkts = append(pkts, &rtcp.ReceiverReport{SSRC: e.ssrc, Reports: reports})
+	}
+	pkts = append(pkts, &rtcp.SourceDescription{Chunks: []rtcp.SourceDescriptionChunk{{
+		Source: e.ssrc, Items: []rtcp.SourceDescriptionItem{{Type: rtcp.SDESCNAME, Text: e.cname}}}}})
+	b, err := rtcp.Marshal(pkts)
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return net.ErrClosed
+	}
+	to := e.rtcpRemote
+	if !to.IsValid() {
+		if !e.remote.IsValid() || e.remote.Port() == 0 {
+			return nil
+		}
+		to = netip.AddrPortFrom(e.remote.Addr(), e.remote.Port()+1)
+	}
+	if e.secure {
+		if b, err = e.sendCtx.EncryptRTCP(nil, b, nil); err != nil {
+			return err
+		}
+	}
+	_, err = e.rtcp.WriteToUDPAddrPort(b, to)
+	return err
+}
+
+// Stats are a SIP leg's media statistics.
+type Stats struct {
+	Received rtpstats.Stats      // the peer's stream, as we receive it
+	Peer     rtpstats.PeerReport // our stream, as the peer reported it; zero until its first report
+}
+
+// Stats returns the media statistics so far.
+func (e *Endpoint) Stats() Stats {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return Stats{Received: e.rx.Stats(), Peer: e.peer}
 }
 
 func profile(suite string) (srtp.ProtectionProfile, int, error) {
@@ -169,6 +310,9 @@ func (e *Endpoint) Configure(m *sdp.Media) error {
 	e.sdpRemote = m.Remote
 	if !e.latched || m.Remote != prev {
 		e.remote, e.latched = m.Remote, false
+	}
+	if m.Remote != prev {
+		e.rtcpRemote = netip.AddrPort{}
 	}
 	e.telEventPT = uint8(m.TelEventPT)
 	if (m.LocalKey == nil) != (m.RemoteKey == nil) {
@@ -222,6 +366,7 @@ func (e *Endpoint) writeLocked(pt uint8, payload []byte, ts uint32, marker bool)
 	}
 	pkt := prtp.Packet{Header: prtp.Header{Version: 2, PayloadType: pt, SequenceNumber: e.seq, Timestamp: ts, SSRC: e.ssrc, Marker: marker}, Payload: payload}
 	e.seq++
+	e.tx.Sent(ts, len(payload), time.Now())
 	b, err := pkt.Marshal()
 	if err != nil {
 		return err
@@ -326,7 +471,10 @@ func (e *Endpoint) Read(deadline time.Time) (Packet, error) {
 		e.mu.Unlock()
 		b := buf[:n]
 		if secure {
-			if b, err = recv.DecryptRTP(nil, b, nil); err != nil {
+			e.recvMu.Lock()
+			b, err = recv.DecryptRTP(nil, b, nil)
+			e.recvMu.Unlock()
+			if err != nil {
 				continue
 			}
 		}
@@ -337,6 +485,7 @@ func (e *Endpoint) Read(deadline time.Time) (Packet, error) {
 		if !e.accept(from, secure) {
 			continue
 		}
+		e.rx.Update(p.SSRC, p.SequenceNumber, p.Timestamp, time.Now())
 		e.mu.Lock()
 		tel := e.telEventPT
 		e.mu.Unlock()
@@ -394,6 +543,7 @@ func (e *Endpoint) Close() error {
 		return nil
 	}
 	e.closed = true
+	close(e.done)
 	e.mu.Unlock()
 	err := errors.Join(e.rtp.Close(), e.rtcp.Close())
 	e.ports.release(e.localPort)
