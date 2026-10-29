@@ -1157,8 +1157,8 @@ Owned by the cell side; changes are announced in openDECTcell's
 
 A box is either a **standalone base** (openDECTcell's default: its own DECT
 stack, handsets registered on the box, SIP through baresip) or a **cell**.
-The switch is one setting, `opendectcell.main.mode` = `base` | `cell`, in uci and
-in LuCI (Network > DECT). In cell mode:
+The switch is one setting, `opendectcell.main.role` = `base` | `cell`, in uci
+and in LuCI (Network > DECT), set by `/etc/init.d/opendectcell enroll` too. In cell mode:
 
 | Part | Standalone base | Cell |
 |---|---|---|
