@@ -1030,6 +1030,11 @@ and answers **CONFIG_ACK**, tag 1 `status` u16: 0 ok, 1 partially applied):
 The DECT configuration of the chip (RFPI/RPN, radio on/off) is **not** cell
 configuration: the controller sets it directly by mail.
 
+*2026-10-29:* no mail is known that sets the RFPI. Today it is patched into
+the chip firmware at upload (`dect-fwload`), so a cell's RPN changes with a
+firmware reload. How the system identity is chosen and why a class A system
+has at most 7 cells: openDECTcell `docs/multicell-identities.md`.
+
 **STATUS** (cell → controller, sent on every change and in reply to
 STATUS_REQUEST): tag 1 `radio_state` u8, tag 2 `chip_state` u8 (0 down,
 1 starting, 2 running, 3 fault), tag 3 `chip_epoch` u32, tag 4 `uptime_s` u32,
