@@ -480,7 +480,7 @@ Timeline, measured from the **last frame received** from the peer:
 | 0 | | |
 | 3 s (`dead_ms`) | Closes the link; keeps sessions and calls | Closes the link; reconnects immediately (back-off below); keeps radio connections and audio |
 | ≤ 7 s (`grace_ms`) | If the cell resumes: reconcile (below), carry on | Same |
-| 7 s | Ends the cell's calls (SIP BYE, or 503 for calls still being set up) and discards its sessions | Releases every radio connection (`0x017A {handle, reason}`) and audio channel (`0x0233`, then `0x022D` disconnect) locally |
+| 7 s | Ends the cell's calls (SIP BYE, or 503 for calls still being set up) and discards its sessions | Releases every radio connection and its audio locally: openDECTcell sends `0x0233 {link, 01}` (audio disconnect) then `0x0202 {link}` [CR A-0127], the release dect-stubd uses on every link since 2026-10-28 (this row named `0x017A {handle, reason}` before 2026-10-29) |
 | 60 s (`orphan_s`) | Marks the cell *offline* in the UI and the subscription table *unknown* (§7.4) | **Parks the radio**: `0x022C {01}` (close registration), then `0x015B {00}` (radio and beacon off), so handsets look for another cell rather than camping on one that can't make calls |
 
 **The cell parks; it does not reset the chip** (openDECTcell#61, a recommendation
