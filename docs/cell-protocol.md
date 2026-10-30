@@ -1230,7 +1230,7 @@ Planned for the first version, in this order; openDECTcell's
 4. the cell-mode switch in the init script and LuCI (§14.1).
 
 Later: media, resume and STATE_SNAPSHOT, renewal and trust updates,
-STATS. *2026-10-30:* STATS, resume and media are built (openDECTcell
+STATS. *2026-10-30:* STATS, resume, media and renewal are built (openDECTcell
 `docs/notes-for-the-controller.md`, "The cell's media is built": SRTP
 profiles 1 and 2, one format both ways, plain RTP only where the admin
-allows it); renewal and trust updates are not.
+allows it; "The cell renews its certificate"); trust updates are not.
