@@ -863,6 +863,11 @@ MEDIA_OPEN (TLV)
   lane mapping is proven only for channel 1, and every call so far was given
   channel 1, so other channels may never occur. A cell that has no mapping for
   a channel answers status 1.
+  *openDECTcell, 2026-10-30:* the cell finds the lane from the long `0x0242` that
+  answered the controller's own bind on a live handle: `audio_channel` must
+  equal its `chan_flags` low nibble, its mask bit is the channel k, its flag
+  bit 6 the G.722 lane. So MEDIA_OPEN goes after that `0x0242`, as
+  `call_up()` sends it; without one, status 1.
 - **MEDIA_OPEN_ACK** (TLV): tag 1 `media_id` u32, tag 2 `status` u16 (0 ok,
   1 unknown channel, 2 format unsupported, 3 no capacity, 4 internal).
 - **MEDIA_CLOSE** (tag 1 `media_id`) → the cell stops the flow and answers
@@ -1224,5 +1229,8 @@ Planned for the first version, in this order; openDECTcell's
    heartbeat, reconnect with back-off;
 4. the cell-mode switch in the init script and LuCI (§14.1).
 
-Later: media (until then MEDIA_OPEN is answered with status 4), resume
-and STATE_SNAPSHOT, renewal and trust updates, STATS.
+Later: media, resume and STATE_SNAPSHOT, renewal and trust updates,
+STATS. *2026-10-30:* STATS, resume and media are built (openDECTcell
+`docs/notes-for-the-controller.md`, "The cell's media is built": SRTP
+profiles 1 and 2, one format both ways, plain RTP only where the admin
+allows it); renewal and trust updates are not.
