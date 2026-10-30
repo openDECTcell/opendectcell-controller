@@ -43,8 +43,8 @@ const (
 )
 
 // controllerCaps are the capabilities the controller uses (§6.1). MAIL is
-// required in v1 and announced, although the tunnel is not wired up yet:
-// mails a cell sends are counted and dropped until C3.
+// required in v1: the tunnel ends at Server.Mails; without one, mails are
+// counted and dropped.
 const controllerCaps = wire.CapMail | wire.CapStats | wire.CapFlow | wire.CapResume
 
 // Server accepts cell connections on the control port.
@@ -57,6 +57,9 @@ type Server struct {
 	// EnrollDelay is how long a rate-limited enrollment waits before its
 	// answer (§5.2); tests shorten it.
 	EnrollDelay time.Duration
+	// Mails receives the STUB mail tunnel of every active cell (§7); nil
+	// drops the mails. Set before Serve.
+	Mails MailSink
 
 	mu       sync.Mutex
 	cells    map[uuid.UUID]*record
@@ -64,6 +67,36 @@ type Server struct {
 	certExp  time.Time
 	tlsConf  *tls.Config
 	sessions sync.WaitGroup
+}
+
+// MailSink is the far end of the STUB mail tunnel (§7), the DECT core.
+// Its methods run on the cell's session goroutine, in the order the cell
+// sent: they must not block. Param slices are only valid during the call.
+// Never log the Param of the primitives in §7.3.
+type MailSink interface {
+	MailUp(cell uuid.UUID, m wire.MailUpMsg)
+	MailReject(cell uuid.UUID, m wire.MailRejectMsg)
+}
+
+// ErrNoCell means the cell has no active session to carry a mail.
+var ErrNoCell = errors.New("cell: not connected or not active")
+
+// SendMail queues a MAIL_DOWN for an active cell (§7.1). corr 0 means the
+// cell drops it silently if the chip cannot take it; any other corr comes
+// back in a MAIL_REJECT (§7.2). Mails of one caller keep their order.
+func (s *Server) SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error {
+	s.mu.Lock()
+	var ss *session
+	if rec := s.cells[id]; rec != nil {
+		ss = rec.sess
+	}
+	s.mu.Unlock()
+	if ss == nil || !ss.active.Load() {
+		return ErrNoCell
+	}
+	ss.send(wire.Frame{Type: wire.MailDown, Corr: corr, Body: m.Encode()})
+	s.updateStatus(id, func(st *Status) { st.MailsDown++ })
+	return nil
 }
 
 // record is the controller's per-cell state across connections: the live
@@ -97,7 +130,10 @@ type Status struct {
 	Stats       map[string]uint64
 	StatsAt     time.Time
 	FlowState   uint8
-	MailsDrop   uint64 // mails received before the tunnel exists (C3)
+	MailsUp     uint64 // MAIL_UP handed to Server.Mails
+	MailsDown   uint64 // MAIL_DOWN queued by SendMail
+	MailsReject uint64 // MAIL_REJECT from the cell
+	MailsDrop   uint64 // MAIL_UP with no Server.Mails to take it
 	Resumes     int
 	Supersedes  int
 	LastGoodbye string
@@ -303,6 +339,9 @@ type session struct {
 	// lastWrite is when the writer last sent a frame (UnixNano), for the
 	// heartbeat-when-idle rule (§6.3).
 	lastWrite atomic.Int64
+	// active mirrors cell.State == StateActive for SendMail, which runs
+	// on other goroutines.
+	active atomic.Bool
 }
 
 // errClosed ends a session without an error to report.
@@ -312,6 +351,7 @@ func (s *Server) runSession(ctx context.Context, c *tls.Conn, info *Info, cert *
 	ss := &session{srv: s, conn: c, cell: info, cert: cert, addr: addr,
 		log:  s.Log.With("cell", info.ID, "addr", addr),
 		ctrl: make(chan func(), 8), done: make(chan struct{}), hbSent: map[uint32]time.Time{}, start: time.Now()}
+	ss.active.Store(info.State == wire.StateActive)
 	for i := range ss.queues {
 		ss.queues[i] = make(chan wire.Frame, []int{64, 32, 64}[i])
 	}
@@ -629,8 +669,28 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			ss.errorReply(f, wire.ErrNotAllowed, "cell is not active")
 			return nil
 		}
-		// The tunnel to the DECT core is C3 (opendectcell-controller#46).
-		ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.MailsDrop++ })
+		sink := ss.srv.Mails
+		if f.Type == wire.MailReject {
+			m, err := wire.DecodeMailReject(f.Body)
+			if err != nil {
+				return malformed(err)
+			}
+			ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.MailsReject++ })
+			if sink != nil {
+				sink.MailReject(ss.cell.ID, m)
+			}
+			return nil
+		}
+		m, err := wire.DecodeMailUp(f.Body)
+		if err != nil {
+			return malformed(err)
+		}
+		if sink == nil {
+			ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.MailsDrop++ })
+			return nil
+		}
+		ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.MailsUp++ })
+		sink.MailUp(ss.cell.ID, m)
 	case wire.ConfigAck, wire.TrustAck, wire.MediaOpenAck, wire.MediaClosed:
 		// Answers to requests the controller does not send yet.
 	case wire.Hello, wire.EnrollRequest:
@@ -787,6 +847,7 @@ func maps(m map[string]uint64) map[string]uint64 {
 func (s *Server) NotifyState(id uuid.UUID, st wire.CellStateValue, reason string) {
 	s.withSession(id, func(ss *session) {
 		ss.cell.State = st
+		ss.active.Store(st == wire.StateActive)
 		ss.send(wire.Frame{Type: wire.CellState, Body: wire.CellStateMsg{State: st, Reason: reason}.Encode()})
 	})
 }

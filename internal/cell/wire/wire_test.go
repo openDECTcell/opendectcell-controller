@@ -207,3 +207,29 @@ func TestMediaOpenRoundTrip(t *testing.T) {
 		t.Errorf("GCM with 30-octet keys: %v", err)
 	}
 }
+
+func TestMailCodec(t *testing.T) {
+	up := MailUpMsg{RxTime: 0xA1B2C3D4, Src: 2, Dst: 0x14, Prim: 0x0203, Param: []byte{1, 2, 3, 4, 5}}
+	b := up.Encode()
+	if len(b) != 14 || b[6] != 0x02 || b[7] != 0x03 || b[8] != 5 {
+		t.Fatalf("MAIL_UP layout: % x", b)
+	}
+	got, err := DecodeMailUp(b)
+	if err != nil || got.RxTime != up.RxTime || got.Prim != up.Prim || string(got.Param) != string(up.Param) {
+		t.Fatalf("MAIL_UP: %+v %v", got, err)
+	}
+	for _, bad := range [][]byte{b[:8], append(b, 0), {0, 0, 0, 0, 0, 0, 0, 0, 250}} {
+		if _, err := DecodeMailUp(bad); !errors.Is(err, ErrMalformed) {
+			t.Errorf("MAIL_UP % x accepted", bad)
+		}
+	}
+	down := MailDownMsg{Src: 0x22, Dst: 2, Prim: 0x0244, Param: make([]byte, MailParamMax)}
+	d, err := DecodeMailDown(down.Encode())
+	if err != nil || d.Prim != 0x0244 || len(d.Param) != MailParamMax {
+		t.Fatalf("MAIL_DOWN: %v", err)
+	}
+	r, err := DecodeMailReject(MailRejectMsg{RefCorr: 0x0102, Reason: RejectChipDown}.Encode())
+	if err != nil || r.RefCorr != 0x0102 || r.Reason != RejectChipDown {
+		t.Fatalf("MAIL_REJECT: %+v %v", r, err)
+	}
+}

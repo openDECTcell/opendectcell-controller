@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
@@ -243,11 +245,83 @@ func TestHandshakeApproveAndHeartbeat(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	// Mails from an active cell are accepted (and dropped until C3).
+	// Mails from an active cell with no sink are counted and dropped.
 	cn.Send(wire.Frame{Type: wire.MailUp, Body: make([]byte, 9)})
 	time.Sleep(100 * time.Millisecond)
 	if e.srv.CellStatus(c.ID).MailsDrop != 1 {
 		t.Error("mail from an active cell not counted")
+	}
+}
+
+// mailSink records the tunnel's far end.
+type mailSink struct {
+	up  chan wire.MailUpMsg
+	rej chan wire.MailRejectMsg
+}
+
+func (m *mailSink) MailUp(_ uuid.UUID, u wire.MailUpMsg) {
+	u.Param = append([]byte(nil), u.Param...)
+	m.up <- u
+}
+
+func (m *mailSink) MailReject(_ uuid.UUID, r wire.MailRejectMsg) { m.rej <- r }
+
+func TestMailTunnel(t *testing.T) {
+	e := newEnv(t)
+	sink := &mailSink{up: make(chan wire.MailUpMsg, 4), rej: make(chan wire.MailRejectMsg, 4)}
+	e.srv.Mails = sink
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	expectState(t, cn, wire.StateActive)
+
+	// up: the sink gets the mail as the cell sent it
+	want := wire.MailUpMsg{RxTime: 42, Src: 0x02, Dst: 0x14, Prim: 0x0200, Param: []byte{1, 2, 3}}
+	cn.Send(wire.Frame{Type: wire.MailUp, Body: want.Encode()})
+	select {
+	case got := <-sink.up:
+		if got.RxTime != 42 || got.Prim != 0x0200 || string(got.Param) != "\x01\x02\x03" {
+			t.Errorf("mail up: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no MAIL_UP at the sink")
+	}
+	// down: queued to the cell with its corr
+	if err := e.srv.SendMail(c.ID, 7, wire.MailDownMsg{Src: 0x22, Dst: 0x02, Prim: 0x0244, Param: []byte{0, 1, 9}}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := cn.Expect(wire.MailDown, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, err := wire.DecodeMailDown(f.Body); err != nil || f.Corr != 7 || d.Prim != 0x0244 || len(d.Param) != 3 {
+		t.Errorf("mail down: %+v corr %d %v", d, f.Corr, err)
+	}
+	// reject: to the sink
+	cn.Send(wire.Frame{Type: wire.MailReject, Body: wire.MailRejectMsg{RefCorr: 7, Reason: wire.RejectQueueFull}.Encode()})
+	select {
+	case r := <-sink.rej:
+		if r.RefCorr != 7 || r.Reason != wire.RejectQueueFull {
+			t.Errorf("reject: %+v", r)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no MAIL_REJECT at the sink")
+	}
+	// a malformed mail is an ERROR, not a sink call
+	cn.Send(wire.Frame{Type: wire.MailUp, Body: []byte{0, 0, 0, 0, 2, 0x14, 2, 0, 5}})
+	if _, err := cn.Expect(wire.Error, 2*time.Second); err != nil {
+		t.Error("no ERROR for a short MAIL_UP")
+	}
+	st := e.srv.CellStatus(c.ID)
+	if st.MailsUp != 1 || st.MailsDown != 1 || st.MailsReject != 1 {
+		t.Errorf("counters: %+v", st)
+	}
+	// no session: no mail
+	if err := e.srv.SendMail(uuid.New(), 0, wire.MailDownMsg{}); !errors.Is(err, cell.ErrNoCell) {
+		t.Errorf("SendMail to an unknown cell: %v", err)
 	}
 }
 

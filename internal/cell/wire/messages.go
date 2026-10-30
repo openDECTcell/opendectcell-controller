@@ -746,3 +746,78 @@ func DecodeMediaOpen(b []byte) (MediaOpenMsg, error) {
 	}
 	return m, nil
 }
+
+// MailParamMax is the largest STUB mail parameter block (§7.1,
+// libopendectcell's DECT_MAIL_PARAM_MAX).
+const MailParamMax = 249
+
+// MailUpMsg is MAIL_UP (§7.1): one STUB mail from the chip, verbatim.
+// Param must never be logged for the primitives of §7.3.
+type MailUpMsg struct {
+	RxTime   uint32 // cell clock in µs, wraps; only differences mean anything
+	Src, Dst uint8
+	Prim     uint16
+	Param    []byte
+}
+
+func DecodeMailUp(b []byte) (MailUpMsg, error) {
+	if len(b) < 9 || len(b) != 9+int(b[8]) || b[8] > MailParamMax {
+		return MailUpMsg{}, fmt.Errorf("%w: MAIL_UP body of %d bytes", ErrMalformed, len(b))
+	}
+	return MailUpMsg{RxTime: binary.BigEndian.Uint32(b), Src: b[4], Dst: b[5],
+		Prim: binary.BigEndian.Uint16(b[6:]), Param: b[9:]}, nil
+}
+
+// Encode is the cell's side; the controller uses it in tests.
+func (m MailUpMsg) Encode() []byte {
+	b := binary.BigEndian.AppendUint32(nil, m.RxTime)
+	return append(b, MailDownMsg{Src: m.Src, Dst: m.Dst, Prim: m.Prim, Param: m.Param}.Encode()...)
+}
+
+// MailDownMsg is MAIL_DOWN (§7.1): one STUB mail for the chip.
+type MailDownMsg struct {
+	Src, Dst uint8
+	Prim     uint16
+	Param    []byte
+}
+
+func DecodeMailDown(b []byte) (MailDownMsg, error) {
+	if len(b) < 5 || len(b) != 5+int(b[4]) || b[4] > MailParamMax {
+		return MailDownMsg{}, fmt.Errorf("%w: MAIL_DOWN body of %d bytes", ErrMalformed, len(b))
+	}
+	return MailDownMsg{Src: b[0], Dst: b[1], Prim: binary.BigEndian.Uint16(b[2:]), Param: b[5:]}, nil
+}
+
+// Encode panics on a parameter block over MailParamMax: the caller's bug.
+func (m MailDownMsg) Encode() []byte {
+	if len(m.Param) > MailParamMax {
+		panic("wire: mail parameters over 249 bytes")
+	}
+	b := binary.BigEndian.AppendUint16([]byte{m.Src, m.Dst}, m.Prim)
+	return append(append(b, byte(len(m.Param))), m.Param...)
+}
+
+// MAIL_REJECT reasons (§7.2).
+const (
+	RejectChipDown  uint8 = 1
+	RejectQueueFull uint8 = 2
+	RejectRefused   uint8 = 3
+)
+
+// MailRejectMsg is MAIL_REJECT (§7.2): the cell could not hand the
+// MAIL_DOWN with this corr to the chip.
+type MailRejectMsg struct {
+	RefCorr uint16
+	Reason  uint8
+}
+
+func DecodeMailReject(b []byte) (MailRejectMsg, error) {
+	if len(b) != 3 {
+		return MailRejectMsg{}, fmt.Errorf("%w: MAIL_REJECT body of %d bytes", ErrMalformed, len(b))
+	}
+	return MailRejectMsg{RefCorr: binary.BigEndian.Uint16(b), Reason: b[2]}, nil
+}
+
+func (m MailRejectMsg) Encode() []byte {
+	return append(binary.BigEndian.AppendUint16(nil, m.RefCorr), m.Reason)
+}
