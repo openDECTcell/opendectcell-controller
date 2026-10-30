@@ -3,6 +3,7 @@
 package web
 
 import (
+	"fmt"
 	"html"
 	"net/http"
 	"net/url"
@@ -107,5 +108,84 @@ func TestCellPages(t *testing.T) {
 	}
 	if resp, _ := e.get(t, user, "/cells"); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("may_add_cells user on /cells: %d", resp.StatusCode)
+	}
+}
+
+var hiddenRE = regexp.MustCompile(`name="(eic|fpn|fps|source)" value="([^"]*)"`)
+
+// The system identity on the Cells page: made up only after the admin has
+// seen the risks and ticked the box; an EIC typed in is checked.
+func TestSystemIdentityPages(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		ks, _ := secret.GenerateMasterKey()
+		mk, _ := secret.ParseMasterKey(ks)
+		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	admin := e.browser()
+	e.login(t, admin, "admin", "admin password")
+	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "factory identity") {
+		t.Fatal("no identity: the page does not say so")
+	}
+
+	r := e.post(t, admin, "/cells/identity", url.Values{"action": {"random"}})
+	page := readBody(r)
+	if r.StatusCode != http.StatusOK || !strings.Contains(page, "This EIC is made up") ||
+		!strings.Contains(page, "https://www.etsi.org/security-algorithms-and-codes/codes") {
+		t.Fatalf("proposal page: %d", r.StatusCode)
+	}
+	form := url.Values{}
+	for _, m := range hiddenRE.FindAllStringSubmatch(page, -1) {
+		form.Set(m[1], m[2])
+	}
+	if form.Get("source") != cell.IdentityRandom || len(form.Get("eic")) != 4 {
+		t.Fatalf("hidden fields %v", form)
+	}
+	if r := e.post(t, admin, "/cells/identity/save", form); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("saved without the box ticked: %d", r.StatusCode)
+	}
+	if id, _ := e.cells.SystemIdentity(ctx); id != nil {
+		t.Fatal("stored without the box ticked")
+	}
+	form.Set("understood", "on")
+	if r := e.post(t, admin, "/cells/identity/save", form); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("save: %d", r.StatusCode)
+	}
+	id, err := e.cells.SystemIdentity(ctx)
+	if err != nil || id == nil || id.Source != cell.IdentityRandom || fmt.Sprintf("%04X", id.EIC) != form.Get("eic") {
+		t.Fatalf("stored %+v, %v", id, err)
+	}
+	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "made up on this controller") {
+		t.Fatal("the list does not show the identity")
+	}
+
+	// An EIC typed in: EIC 0 and FPS 0 are refused (EN 300 175-6 §5.2).
+	for _, bad := range []url.Values{
+		{"eic": {"0000"}, "fpn": {"1"}, "fps": {"1"}},
+		{"eic": {"12G4"}, "fpn": {"1"}, "fps": {"1"}},
+		{"eic": {"1234"}, "fpn": {"1"}, "fps": {"0"}},
+	} {
+		if r := e.post(t, admin, "/cells/identity", bad); r.StatusCode != http.StatusBadRequest {
+			t.Errorf("%v: %d", bad, r.StatusCode)
+		}
+	}
+	r = e.post(t, admin, "/cells/identity", url.Values{"eic": {"beef"}, "fpn": {"7"}, "fps": {"2"}})
+	if page := readBody(r); r.StatusCode != http.StatusOK || strings.Contains(page, "This EIC is made up") ||
+		!strings.Contains(page, `value="BEEF"`) {
+		t.Fatalf("allocated EIC: %d", r.StatusCode)
+	}
+
+	// Not for users.
+	user := e.browser()
+	e.login(t, user, "user", "user password")
+	for _, p := range []string{"/cells/identity", "/cells/identity/save"} {
+		if r := e.post(t, user, p, url.Values{"action": {"random"}}); r.StatusCode != http.StatusNotFound {
+			t.Errorf("user POST %s: %d", p, r.StatusCode)
+		}
 	}
 }

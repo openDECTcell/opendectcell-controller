@@ -27,6 +27,8 @@ func (s *Server) cellRoutes() {
 		return
 	}
 	s.mux.Handle("GET /cells", s.requireAdmin(s.cellList))
+	s.mux.Handle("POST /cells/identity", s.requireAdmin(s.identityPropose))
+	s.mux.Handle("POST /cells/identity/save", s.requireAdmin(s.identitySave))
 	s.mux.Handle("GET /cells/{id}", s.requireAdmin(s.cellPage))
 	s.mux.Handle("POST /cells/{id}", s.requireAdmin(s.cellUpdate))
 	s.mux.Handle("POST /cells/{id}/state", s.requireAdmin(s.cellState))
@@ -49,6 +51,10 @@ func (s *Server) liveStatus(id uuid.UUID) cell.Status {
 }
 
 func (s *Server) cellList(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	s.renderCells(w, r, u, http.StatusOK, page{Notice: r.FormValue("done")})
+}
+
+func (s *Server) renderCells(w http.ResponseWriter, r *http.Request, u *auth.User, status int, p page) {
 	cells, err := s.Cells.ListCells(r.Context(), u)
 	if err != nil {
 		s.internalError(w, r, err)
@@ -58,7 +64,98 @@ func (s *Server) cellList(w http.ResponseWriter, r *http.Request, u *auth.User) 
 	for i, c := range cells {
 		rows[i] = cellRow{c, s.liveStatus(c.ID)}
 	}
-	s.render(w, http.StatusOK, "cells.html", page{Title: "Cells", User: u, Data: rows})
+	id, err := s.Cells.SystemIdentity(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	p.Title, p.User, p.Data = "Cells", u, cellsPage{Cells: rows, Identity: id}
+	s.render(w, status, "cells.html", p)
+}
+
+type cellsPage struct {
+	Cells    []cellRow
+	Identity *cell.SystemIdentity
+}
+
+// identityPage is the confirmation step: the identity proposed, the one it
+// would replace, and the risks (templates/identity.html).
+type identityPage struct {
+	Proposed cell.SystemIdentity
+	Current  *cell.SystemIdentity
+}
+
+// identityForm reads an identity from a form: EIC in hex, FPN and FPS in
+// decimal, as the page shows them.
+func identityForm(r *http.Request, source string) (cell.SystemIdentity, error) {
+	eic, err := strconv.ParseUint(r.PostFormValue("eic"), 16, 16)
+	if err != nil {
+		return cell.SystemIdentity{}, errors.New("The EIC is four hexadecimal digits.")
+	}
+	fpn, err := strconv.ParseUint(r.PostFormValue("fpn"), 10, 8)
+	if err != nil {
+		return cell.SystemIdentity{}, errors.New("The FPN is a number from 0 to 255.")
+	}
+	fps, err := strconv.ParseUint(r.PostFormValue("fps"), 10, 8)
+	if err != nil {
+		return cell.SystemIdentity{}, errors.New("The FPS is a number from 1 to 15.")
+	}
+	id := cell.SystemIdentity{EIC: uint16(eic), FPN: uint8(fpn), FPS: uint8(fps), Source: source}
+	if err := id.Validate(); err != nil {
+		return id, errors.New("EIC 0 is not used, and the FPS is 1 to 15 (EN 300 175-6 §5.2).")
+	}
+	return id, nil
+}
+
+// identityPropose: "Make one up" draws a random identity, "Use an EIC from
+// ETSI" takes the one typed in; either is only shown, with the risks,
+// until the admin saves it.
+func (s *Server) identityPropose(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var (
+		id  cell.SystemIdentity
+		err error
+	)
+	if r.PostFormValue("action") == "random" {
+		id, err = cell.RandomIdentity(nil)
+		if err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+	} else if id, err = identityForm(r, cell.IdentityAllocated); err != nil {
+		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: err.Error()})
+		return
+	}
+	cur, err := s.Cells.SystemIdentity(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.render(w, http.StatusOK, "identity.html", page{Title: "DECT system identity", User: u,
+		Data: identityPage{Proposed: id, Current: cur}})
+}
+
+func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	source := r.PostFormValue("source")
+	if source != cell.IdentityRandom {
+		source = cell.IdentityAllocated
+	}
+	id, err := identityForm(r, source)
+	if err == nil && r.PostFormValue("understood") != "on" {
+		err = errors.New("Tick the box to confirm you read the risks.")
+	}
+	if err != nil {
+		cur, _ := s.Cells.SystemIdentity(r.Context())
+		s.render(w, http.StatusBadRequest, "identity.html", page{Title: "DECT system identity", User: u,
+			Error: err.Error(), Data: identityPage{Proposed: id, Current: cur}})
+		return
+	}
+	if err := s.Cells.SetSystemIdentity(r.Context(), u, id); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/cells?done=System+identity+saved.", http.StatusSeeOther)
 }
 
 func (s *Server) cellByPath(w http.ResponseWriter, r *http.Request, u *auth.User) (*cell.Cell, bool) {

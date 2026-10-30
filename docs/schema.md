@@ -24,7 +24,7 @@ DDL: `internal/db/migrations/`. Requires PostgreSQL ≥ 15 (tested on 18).
 | `login_failure` | Failed logins | Rate limiting in the database, so it holds across instances |
 | `oidc_login` | In-flight OIDC logins | State (hashed), nonce, PKCE verifier; minutes of life |
 | `data_key` | Wrapped data keys | `docs/threat-model.md` §4.2. Exactly one active |
-| `setting` | Installation-wide policies | JSON values, e.g. `slot_policy` (`cell-protocol.md` §7.4) |
+| `setting` | Installation-wide policies | JSON values, e.g. `slot_policy` (`cell-protocol.md` §7.4), and `dect_system_identity`: the class B ARI the cells share (EIC, FPN, FPS, made up or allocated, who set it; `internal/cell/identity.go`) |
 | `cell` | Cells | States as in `cell-protocol.md` §6.2. Capacities announced by the cell are separate columns (`first-tasks.md` §3.4); `max_calls` is the admin limit, default 1 |
 | `cell_ca` | The private cell CA | Key encrypted. Old CAs kept during rotation (`cell-protocol.md` §5.6) |
 | `cell_certificate` | Per-cell client certificates | Keyed by SHA-256 fingerprint, which is what the controller checks (`cell-protocol.md` §4.2) |
