@@ -1281,7 +1281,6 @@ controller in Docker. The wire format of every row is final; a row marked
 
 **Two cell-side points that change nothing on the wire:**
 
-- The enrollment string reaches `dect-cell` on its command line today, so it
-  is visible in `/proc` on the cell for up to a minute. Cell-side fix pending.
+- The enrollment string no longer reaches `dect-cell` on a command line when LuCI enrols a cell (a root-only file, `enroll @FILE`; openDECTcell 2026-10-31); a CLI user passing the string itself still shows it in `/proc` while the enrolment runs.
 - Link loss: `dect-stubd` runs §6.4's timeline on its own clock; a controller
   that sets CELL_STATE gets the state alone, never a reason (§14.2).
