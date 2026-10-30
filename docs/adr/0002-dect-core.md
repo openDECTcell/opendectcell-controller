@@ -1,6 +1,6 @@
 # ADR 0002: Where the controller's DECT core comes from
 
-Status: **proposed** 2026-10-30, for the maintainer to decide (C3).
+Status: **decided** 2026-10-30 by the maintainer: **option B**, the stack moves into `libopendectcell` first (C3).
 
 ## The problem
 
@@ -30,7 +30,15 @@ history behind the first.
 | Keys off the cell (`cell-protocol.md` §1) | Yes | Yes | Yes: `dect-stubd` runs on the controller |
 | Licence | Library linked into AGPL code | Same | Separate process (GPL-2.0-or-later beside AGPL) |
 
-## Recommendation
+## Decision
+
+The maintainer chose **B** over the recommended C: the stack moves into
+`libopendectcell` first, as one implementation that `dect-stubd` and the
+controller both call. No drift and no second store design to undo later;
+the price is a refactor of the hardware-tested daemon, re-checked on the
+bench as it lands.
+
+## Recommendation (as proposed)
 
 **C now, B as the path to multi-cell.** C gets the [hw] milestones (a
 handset registers through the controller, an end-to-end call) with the
@@ -41,7 +49,7 @@ roaming needs, and `dect-stubd` stays a thin host on the box. A is not
 recommended: it duplicates the largest and best-tested part of the
 project.
 
-## Open, if C is chosen
+## Open, had C been chosen (kept for the record)
 
 - `dect-stubd -R`: the contact handshake and the control-slot search end at
   the cell, so the remote transport starts at "session up" (cell state
