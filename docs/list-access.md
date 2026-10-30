@@ -37,12 +37,12 @@ rename any entry. That is fine for a desk. In the controller it is not:
 | A standalone box keeps today's behaviour | Everything visible, renaming allowed |
 
 The names themselves belong to the controller's handset record (the
-admin and the owner edit them), not to what a handset saved. This needs a
-hook in `libopendectcell`: a per-viewer filter and a read-only switch for the
-names list. The cell side owns it; its state is in openDECTcell's
-`docs/notes-for-the-controller.md`, "The handsets in the controller", and in
-`docs/hosting-dect-base.md`. Until it has landed, test C3 with the standalone
-behaviour and do not ship the controller.
+admin and the owner edit them), not to what a handset saved. The library
+has the hook since API 138: `name_visible()` in `struct dect_base_ops` (by
+the user's account), `cfg.names_readonly`, and `dect_base_names_refresh()`
+after an account change (openDECTcell `docs/notes-for-the-controller.md`, "The
+protocol is complete; the handsets in the controller"). Unit-tested, not on
+air; the fallback there is to ignore a rename in `named()`.
 
 ## 2. Decisions
 
