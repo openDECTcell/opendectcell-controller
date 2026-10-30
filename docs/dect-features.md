@@ -33,7 +33,7 @@ The "Data source" column shows where the controller would get the information. B
 | **Call deflection, intrusion** | Part 3 N.10/N.11 | Control codes | SIP 302/REFER (deflection); intrusion between own handsets only | Low priority |
 | **DTMF** | Part 3 N.19 | Keypad info after CONNECT; downlink in-band | SIP DTMF modes | Uplink is part of the core call path |
 | **Handset locator (paging)** | Part 3 A.3 | CC-SETUP to all idle handsets with special presentation | Admin/user UI button | Nice for the web UI |
-| **Internal names list** | Part 3 list access | List access | Handset names in the controller | |
+| **Internal names list** | Part 3 list access | List access | Handset names in the controller | Per user account, read-only for handsets: `list-access.md` §1.1 |
 | **SMS** | Part 5 N.24 | List access lists plus events | SIP MESSAGE (pass-through) | Low priority |
 | **Answering machine (DTAM), call screening** | Part 5 N.25/N.26 | List access plus a DTAM consulting call | — | Not planned (PBX function) |
 | **Line and diagnostic status** | Part 5 N.23 | List access (read-only) plus events | Registration state of the SIP accounts | Useful: shows "line not registered" on the handset |

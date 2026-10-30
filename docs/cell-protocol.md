@@ -1,6 +1,8 @@
-# Cell ↔ controller wire protocol (v1, draft)
+# Cell ↔ controller wire protocol (v1)
 
-Status: draft, 2026-10-19 (task A1 in `docs/first-tasks.md`); cell-side
+Status: **v1, complete for C3 (2026-10-31).** Nothing in the wire format is
+left to decide; §15 says what the cell implements today and what the
+controller does until the rest lands. History: draft, 2026-10-19 (task A1 in `docs/first-tasks.md`); cell-side
 answers C1–C11 folded in 2026-10-22. **Revised 2026-10-29** by the cell
 side, against openDECTcell `45b0264`: corrections to §7.4 (the chip's slot
 table survives, a clear exists, read-back exists, admission on 07.56),
@@ -963,6 +965,12 @@ Consequences:
   sequence numbers and timestamps.
 - The cell sends a packet every `ptime_ms` for the whole session, including
   silence, so the NAT binding stays open and the controller can latch.
+- *2026-10-31:* the cell does not yet send during silence on an idle lane
+  (§15). The controller must not treat a quiet uplink as a dead session: it
+  ends a session only on MEDIA_CLOSED, a closed link past the grace period,
+  or its own call state, never on missing packets. Until the first packet
+  arrives, its downlink is dropped as below; on a live call the lane carries
+  words, so the first packet comes within one ptime.
 - **Latching:** the controller sends only to the source address of the most
   recent packet that authenticated (SRTP) or that carried `ssrc_up` (plain RTP,
   trusted LAN only). Before the first such packet, it drops its outgoing audio.
@@ -1126,9 +1134,12 @@ sender closes the connection after writing it.
 
 ## 12. Reserved: log shipping, updates, debug
 
-Question 4 in `first-tasks.md` §6 (does the link need log shipping, remote
-firmware update or a debug channel?) is open. v1 reserves type ranges and
-capability bits for all three (§3.3) so they can be added as a minor version,
+**Decided 2026-10-31: not part of v1.** Question 4 in `first-tasks.md` §6
+(does the link need log shipping, remote firmware update or a debug channel?)
+is answered no for v1: a cell's log is read on the box (LuCI, `logread`), its
+firmware comes from the apk feed, and the STATS and STATUS messages of §10
+carry what the controller needs to see. v1 still reserves type ranges and
+capability bits for all three (§3.3), so they can be added as a minor version,
 as P2 traffic, under the chunking and rate rules of §9. None is specified here.
 
 ## 13. Questions for the cell side
@@ -1164,6 +1175,14 @@ For the controller to accept or refuse; each has the cell's fallback.
 | P2 | STATUS tag 6 `slot_audit`, repeatable: `slot u8, state u8` (0 empty, 1 matches what was written, 2 differs, 3 not readable on this build), sent after each slot write the cell could read back | The read-back address is per build, so only the cell can do it; it turns *writing* into a verified *present* | The cell does not send it until accepted |
 | P3 | STATUS tag 7 `cell_mode_since` u64 (Unix ms) | The cell's local DECT functions are switched off in cell mode (§14.1); the admin should see since when | Not sent |
 | P4 | MEDIA_OPEN for format 6 means G.722 octets in RTP payload type 9 at 8000 Hz RTP clock (RFC 3551's G.722 quirk), 160 octets per 20 ms | The lane carries the octets as they are (§8.2), so the cell does no coding | As stated |
+
+**Controller's answer, 2026-10-31: P1–P4 are accepted.** P2 and P3 become
+optional STATUS tags (6 `slot_audit`, 7 `cell_mode_since`) that the cell may
+send from now on; the controller ignores them when absent and shows them
+when present. The controller never depends on either: P2 turns "written"
+into "verified present" in the admin UI when it is there, and a slot is
+treated as present once the write was sent, as §7.4 says. The cell side has
+not built either yet (§15).
 
 ## 14. The cell side in openDECTcell
 
@@ -1234,3 +1253,35 @@ STATS. *2026-10-30:* STATS, resume, media and renewal are built (openDECTcell
 `docs/notes-for-the-controller.md`, "The cell's media is built": SRTP
 profiles 1 and 2, one format both ways, plain RTP only where the admin
 allows it; "The cell renews its certificate"); trust updates are not.
+
+## 15. Conformance: the cell as built (2026-10-31)
+
+Checked against openDECTcell `6c910b1` and later (`dect-cell`, `dect-stubd -K`);
+the source of each row is in openDECTcell's `docs/notes-for-the-controller.md`.
+**Built** means unit-tested and, where noted, proven on a 7412 against this
+controller in Docker. The wire format of every row is final; a row marked
+*not built* changes the cell, never the format.
+
+| Part | Spec | State on the cell | What the controller does meanwhile |
+|---|---|---|---|
+| Frame, TLV, error handling | §3 | Built | |
+| Enrollment, mTLS 1.3, pinned CA | §4, §5.1–5.3 | Built, proven on a 7412 (2026-10-30) | |
+| Revocation | §5.5 | Built | |
+| Renewal | §5.4 | Built (cell asks at 2/3 of the certificate's life; new pair serves from the next connection) | Keep both fingerprints until the cell connects with the new one |
+| **CA rotation (TRUST_UPDATE)** | §5.6 | **Not built** | Do not rotate the cell CA. If it must change, re-enrol the cells. Implement the controller end only when the cell's lands |
+| HELLO, heartbeat, STATUS, STATS (1–19), resume, STATE_SNAPSHOT | §6, §10 | Built, proven on a 7412 | |
+| **CONFIG_SET** | §10 | The cell answers CONFIG_ACK status 1 (partially applied) and applies **nothing**. `stats_interval_s` is 60 s fixed; `allow_plain_rtp` is the admin's local setting (`dect-cell -P`) | Treat every CONFIG_SET as advisory. Do not build UI that implies a cell took a value |
+| STATUS tags 6 and 7 (P2, P3) | §13.1 | Not built | Optional; ignore when absent |
+| Mail tunnel, MAIL_REJECT, FLOW | §7, §9.3 | Built (a malformed MAIL_DOWN gets ERROR MALFORMED; a full socket MAIL_REJECT QUEUE_FULL) | |
+| MAIL_DOWN, MEDIA_OPEN, MEDIA_CLOSE while the cell is not active | §5.3 | ERROR NOT_ALLOWED | |
+| Media (MEDIA_OPEN/ACK/CLOSE/CLOSED) | §8 | Built: SRTP profiles 1 and 2, plain RTP only when the admin allows it, one format both ways (tag 13 equal to tag 3), `ptime` 10 or 20. **Not on air yet**: openDECTcell bench card M1 | Send MEDIA_OPEN after the long 0x0242 (§8.1) |
+| Silence packets every ptime | §8.3 | Not met: a silent or idle lane sends nothing | Never end a session on a quiet uplink (§8.3) |
+| Send scheduling, `TCP_NOTSENT_LOWAT`, P0 bound of 500 ms | §9.1–9.2 | **Not built** on the cell; writes block up to 5 s | The controller side applies §9 in full; a cell that stops reading is closed by the controller's own bound |
+| Local socket between `dect-cell` and `dect-stubd` | §14.2 | Built | |
+
+**Two cell-side points that change nothing on the wire:**
+
+- The enrollment string reaches `dect-cell` on its command line today, so it
+  is visible in `/proc` on the cell for up to a minute. Cell-side fix pending.
+- Link loss: `dect-stubd` runs §6.4's timeline on its own clock; a controller
+  that sets CELL_STATE gets the state alone, never a reason (§14.2).

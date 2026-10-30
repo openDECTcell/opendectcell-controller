@@ -1,6 +1,6 @@
 # CAT-iq list access: controller side
 
-Status: draft, 2026-10-22 (opendectcell-controller#49). Pending maintainer review.
+Status: draft, 2026-10-22 (opendectcell-controller#49); §1.1 added 2026-10-31. Pending maintainer review.
 
 A CAT-iq handset reads and edits lists held by the base: the phonebook and
 the call lists (ETSI TS 102 527-3). The transport (`<<IWU-TO-IWU>>`
@@ -21,9 +21,28 @@ These sessions are never calls: they arrive as `<<BASIC-SERVICE>>` class
 | All incoming calls | union of the two | the same |
 | Outgoing calls | `call_log`, outgoing | calls placed **from this handset** |
 
-Line settings, internal names and system settings, also lists in the
-standard, come from the handset and line configuration (#31). They are not
-separate data.
+Line settings and system settings, also lists in the standard, come from
+the handset and line configuration (#31). They are not separate data.
+
+### 1.1 Internal Names List in the controller (decided 2026-10-30)
+
+A standalone box lists every handset registered on it, and any handset may
+rename any entry. That is fine for a desk. In the controller it is not:
+
+| Rule | Detail |
+|---|---|
+| **A handset sees only the handsets of its own user's account** in its Internal Names List, itself included | A handset of a user with two handsets sees two entries; a shared handset (no owner) sees the other shared handsets. Never another user's |
+| **No handset can rename any entry** | The entry's Name field is not editable (properties bit 7 clear) and a save is answered "procedure not allowed". Names are set in the admin UI and the user's own page |
+| **Internal calls stay inside the account** | The list is also the dial list for internal calls, so a handset can only call handsets in its list. Calls to anyone else go through the SIP server like any other call (`AGENTS.md` §1). *Assumption, to confirm with the maintainer:* nobody needs a handset-to-handset call across accounts by pressing an internal number |
+| A standalone box keeps today's behaviour | Everything visible, renaming allowed |
+
+The names themselves belong to the controller's handset record (the
+admin and the owner edit them), not to what a handset saved. This needs a
+hook in `libopendectcell`: a per-viewer filter and a read-only switch for the
+names list. The cell side owns it; its state is in openDECTcell's
+`docs/notes-for-the-controller.md`, "The handsets in the controller", and in
+`docs/hosting-dect-base.md`. Until it has landed, test C3 with the standalone
+behaviour and do not ship the controller.
 
 ## 2. Decisions
 
