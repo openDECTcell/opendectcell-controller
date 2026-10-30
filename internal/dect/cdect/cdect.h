@@ -20,8 +20,8 @@
  * signature or struct layout changed: re-check libopendectcell-integration.md §1,
  * then raise this number.
  */
-#if OPENDECTCELL_API_VERSION != 3
-#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 3"
+#if OPENDECTCELL_API_VERSION != 99
+#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 99"
 #endif
 
 struct cdect_lc {
