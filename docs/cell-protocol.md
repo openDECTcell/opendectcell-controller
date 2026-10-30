@@ -763,6 +763,14 @@ SET_CHANNEL_PARAM, then `0x0230` ASSIGN_AUDIO_CHANNEL in its full form, answered
 by `0x0242`, then the audio path (`0x022D`). Release is `0x0233` plus `0x022D`
 disconnect.
 
+**Confirmed by the maintainer, 2026-10-30:** the bind stays with the
+controller (through `dect_base`'s `call_up()`/`call_down()` callbacks), not
+the cell, unless it proves too time-critical over the tunnel. Nothing
+measured says it is: the bind has no air timer and costs one round trip at
+the start of a call. If a bench shows otherwise with the RTT inside §2's
+budget, the bind moves to the cell, and MEDIA_OPEN then has to carry the
+connection handle and the bind flags.
+
 **Reading the assigned channel** (openDECTcell#60, observed on every call): use the
 **long, 4-octet form** of `0x0242` `{handle, chan_flags, mask0, mask1}`, which
 answers `0x0230`; the short form reports later state changes and is not used
