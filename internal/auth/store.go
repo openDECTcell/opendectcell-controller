@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,9 @@ type User struct {
 	Disabled    bool
 	CreatedAt   time.Time
 	LastLoginAt *time.Time
+	// PendingApproval: signed up by themselves, waiting for an admin
+	// (disabled until then).
+	PendingApproval bool
 }
 
 // IsAdmin reports whether u has the admin role.
@@ -96,12 +100,12 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const userCols = `id, username, display_name, coalesce(email, ''), role, may_add_cells, auth_source, disabled, created_at, last_login_at`
+const userCols = `id, username, display_name, coalesce(email, ''), role, may_add_cells, auth_source, disabled, created_at, last_login_at, pending_approval`
 
 func scanUser(r pgx.Row) (*User, error) {
 	var u User
 	var role string
-	err := r.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt)
+	err := r.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt, &u.PendingApproval)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -172,6 +176,72 @@ func (s *Store) CreateLocalUser(ctx context.Context, n NewLocalUser) (*User, err
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.create", ObjectType: "user", ObjectID: u.ID.String(),
 			Details: map[string]any{"username": u.Username, "role": string(u.Role), "auth_source": "local"}})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// ErrRegisterRate is returned when one client address signs up too often.
+var ErrRegisterRate = errors.New("auth: too many sign-ups from this address; try again later")
+
+// SelfRegistration is a sign-up: a username, an e-mail address and a password.
+type SelfRegistration struct {
+	Username, Email, Password string
+	// Pending creates the account disabled until an admin approves it.
+	Pending bool
+}
+
+// ValidEmail accepts a plain address, without a display name or comments.
+func ValidEmail(email string) error {
+	a, err := mail.ParseAddress(email)
+	if err != nil || a.Address != email || len(email) > 254 || a.Name != "" {
+		return errors.New("e-mail address is not valid")
+	}
+	return nil
+}
+
+// RegisterSelf creates a user account for someone signing up. It is limited
+// per client address (every attempt counts, successful or not), always makes
+// a user (never an admin) and records the sign-up in the audit log.
+func (s *Store) RegisterSelf(ctx context.Context, n SelfRegistration, addr string) (*User, error) {
+	keys := []string{"register:" + addr}
+	if addr != "" {
+		if lim, err := s.limited(ctx, keys); err != nil {
+			return nil, err
+		} else if lim {
+			return nil, ErrRegisterRate
+		}
+		if err := s.recordFailure(ctx, keys); err != nil {
+			return nil, err
+		}
+	}
+	if err := ValidUsername(n.Username); err != nil {
+		return nil, err
+	}
+	if err := ValidEmail(n.Email); err != nil {
+		return nil, err
+	}
+	if err := CheckNewPassword(n.Password); err != nil {
+		return nil, err
+	}
+	hash, err := HashPassword(s.Argon, n.Password)
+	if err != nil {
+		return nil, err
+	}
+	var u *User
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		u, err = scanUser(tx.QueryRow(ctx, `INSERT INTO app_user (username, email, role, auth_source, password_hash, disabled, pending_approval)
+			VALUES ($1, $2, 'user', 'local', $3, $4, $4) RETURNING `+userCols, n.Username, n.Email, hash, n.Pending))
+		if isUniqueViolation(err) {
+			return ErrUsernameTaken
+		}
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Action: "user.register", ObjectType: "user", ObjectID: u.ID.String(),
+			Details: map[string]any{"username": u.Username, "pending": n.Pending}})
 	})
 	if err != nil {
 		return nil, err
@@ -500,7 +570,8 @@ func (s *Store) UpdateUser(ctx context.Context, admin *User, id uuid.UUID, up Us
 		}
 		u, err = scanUser(tx.QueryRow(ctx, `UPDATE app_user SET display_name = coalesce($2, display_name),
 			email = CASE WHEN $3::text IS NULL THEN email ELSE nullif($3, '') END, role = coalesce($4, role),
-			may_add_cells = coalesce($5, may_add_cells), disabled = coalesce($6, disabled) WHERE id = $1 RETURNING `+userCols,
+			may_add_cells = coalesce($5, may_add_cells), disabled = coalesce($6, disabled),
+			pending_approval = CASE WHEN $6::boolean IS NOT NULL AND NOT $6::boolean THEN false ELSE pending_approval END WHERE id = $1 RETURNING `+userCols,
 			id, up.DisplayName, up.Email, role, up.MayAddCells, up.Disabled))
 		if err != nil {
 			return err

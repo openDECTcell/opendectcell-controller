@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/netip"
 	"net/url"
 	"os"
@@ -31,7 +32,23 @@ type Config struct {
 	Auth     Auth     `yaml:"auth"`
 	Cells    Cells    `yaml:"cells"`
 	SIP      SIP      `yaml:"sip"`
+	SMTP     SMTP     `yaml:"smtp"`
 }
+
+// SMTP is the outgoing mail server, for notifications. Without a host the
+// controller sends no mail and the pages say so.
+type SMTP struct {
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`     // default 587
+	User     string `yaml:"user"`     // empty: no authentication
+	Password string `yaml:"password"` // secret
+	From     string `yaml:"from"`     // sender address
+	// Security is starttls (default), tls (implicit, port 465) or none.
+	Security string `yaml:"security"`
+}
+
+// Enabled reports whether mail can be sent.
+func (m SMTP) Enabled() bool { return m.Host != "" }
 
 // SIP configures the SIP user agents' transports and media (docs/sip-ua.md).
 type SIP struct {
@@ -157,6 +174,7 @@ func Default() Config {
 		},
 		Cells: Cells{Listen: ":7300"},
 		SIP:   SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
+		SMTP:  SMTP{Port: "587", Security: "starttls"},
 	}
 }
 
@@ -255,6 +273,12 @@ func vars(c *Config) []envVar {
 		{"SIP_TCP_LISTEN", false, str(&c.SIP.TCPListen)},
 		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},
 		{"SIP_MEDIA_IP", false, str(&c.SIP.MediaIP)},
+		{"SMTP_HOST", false, str(&c.SMTP.Host)},
+		{"SMTP_PORT", false, str(&c.SMTP.Port)},
+		{"SMTP_USER", false, str(&c.SMTP.User)},
+		{"SMTP_PASSWORD", true, str(&c.SMTP.Password)},
+		{"SMTP_FROM", false, str(&c.SMTP.From)},
+		{"SMTP_SECURITY", false, str(&c.SMTP.Security)},
 	}
 }
 
@@ -381,6 +405,19 @@ func (c Config) Validate() error {
 	if c.SIP.MediaIP != "" {
 		if _, err := netip.ParseAddr(c.SIP.MediaIP); err != nil {
 			add("SIP media IP %q is not an IP address", c.SIP.MediaIP)
+		}
+	}
+	if c.SMTP.Enabled() {
+		if _, err := mail.ParseAddress(c.SMTP.From); err != nil {
+			add("SMTP from address %q is required and must be an e-mail address when an SMTP host is set", c.SMTP.From)
+		}
+		switch c.SMTP.Security {
+		case "starttls", "tls", "none":
+		default:
+			add("SMTP security %q must be starttls, tls or none", c.SMTP.Security)
+		}
+		if n, err := strconv.Atoi(c.SMTP.Port); err != nil || n < 1 || n > 65535 {
+			add("SMTP port %q is not a port number", c.SMTP.Port)
 		}
 	}
 	if c.Database.MaxConns < 1 {

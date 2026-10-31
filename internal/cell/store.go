@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -512,16 +513,33 @@ type Cell struct {
 	AllowPlainRTP   bool
 	LastSeenAt      *time.Time
 	CertExpiresAt   *time.Time
+	Profile
+}
+
+// Profile is what the owner says about a base station: where it is, what box
+// it is, and which of that may leave this controller (a public map later).
+// Every sharing switch starts off.
+type Profile struct {
+	BoxModel          string
+	Latitude          *float64
+	Longitude         *float64
+	PositionPrecision string // exact, approx (about 1 km) or region (about 10 km)
+	ShareName         bool
+	SharePosition     bool
+	ShareSpecs        bool
+	ShareStats        bool
 }
 
 const cellCols = `c.id, c.name, c.location, c.state, c.enrolled_by, c.enrolled_at, c.approved_at, c.software_version,
 	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.max_calls, c.allow_plain_rtp, c.last_seen_at,
-	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL)`
+	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL),
+	c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats`
 
 func scanCell(r pgx.Row) (*Cell, error) {
 	var c Cell
 	err := r.Scan(&c.ID, &c.Name, &c.Location, &c.State, &c.EnrolledBy, &c.EnrolledAt, &c.ApprovedAt, &c.SoftwareVersion,
-		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.MaxCalls, &c.AllowPlainRTP, &c.LastSeenAt, &c.CertExpiresAt)
+		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.MaxCalls, &c.AllowPlainRTP, &c.LastSeenAt, &c.CertExpiresAt,
+		&c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -688,4 +706,150 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up CellU
 		return err
 	})
 	return c, err
+}
+
+// ListOwned returns the cells u enrolled (admins: every cell), for the "my
+// base stations" page.
+func (s *Store) ListOwned(ctx context.Context, u *auth.User) ([]*Cell, error) {
+	if u == nil {
+		return nil, auth.ErrForbidden
+	}
+	rows, err := s.Pool.Query(ctx, "SELECT "+cellCols+" FROM cell c WHERE ($1 OR c.enrolled_by = $2) AND c.state <> 'revoked' ORDER BY lower(c.name)", u.IsAdmin(), u.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Cell
+	for rows.Next() {
+		c, err := scanCell(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// GetOwned returns a cell u enrolled, or any cell for an admin; others get
+// ErrNotFound, so a cell's existence is not revealed.
+func (s *Store) GetOwned(ctx context.Context, u *auth.User, id uuid.UUID) (*Cell, error) {
+	if u == nil {
+		return nil, ErrNotFound
+	}
+	c, err := scanCell(s.Pool.QueryRow(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.id = $1", id))
+	if err != nil {
+		return nil, err
+	}
+	if !u.IsAdmin() && (c.EnrolledBy == nil || *c.EnrolledBy != u.ID) {
+		return nil, ErrNotFound
+	}
+	return c, nil
+}
+
+// ProfileUpdate is the owner's edit of a base station: its name and
+// location text (also set by admins) and the Profile.
+type ProfileUpdate struct {
+	Name, Location string
+	Profile
+}
+
+// UpdateProfile saves a base station's name, place and sharing choices. The
+// owner or an admin may; the change is audited with the switches' new values
+// but never with the coordinates.
+func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, up ProfileUpdate) (*Cell, error) {
+	name := strings.TrimSpace(up.Name)
+	if name == "" || len(name) > 64 {
+		return nil, errors.New("name must be 1 to 64 characters")
+	}
+	if len(up.Location) > 128 || len(up.BoxModel) > 64 {
+		return nil, errors.New("location is at most 128 characters, the model at most 64")
+	}
+	if (up.Latitude == nil) != (up.Longitude == nil) {
+		return nil, errors.New("give both latitude and longitude, or neither")
+	}
+	if up.Latitude != nil && (*up.Latitude < -90 || *up.Latitude > 90 || *up.Longitude < -180 || *up.Longitude > 180) {
+		return nil, errors.New("latitude is -90 to 90, longitude -180 to 180")
+	}
+	switch up.PositionPrecision {
+	case "exact", "approx", "region":
+	default:
+		return nil, errors.New("precision must be exact, approx or region")
+	}
+	if up.SharePosition && up.Latitude == nil {
+		return nil, errors.New("set a position before sharing it")
+	}
+	var c *Cell
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var owner *uuid.UUID
+		if err := tx.QueryRow(ctx, "SELECT enrolled_by FROM cell WHERE id = $1 AND state <> 'revoked' FOR UPDATE", id).Scan(&owner); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if !u.IsAdmin() && (owner == nil || *owner != u.ID) {
+			return ErrNotFound
+		}
+		_, err := tx.Exec(ctx, `UPDATE cell SET name = $2, location = $3, box_model = $4, latitude = $5, longitude = $6,
+			position_precision = $7, share_name = $8, share_position = $9, share_specs = $10, share_stats = $11 WHERE id = $1`,
+			id, name, up.Location, strings.TrimSpace(up.BoxModel), up.Latitude, up.Longitude, up.PositionPrecision,
+			up.ShareName, up.SharePosition, up.ShareSpecs, up.ShareStats)
+		if err != nil {
+			if strings.Contains(err.Error(), "cell_name_key") {
+				return errors.New("a base station with that name exists")
+			}
+			return err
+		}
+		if err := audit.Record(ctx, tx, audit.Entry{Action: "cell.profile", ObjectType: "cell", ObjectID: id.String(), Details: map[string]any{
+			"name": name, "has_position": up.Latitude != nil, "precision": up.PositionPrecision,
+			"share_name": up.ShareName, "share_position": up.SharePosition, "share_specs": up.ShareSpecs, "share_stats": up.ShareStats}}); err != nil {
+			return err
+		}
+		c, err = scanCell(tx.QueryRow(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.id = $1", id))
+		return err
+	})
+	return c, err
+}
+
+// PublicStation is what a base station shares with the world, after its
+// owner's switches: a field the owner did not share is not in the struct at
+// all (nil or empty), whatever else is stored. It never holds an address, a
+// handset or a number.
+type PublicStation struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name,omitempty"`
+	Latitude  *float64  `json:"lat,omitempty"`
+	Longitude *float64  `json:"lon,omitempty"`
+	BoxModel  string    `json:"model,omitempty"`
+	ShareStat bool      `json:"-"`
+}
+
+// BlurPosition rounds a position to the precision the owner chose: approx
+// keeps two decimals (about 1 km), region one (about 10 km).
+func BlurPosition(lat, lon float64, precision string) (float64, float64) {
+	switch precision {
+	case "approx":
+		return math.Round(lat*100) / 100, math.Round(lon*100) / 100
+	case "region":
+		return math.Round(lat*10) / 10, math.Round(lon*10) / 10
+	}
+	return lat, lon
+}
+
+// Public returns the shared view of an active cell. The id is a random UUID
+// and always present, so a map can tell stations apart even when the owner
+// shares no name.
+func (c *Cell) Public() PublicStation {
+	p := PublicStation{ID: c.ID, ShareStat: c.ShareStats}
+	if c.ShareName {
+		p.Name = c.Name
+	}
+	if c.SharePosition && c.Latitude != nil && c.Longitude != nil {
+		lat, lon := BlurPosition(*c.Latitude, *c.Longitude, c.PositionPrecision)
+		p.Latitude, p.Longitude = &lat, &lon
+	}
+	if c.ShareSpecs {
+		p.BoxModel = c.BoxModel
+	}
+	return p
 }
