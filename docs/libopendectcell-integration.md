@@ -72,92 +72,88 @@ be a fork in all but name (`AGENTS.md` §2.3), so the plan is:
 | Package | Role | Imports `"C"` |
 |---|---|---|
 | `third_party/opendectcell` | git submodule of openDECTcell (relative URL `../opendectcell.git`), pinned to a commit | — |
-| `internal/dect/cdect` | The **only** cgo package: owns C memory, the glue of §1.1, copies bytes in and out, maps return codes to Go errors | yes |
-| `internal/dect/session` | One goroutine per radio connection: owns a `cdect` handle, timers, entropy; turns mails into events | no |
-| `internal/dect/core` | Session registry, dispatch from cells to sessions, registration window, subscription slots, link to the database and the SIP side | no |
+| `internal/dect/cdect` | The **only** cgo package: one cell's `struct dect_base` and the host steps beside it (`host.c`), C memory, copies in and out | yes |
+| `internal/dect/stack` | The types that cross between a stack and the controller (`Mail`, `Record`, `Env`, `Config`) and the `Stack` interface, without cgo | no |
+| `internal/dect/core` | One stack per active cell: its goroutine, the radio bring-up, the records in the database, MAIL_UP in and MAIL_DOWN out | no |
 
 No other package may import `"C"`. That keeps the boundary in one place for
-review, for `cgocheck2`, and for API churn in `libopendectcell`. `cdect` exists
-now (the proof of concept); the other two are names for C3.
+review, for `cgocheck2`, and for API churn in `libopendectcell`. Only `cmd/` picks
+the implementation: built with `-tags libopendectcell` (the submodule and cgo) it
+hands `cdect.NewStack` to the core; without the tag the core is off and the
+cells' mails are counted and dropped, as before C3, so everything else builds
+and tests without a C compiler or the private submodule.
 
-## 3. Sessions and goroutines
+## 3. One host per cell
 
-### 3.1 What a session is
+*Rewritten 2026-10-31 (C3 step 2). Until then this section planned one
+session per radio connection; ADR 0002 option B and the library's design
+superseded that: `struct dect_base` owns all of one radio's links, records
+and calls. The guide for a host is openDECTcell's
+[`docs/hosting-dect-base.md`](https://github.com/openDECTcell/opendectcell/blob/main/docs/hosting-dect-base.md).*
 
-A **session is one radio connection of one handset on one cell**, identified
-by the cell and the chip's connection `handle` (0..6) plus the 3-byte `tag` from
-`0x0203`. It is created at connection-up (`0x0200`) and ends at connection
-release (`0x0201`), on a protocol error, or when the cell's grace period
-expires (`cell-protocol.md` §6.4). It owns one Lc, one LAPC, one MM and one CC
-struct.
+### 3.1 What a host is
 
-The brief says "one goroutine per handset session". A per-connection session
-amounts to the same thing, since a handset has at most one radio connection at
-a time (handover is C9 research), but it starts *before* the handset has
-identified itself: the first NWK message names the IPUI. Once it does, the
-session binds to the handset's database record. If the handset already has a
-live session on another cell, the **newer one wins** and the old one is closed.
+A **host is one cell's `struct dect_base`** (`cdect.Host`), with the host
+steps `dect-stubd` keeps beside the library (`host.c`, each step naming the
+`dect-stubd` function it follows). It holds the records of the handsets the
+cell's chip serves (at most six, `cell-protocol.md` §7.4), every radio
+connection on the cell (the main link and three side links), and their calls.
+The golden traces pin its behaviour (§9).
+
+| Event (`cell.CellWatcher`) | The core |
+|---|---|
+| `CellUp`, a fresh session, a new chip, or the cell made active | Builds a new host: the cell's records from the database (home-set placement, §7.4 rules 1–2), free stores for enrolment, the chip settings of the cell's STUB build; sends the radio bring-up (one mail per 100 ms, `0x015B 00` first on 06.88 or a radio that is on); then `RadioUp`, and the records go into the chip |
+| `CellUp`, resumed (`cell-protocol.md` §6.4) | Keeps the host and its calls |
+| `CellDown` | Keeps the host; mails fail until the cell is back |
+| `CellGone` (grace over, or the cell no longer active) | Closes the host |
 
 Persistent handset state lives in the database, not in C structs: IPUI, TPUI,
-UAK, capabilities, last cell. A session loads what it needs when it binds (for
-example the UAK for `dect_mm_start_cipher`). It hands results back to `core`:
-a new UAK after registration, the handset's identity, the DCK for `0x0208`.
-This replaces what `dect-stubd` does with its local subscription file.
+UAK (sealed), the call identities, the cell slots. The host gets it at
+`CellUp` and hands back changes through `Env.Save`.
 
 ### 3.2 Goroutines
 
 | Goroutine | Count | Does |
 |---|---|---|
-| Cell reader | 1 per cell | Decodes frames. Routes `0x0203` MAIL_UP to a session inbox by `(handle, tag)`, `0x0200`/`0x0201` to session creation and teardown, everything else to the cell manager (radio, registration window, audio confirms, status) |
-| Cell writer | 1 per cell | The priority scheduler of `cell-protocol.md` §9 |
-| Session | 1 per radio connection | Owns all C state of the session; the only goroutine that ever touches it |
+| Cell session | 1 per connected cell (`internal/cell`) | Decodes frames; hands MAIL_UP and MAIL_REJECT to the core without blocking |
+| Cell writer | 1 per connected cell | The priority scheduler of `cell-protocol.md` §9 |
+| Cell stack | 1 per cell seen (`internal/dect/core`) | Owns the host; the only goroutine that ever touches its C state. Ticks it every 10 ms |
+| Record writer | 1 per host | Writes the host's record changes to the database in order, so a slow database never stalls the stack's timers |
 
-The cell reader never blocks on a session. Each session inbox is a bounded
-channel (32 mails); a full inbox resets that session (`cell-protocol.md`
-§9.2) instead of stalling the other handsets on the cell. At the design target
-(10 cells, 50 handsets, at most 7 connections per chip) this is ≤ ~90
-goroutines.
+The cell session never blocks on the core: each cell's inbox is a bounded
+channel (1024 events); a full one drops the event and logs an error.
 
-### 3.3 The session loop
+### 3.3 The cell loop
 
 ```go
-// Illustrative; cdect method names are the planned API, not final.
-func (s *Session) run(ctx context.Context) {
-	defer s.close() // zeroes and frees C memory, releases the radio link
-	defer s.recoverPanic()
-	for {
-		select {
-		case m := <-s.inbox: // 0x0203 for this connection
-			s.stack.Segment(m.Param, s.clock.NowMs(), s.entropy)
-		case <-s.timer.C:
-			s.stack.Tick(s.clock.NowMs())
-		case cmd := <-s.cmds: // from core: release, start cipher, ...
-			s.apply(cmd)
-		case <-ctx.Done():
-			return
-		}
-		s.flush()      // 0x0244 mails out to the cell writer; events to core
-		s.rearmTimer() // §6
+for {
+	select {
+	case ev := <-r.in: // MAIL_UP, MAIL_REJECT, CellUp/Down/Gone
+		r.handle(ev)    // MAIL_UP: stack.Mail(m, now)
+	case <-tick.C: // 10 ms
+		r.tick() // a bring-up mail when due, then stack.Tick(now)
+	case <-ctx.Done():
+		return
 	}
 }
 ```
 
-Each call into `cdect` feeds the input and drains LAPC in the same C call, the
-way `reg_segment()` does. The acknowledgement for an incoming frame is
-therefore on its way to the cell writer within the same loop iteration. That
-keeps the controller's share of the latency budget (`cell-protocol.md` §2,
-10 ms p99) easy to meet.
+A call into the host runs the stack and drains LAPC in the same C call; the
+host's mails reach `cell.Server.SendMail` from inside it (`Env.Send`). The
+acknowledgement for an incoming frame is therefore queued within the same
+loop iteration, which keeps the controller's share of the latency budget
+(`cell-protocol.md` §2, 10 ms p99) easy to meet.
 
 ## 4. Ownership and locking
 
-- **No mutexes around C state.** A session's structs are touched only by its
+- **No mutexes around C state.** A host is touched only by its cell's
   goroutine; other goroutines talk to it by channel. This relies on the
   library having no global state, which holds (§1).
 - `cdect` handles are documented as not safe for concurrent use. The race
   detector cannot see C memory, so a debug build records the owning goroutine
   and panics if another one calls in (planned for C3).
 - **Lifetime:** `New…()` allocates; `Close()` zeroes and frees, and is
-  idempotent. The session's `defer` always calls `Close`. A runtime cleanup
+  idempotent. The cell goroutine's `defer` always calls `Close`. A runtime cleanup
   (`runtime.AddCleanup`) that logs a leak is a safety net, never the normal
   path.
 
@@ -221,6 +217,11 @@ will record it.
   half-way, call setup, and release. These live in `session`, as ordinary
   `time.Timer`s on the same loop.
 
+*2026-10-31:* the timer design above predates ADR 0002. `dect_base` has
+one tick for all its timers (`dect_base_tick()`, openDECTcell API 100+), and
+the core ticks each host every 10 ms (§3.3), the period `dect-stubd`'s
+traces use. A deadline-driven timer is an optimisation for later.
+
 ## 7. Randomness
 
 - Entropy is an interface `Read(p []byte)`. Production uses `crypto/rand`;
@@ -245,7 +246,7 @@ state fields (`mm.state == DECT_MM_FAILED`).
 | A return code reports bad input (Lc checksum, LAPC parse, oversized message) | Typed Go error from `cdect` (`ErrDropped`, `ErrLength`, …). Usually: drop the input; LAPC retransmits |
 | MM or CC enters a failure state, or a stats counter shows a reject | `cdect` reports a state change as an event. `session` decides: release the connection, tell the UI the registration failed |
 | `dect_lapc_send` returns `-1` (window busy) | Not an error: the message stays queued in MM/CC and goes out on the next drain, as in `drain_nwk()` |
-| Go panic in a session | `recoverPanic` logs it (no key, PIN or identity bytes), closes the stack (which wipes and frees C memory), asks the cell to release the connection (`0x017A`), and ends the session. Other sessions carry on |
+| Go panic in a cell's goroutine | **Not contained yet** (C3 step 2): the controller dies like a C crash, below. A recover must not unwind through the C frames of a callback; containing it means recovering in each exported callback, closing the host and restarting the cell's stack |
 | Crash inside C (SIGSEGV) | Can't be recovered in-process: the controller dies, and Docker's restart policy brings it back. Cells resume or reconnect (`cell-protocol.md` §6.4). Prevented rather than handled: length checks in Go before every call, fuzzing, sanitizer builds (§9, §10) |
 
 The library uses no `assert`/`abort` (checked at `88d61af`, rechecked at `ee72c4d`), so a crash means
@@ -264,7 +265,7 @@ are seen.
 | `cdect` unit tests | Round trips, LSIG learning, corrupt frames, bounds checked before C, use after close. Run under `cgocheck2` | **5 tests, passing** |
 | Golden traces | openDECTcell's `tests/stubd-traces/` replayed through the host (`host.c`) with a fake clock and test_stubd.c's entropy; mails and bridge lines compared line for line (`trace_test.go`). Hardware captures: not yet | **15 of 15 traces, passing** (2026-10-31); dect-stubd-only lines skipped, one known difference, both listed in the test |
 | Fuzzing | Go native fuzz targets feed arbitrary bytes into each `*_rx` path through `cdect` | C3; short run in CI, longer nightly |
-| Session tests | Inbox overflow resets the session; a panic is contained; `Close` wipes | C3 |
+| Core tests | `internal/dect/core`: bring-up order per STUB build, resume keeps the host, a fresh session rebuilds it, enrolment saves, name visibility, slot-write corr and MAIL_REJECT, retry after a failed load; and the core over the real host (`-tags libopendectcell`): a cell's start matches `register.trace`. The record store against PostgreSQL | **Passing** (2026-10-31; the database tests run in CI only, this machine had none) |
 
 ## 10. Build
 
