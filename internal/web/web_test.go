@@ -44,6 +44,7 @@ var testMK = func() secret.MasterKey {
 
 type env struct {
 	srv   *httptest.Server
+	app   *Server
 	store *auth.Store
 	idp   *oidctest.Provider
 	cells *cell.Store
@@ -64,6 +65,7 @@ func newEnvWith(t *testing.T, setup func(*Server)) *env {
 	s := &Server{Pool: pool, Auth: store, LocalLogin: true, OIDCName: "Sign in with Test IdP",
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test",
 		Settings: &settings.Store{Pool: pool}, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logctl.New(slog.LevelInfo)}
+	e.app = s
 	e.srv = httptest.NewUnstartedServer(nil)
 	base, _ := url.Parse("http://" + e.srv.Listener.Addr().String())
 	s.BaseURL = base

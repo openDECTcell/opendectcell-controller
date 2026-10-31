@@ -77,6 +77,7 @@ type Server struct {
 	Mailer         Mailer // nil: no mail
 	SMTPHost       string
 	StartedAt      time.Time
+	MetricsToken   string // empty: no /metrics
 
 	brands brandCache
 	tmpl   *template.Template
@@ -142,6 +143,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(http.FileServerFS(static))))
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	s.mux.HandleFunc("GET /readyz", s.readyz)
+	s.mux.HandleFunc("GET /metrics", s.metrics)
 	s.mux.HandleFunc("GET /branding/logo", s.logo)
 
 	s.mux.HandleFunc("GET /login", s.loginPage)
@@ -179,6 +181,7 @@ func (s *Server) routes() {
 	s.statsRoutes()
 	s.loggingRoutes()
 	s.adminRoutes()
+	s.notificationRoutes()
 	s.cellRoutes()
 	s.sipRoutes()
 	s.userRoutes()

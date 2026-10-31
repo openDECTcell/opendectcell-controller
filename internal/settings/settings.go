@@ -25,6 +25,7 @@ const (
 	KeyRegistration = "registration"
 	KeyLogging      = "logging"
 	KeyMap          = "map"
+	KeyRetention    = "retention"
 )
 
 // MaxLogoBytes is the largest logo the controller stores.
@@ -227,4 +228,21 @@ func (m Map) Validate() (origin string, err error) {
 		return "", ErrBadTileURL
 	}
 	return u.Scheme + "://" + u.Host, nil
+}
+
+// Retention is how long detail is kept. Zero means for ever, the default: an
+// installation loses nothing until its admin says so.
+type Retention struct {
+	// CallDetailDays: after this many days a call's remote number and media
+	// quality are erased; the call itself (time, length, how it ended) stays.
+	CallDetailDays int `json:"call_detail_days"`
+	// AuditDays: audit entries older than this are deleted.
+	AuditDays int `json:"audit_days"`
+}
+
+// Retention returns the retention settings.
+func (s *Store) Retention(ctx context.Context) (Retention, error) {
+	var r Retention
+	_, err := s.Get(ctx, KeyRetention, &r)
+	return r, err
 }

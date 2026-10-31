@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
@@ -21,6 +22,7 @@ func (s *Server) settingsRoutes() {
 	s.mux.Handle("POST /admin/settings/general", s.requireAdmin(s.settingsGeneral))
 	s.mux.Handle("POST /admin/settings/registration", s.requireAdmin(s.settingsRegistration))
 	s.mux.Handle("POST /admin/settings/map", s.requireAdmin(s.settingsMap))
+	s.mux.Handle("POST /admin/settings/retention", s.requireAdmin(s.settingsRetention))
 }
 
 type settingsData struct {
@@ -34,6 +36,7 @@ type settingsData struct {
 	BaseURL      string
 	Map          settings.Map
 	MapChoice    string // none, osm or custom
+	Retention    settings.Retention
 	SMTP         bool
 	SMTPHost     string
 }
@@ -68,6 +71,9 @@ func (s *Server) settingsView(r *http.Request) (settingsData, error) {
 		d.MapChoice = "osm"
 	default:
 		d.MapChoice = "custom"
+	}
+	if d.Retention, err = s.Settings.Retention(r.Context()); err != nil {
+		return d, err
 	}
 	d.SMTP, d.SMTPHost = s.mailOn(), s.SMTPHost
 	return d, nil
@@ -193,5 +199,31 @@ func (s *Server) settingsMap(w http.ResponseWriter, r *http.Request, u *auth.Use
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyMap,
 		Details: map[string]any{"tile_url": m.TileURL, "public": m.Public}})
 	s.brandChanged()
+	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
+}
+
+func (s *Server) settingsRetention(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	days := func(name string) (int, bool) {
+		v := strings.TrimSpace(r.PostFormValue(name))
+		if v == "" {
+			return 0, true
+		}
+		n, err := strconv.Atoi(v)
+		return n, err == nil && n >= 0 && n <= 3650 && (n == 0 || n >= 7)
+	}
+	c, ok1 := days("call_detail_days")
+	a, ok2 := days("audit_days")
+	if !ok1 || !ok2 {
+		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: "Give a number of days from 7 to 3650, or 0 (or nothing) to keep everything."})
+		return
+	}
+	ret := settings.Retention{CallDetailDays: c, AuditDays: a}
+	if err := s.Settings.Put(r.Context(), settings.KeyRetention, ret); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyRetention,
+		Details: map[string]any{"call_detail_days": c, "audit_days": a}})
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
 }

@@ -77,6 +77,9 @@ type HTTP struct {
 	// TrustedProxies are the reverse proxies (CIDRs) whose X-Forwarded-For
 	// header is believed. Empty: the client address is the TCP peer.
 	TrustedProxies []string `yaml:"trusted_proxies"`
+	// MetricsToken turns on /metrics (Prometheus) for a client that sends it
+	// as a bearer token. Secret. Empty: no endpoint.
+	MetricsToken string `yaml:"metrics_token"`
 }
 
 type Database struct {
@@ -246,6 +249,7 @@ func vars(c *Config) []envVar {
 		{"HTTP_LISTEN", false, str(&c.HTTP.Listen)},
 		{"HTTP_BASE_URL", false, str(&c.HTTP.BaseURL)},
 		{"HTTP_TRUSTED_PROXIES", false, list(&c.HTTP.TrustedProxies)},
+		{"HTTP_METRICS_TOKEN", true, str(&c.HTTP.MetricsToken)},
 		{"DATABASE_URL", true, str(&c.Database.URL)},
 		{"DATABASE_MAX_CONNS", false, uintN(&c.Database.MaxConns, 31)},
 		{"MASTER_KEY", true, str(&c.Secrets.MasterKey)},

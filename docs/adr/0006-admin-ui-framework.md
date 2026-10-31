@@ -35,15 +35,15 @@ so the whole structure is reviewable before every page exists.
 
 | Group | Entries (✓ built, · stub) |
 |---|---|
-| Phones | Overview ✓ · Handsets · · Phone lines ✓ · Calls · · Contacts ✓ |
-| Base stations | My base stations ✓ (profile, map position, sharing) · Enroll ✓ · Public map · |
+| Phones | Overview ✓ · Handsets ✓ (list, register by PIN, name, lines, ring policy) · Phone lines ✓ · Calls · · Contacts ✓ |
+| Base stations | My base stations ✓ (profile, map position, sharing) · Enroll ✓ · Public map ✓ (public only when an admin allows it) |
 | Insight | Statistics ✓ (own equipment) · Logging ✓ (read-only, e-mail opt-in) |
-| Administration (admins) | Dashboard ✓ · Cells ✓ · All handsets · · Users ✓ · All calls ✓ · Statistics ✓ · Logging ✓ (control) · Audit log ✓ · Settings ✓ · System ✓ |
-| Account | Account ✓ |
+| Administration (admins) | Dashboard ✓ · Cells ✓ · Users ✓ · All calls ✓ · Statistics ✓ · Logging ✓ (control) · Audit log ✓ · Settings ✓ (name and logo, registration, map, retention, mail status) · System ✓ · Backup ✓ (explains) |
+| Account | Account ✓ (password, two-factor login, e-mail notifications) |
 
-Not yet in the menu, on the list in `docs/ui-backlog.md`: two-factor login,
-personal API tokens, sessions list, data export and account deletion,
-notifications centre, backup page.
+Not yet in the menu, on the list in `docs/ui-backlog.md`: personal API tokens,
+sessions list, data export and account deletion, notifications centre,
+removing a handset.
 
 ## Privacy rules the UI follows
 

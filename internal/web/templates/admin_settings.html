@@ -65,6 +65,24 @@
 
   <div class="col-lg-6">
     <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "database"}} Retention</h3></div>
+      <form method="post" action="/admin/settings/retention">
+        <div class="card-body">
+          <p class="text-secondary">Nothing is deleted unless you say so. Empty or 0 keeps everything.</p>
+          <div class="mb-3"><label class="form-label" for="call_detail_days">Erase a call's number and quality details after (days)</label>
+            <input class="form-control" id="call_detail_days" name="call_detail_days" inputmode="numeric" value="{{if .Retention.CallDetailDays}}{{.Retention.CallDetailDays}}{{end}}" placeholder="for ever">
+            <div class="form-hint">The call itself (when, how long, how it ended) stays, so the statistics still add up. Recommended: 90.</div></div>
+          <div class="mb-0"><label class="form-label" for="audit_days">Delete audit entries after (days)</label>
+            <input class="form-control" id="audit_days" name="audit_days" inputmode="numeric" value="{{if .Retention.AuditDays}}{{.Retention.AuditDays}}{{end}}" placeholder="for ever">
+            <div class="form-hint">Recommended: at least 365. The purge itself is recorded.</div></div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
       <div class="card-header"><h3 class="card-title">{{icon "mail"}} E-mail</h3></div>
       <div class="card-body">
         {{if .SMTP}}<p>Mail goes out through <code>{{.SMTPHost}}</code>. Users who ask for it get a message when the log level changes.</p>

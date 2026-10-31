@@ -1,0 +1,32 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_backup.html"}}{{template "head" .}}
+<div class="row row-cards">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">What to back up</h3></div>
+      <div class="card-body">
+        <p>A controller has two things that cannot be rebuilt, and they must be kept <strong>apart</strong>:</p>
+        <table class="table"><tbody>
+          <tr><td class="fw-bold w-25">The database</td><td>Users, handsets and their (encrypted) keys, cells, settings, call log, audit log. Dump it regularly.</td></tr>
+          <tr><td class="fw-bold">The master key</td><td>Without it the database's secrets (handset keys, SIP passwords, two-factor secrets, the cell CA) cannot be read, and with it next to the dump anyone holding the dump can. Store it separately, offline.</td></tr>
+        </tbody></table>
+        <p>The cells' own certificates are in the database, so a restored controller is recognised by its cells without enrolling them again.</p>
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">With Docker Compose</h3></div>
+      <div class="card-body">
+<pre class="mb-3"><code>docker compose exec db pg_dump -U opendectcell -Fc opendectcell &gt; opendectcell-$(date +%F).dump
+docker compose cp controller:/secrets/master_key ./master_key.backup</code></pre>
+        <p>To restore: start an empty stack, stop the controller, load the dump (<code>pg_restore --clean --if-exists -d opendectcell</code>), put the same master key back, start the controller. <code>docs/deployment.md</code> has the full procedure and how to rotate the key.</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-body">
+      <p class="mb-2">This page only explains: the controller does not make backups itself, because the dump belongs next to your other backups, not inside the application.</p>
+      <p class="mb-0 text-secondary small">Check a backup by restoring it into a scratch instance now and then.</p>
+    </div></div>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

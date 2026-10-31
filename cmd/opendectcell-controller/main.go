@@ -52,6 +52,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
+	"github.com/openDECTcell/opendectcell-controller/internal/retention"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
@@ -297,7 +298,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
 		Registrations: windows,
 		Settings:      instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
-		SMTPHost: cfg.SMTP.Host,
+		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {
 		srv.Mailer = &mailer.Mailer{Cfg: cfg.SMTP, Name: func() string {
@@ -308,6 +309,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		}}
 	}
 	go srv.RunLogExpiry(ctx)
+	go srv.RunCellAlerts(ctx)
+	go retention.Run(ctx, pool, instance, log)
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,
 			RedirectURL: strings.TrimRight(cfg.HTTP.BaseURL, "/") + "/auth/oidc/callback"}

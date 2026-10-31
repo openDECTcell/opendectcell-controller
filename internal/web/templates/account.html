@@ -7,6 +7,15 @@
   <dt>Role</dt><dd>{{.User.Role}}</dd>
   <dt>Sign-in</dt><dd>{{if eq .User.AuthSource "oidc"}}single sign-on{{else}}local account{{end}}</dd>
 </dl>
+{{with .Data}}
+<h3 class="mt-4 mb-2">E-mail notifications</h3>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/account/notifications" class="narrow">
+  <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="log" {{if .Log}}checked{{end}}><span class="form-check-label">When the logging level changes</span></label>
+  {{if $.User.IsAdmin}}<label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="cells" {{if .Cells}}checked{{end}}><span class="form-check-label">When a cell has been offline for 10 minutes, and when it is back</span></label>{{end}}
+  {{if not .HasEmail}}<div class="alert alert-warning">Your account has no e-mail address yet.</div>{{else if not .MailOK}}<div class="form-hint mb-2">This controller has no mail server set up; your choice is kept for when it has.</div>{{end}}
+  <button type="submit" class="btn btn-primary">Save</button>
+</form></div></div>
+{{end}}
 {{if eq .User.AuthSource "local"}}
 <h3 class="mt-4 mb-2">Two-factor login</h3>
 <p><a class="btn btn-outline-primary" href="/account/2fa">{{icon "shield-lock"}} Manage two-factor login</a></p>

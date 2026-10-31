@@ -283,7 +283,12 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, u *auth.User) {
 }
 
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	s.render(w, http.StatusOK, "account.html", page{Title: "Account", User: u})
+	d, err := s.notifState(r, u)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.render(w, http.StatusOK, "account.html", page{Title: "Account", User: u, Data: d, Notice: r.FormValue("done")})
 }
 
 func (s *Server) accountPassword(w http.ResponseWriter, r *http.Request, u *auth.User) {
