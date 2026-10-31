@@ -373,6 +373,7 @@ paths:
                 digits: { type: integer, enum: [8, 6], default: 8, description: "6 for a handset that refuses 8" }
                 owner_id: { type: string, format: uuid, description: Admin only. Default the caller }
       responses:
+        "400": { $ref: "#/components/responses/Invalid" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "201":
           description: Opened
