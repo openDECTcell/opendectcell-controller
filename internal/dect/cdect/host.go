@@ -131,6 +131,7 @@ func NewHost(env Env, cfg Config) *Host {
 	}
 	b.chip.uak_table = C.uint32_t(cfg.UAKTable)
 	b.chip.check_delay_ms = C.uint32_t(cfg.CheckDelayMs)
+	x.c.no_dummy = cbool(cfg.NoDummyKey)
 	if cfg.Stub != "" {
 		s := C.CString(cfg.Stub)
 		x.cstrs = append(x.cstrs, s)

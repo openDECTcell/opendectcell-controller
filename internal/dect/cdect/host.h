@@ -76,6 +76,7 @@ struct cdect_host {
 
 	int      radio_up;		/* the cell's radio is on (STATUS) */
 	int      sub_restored;		/* the records went into the chip */
+	int      no_dummy;		/* trace replays: no dummy key in an empty table */
 
 	/* Go stages here. */
 	struct dect_mail     in;

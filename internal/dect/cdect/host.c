@@ -110,11 +110,23 @@ static uint8_t live_slot_mask(const struct cdect_host *c)
  * clear audited. dect-stubd's holdback= and roamers are lab options with no
  * counterpart here.
  */
+static int any_uak(const struct cdect_host *c);
+
 static void install(struct cdect_host *c)
 {
 	uint8_t slot = (uint8_t)dect_base_slot(&c->b, c->b.cur);
 	unsigned keep = c->b.rec.uak_valid ? 1u << slot : 0u;
+	/*
+	 * No record holds a key: the chip still needs one in its table to
+	 * run (07.56 stays silent on an empty table, bench 2026-10-31), but
+	 * none of an earlier run's, so slot 1 gets a random key nobody
+	 * holds. A handset's own key replaces it when one is installed.
+	 */
+	int dummy = !c->no_dummy && !any_uak(c);
 	unsigned i;
+
+	if (dummy)
+		keep = 1u << 1;
 
 	for (i = 0; i < c->b.n_hs; i++) {
 		unsigned hsl = dect_base_slot(&c->b, i);
@@ -124,7 +136,18 @@ static void install(struct cdect_host *c)
 			keep |= 1u << hsl;
 	}
 	dect_base_slot_clear(&c->b, keep);
-	dect_base_slot_audit(&c->b, slot, live_slot_mask(c), c->now);
+	dect_base_slot_audit(&c->b, slot,
+			     (uint8_t)(live_slot_mask(c) | (dummy ? 1u : 0u)),
+			     c->now);
+	if (dummy) {
+		uint8_t k[DECT_MM_UAK_LEN];
+
+		cdectRandom(c->h, k, sizeof(k));
+		(void)dect_base_slot_install(&c->b, 1u, k);
+		memset(k, 0, sizeof(k));
+		dect_base_slot_mask(&c->b, 1u);
+		return;
+	}
 	for (i = 0; i < c->b.n_hs; i++) {
 		unsigned hsl = dect_base_slot(&c->b, i);
 
@@ -709,7 +732,7 @@ void cdect_host_tick(struct cdect_host *c, uint64_t now)
 	connect_fallback(c, now);
 	dect_base_tick(&c->b, now, c->radio_up);
 	/* the records into the chip once its radio is up (cell-protocol.md §7.4) */
-	if (c->radio_up && any_uak(c) && !c->sub_restored) {
+	if (c->radio_up && !c->sub_restored && (any_uak(c) || !c->no_dummy)) {
 		install(c);
 		c->sub_restored = 1;
 	}

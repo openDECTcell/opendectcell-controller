@@ -98,6 +98,9 @@ type Config struct {
 	UAKTable     uint32 // from the cell's stub_version (hosting-dect-base.md §6)
 	CheckDelayMs uint32
 	Stub         string
+	// NoDummyKey: the golden traces replay dect-stubd, which writes no
+	// dummy key into a chip table that would otherwise be empty.
+	NoDummyKey bool
 }
 
 // Stack is one cell's base stack. It is not safe for concurrent use: one
