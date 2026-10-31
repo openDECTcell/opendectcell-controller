@@ -129,6 +129,7 @@ func NewHost(env Env, cfg Config) *Host {
 		b.cfg.ipuio_set = 1
 		b.cfg.ipuio = C.uint32_t(*cfg.IPUIO)
 	}
+	b.cfg.park_pli = C.uint(cfg.ParkPLI)
 	b.chip.uak_table = C.uint32_t(cfg.UAKTable)
 	b.chip.check_delay_ms = C.uint32_t(cfg.CheckDelayMs)
 	x.c.no_dummy = cbool(cfg.NoDummyKey)

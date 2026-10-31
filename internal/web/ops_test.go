@@ -20,21 +20,26 @@ import (
 
 // onlineLink is a CellLink whose cells' state a test sets.
 type onlineLink struct {
-	mu sync.Mutex
-	up map[uuid.UUID]bool
+	mu   sync.Mutex
+	up   map[uuid.UUID]bool
+	rfpi map[uuid.UUID][5]byte
 }
 
 func (l *onlineLink) CellStatus(id uuid.UUID) cell.Status {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return cell.Status{Online: l.up[id], Since: time.Now().Add(-time.Hour)}
+	st := cell.Status{Online: l.up[id], Since: time.Now().Add(-time.Hour)}
+	if r, ok := l.rfpi[id]; ok {
+		st.RFPI, st.HasRFPI = r, true
+	}
+	return st
 }
 func (l *onlineLink) NotifyState(uuid.UUID, wire.CellStateValue, string) {}
 func (l *onlineLink) Kick(uuid.UUID)                                     {}
 func (l *onlineLink) set(id uuid.UUID, up bool)                          { l.mu.Lock(); l.up[id] = up; l.mu.Unlock() }
 
 func newOpsEnv(t *testing.T) (*env, *onlineLink, *fakeMail) {
-	link := &onlineLink{up: map[uuid.UUID]bool{}}
+	link := &onlineLink{up: map[uuid.UUID]bool{}, rfpi: map[uuid.UUID][5]byte{}}
 	fm := &fakeMail{}
 	e := newEnvWith(t, func(s *Server) {
 		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
@@ -168,5 +173,69 @@ func TestRetentionSettingsAndBackupPage(t *testing.T) {
 	}
 	if resp, body := e.get(t, a, "/admin/backup"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "master key") {
 		t.Errorf("backup page: %d", resp.StatusCode)
+	}
+}
+
+func TestIdentityPages(t *testing.T) {
+	e, link, _ := newOpsEnv(t)
+	var cid uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state) VALUES ('Attic', 'active') RETURNING id").Scan(&cid)
+	link.set(cid, true)
+	a, u := e.adminBrowser(t), e.userBrowser(t)
+
+	// no identity yet: nothing to apply, and the donor needs an RFPI the cell reports
+	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("applying nothing: %d", r.StatusCode)
+	}
+	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("donor from a cell that reports nothing: %d", r.StatusCode)
+	}
+	// class A from the cell's own identity; a class B RFPI is not a donor
+	link.mu.Lock()
+	link.rfpi[cid] = [5]byte{0x10, 0xf4, 0x20, 0x11, 0x01}
+	link.mu.Unlock()
+	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("a class B RFPI as a donor: %d", r.StatusCode)
+	}
+	link.mu.Lock()
+	link.rfpi[cid] = [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x6b}
+	link.mu.Unlock()
+	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("donor: %d", r.StatusCode)
+	}
+	_, page := e.get(t, a, "/cells")
+	for _, want := range []string{"class A", "02700d5e68", "Use this identity on all cells", "02700d5e6b"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("cells page lacks %q", want)
+		}
+	}
+	// applying needs the tick for "every handset registers again"
+	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("applied without the confirmation: %d", r.StatusCode)
+	}
+	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("apply: %d", r.StatusCode)
+	}
+	if w, err := e.cells.Want(ctx, cid); err != nil || !w.Set || w.RFPI != [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x69} {
+		t.Fatalf("the cell is to get number 1: %+v %v", w, err)
+	}
+	// a donor cannot be named while applied
+	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("donor while applied: %d", r.StatusCode)
+	}
+	if _, page := e.get(t, a, "/cells"); !strings.Contains(page, "Give the cells their own identity back") || !strings.Contains(page, "no. 1") {
+		t.Error("the page does not show it applied, with the cell's number")
+	}
+	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"off"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("turning off: %d", r.StatusCode)
+	}
+	// users see none of it
+	for _, p := range []string{"/cells/identity/apply"} {
+		if r := e.post(t, u, p, url.Values{"apply": {"on"}}); r.StatusCode != http.StatusNotFound {
+			t.Errorf("a user on %s: %d", p, r.StatusCode)
+		}
+	}
+	if r := e.post(t, u, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("a user took a donor: %d", r.StatusCode)
 	}
 }

@@ -267,7 +267,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
 		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr}, New: dectStack,
-			Reg: windows, Log: log.With("component", "dect")}
+			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)
 		defer dect.Wait() // after stop: the stacks close, their records are written

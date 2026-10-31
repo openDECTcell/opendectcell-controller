@@ -94,6 +94,9 @@ type Config struct {
 	DialWaitMs   uint // 0: 3000
 	TimeEveryMin uint
 	IPUIO        *uint32
+	// ParkPLI is the PARK length handsets are given (class B: 19, ARC and
+	// EIC); 0 is the class's whole ARI.
+	ParkPLI uint
 
 	UAKTable     uint32 // from the cell's stub_version (hosting-dect-base.md §6)
 	CheckDelayMs uint32

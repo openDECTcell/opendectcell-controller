@@ -118,7 +118,18 @@ func (f *fakeStack) get(fn func(f *fakeStack))     { f.mu.Lock(); defer f.mu.Unl
 type fakeLink struct {
 	mu    sync.Mutex
 	mails []sent
+	// identity pushes: the RFPI asked for, nil for "your own again"
+	pushes []*[5]byte
 }
+
+func (l *fakeLink) SetIdentity(_ uuid.UUID, rfpi *[5]byte) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pushes = append(l.pushes, rfpi)
+	return nil
+}
+
+func (l *fakeLink) nPushes() int { l.mu.Lock(); defer l.mu.Unlock(); return len(l.pushes) }
 
 type sent struct {
 	corr uint16
@@ -732,4 +743,130 @@ func TestParkedRadioAfterBringUpRestartsTheStack(t *testing.T) {
 	}
 	g.core.CellRadio(id, 0, 2)
 	waitFor(t, "a second stack", func() bool { return g.stack(1) != nil })
+}
+
+// fakeIdentity is what the core is told the cell should broadcast.
+type fakeIdentity struct {
+	mu     sync.Mutex
+	want   cell.IdentityWant
+	pushed []*[5]byte
+}
+
+func (f *fakeIdentity) Want(context.Context, uuid.UUID) (cell.IdentityWant, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.want, nil
+}
+
+func (f *fakeIdentity) Pushed(_ context.Context, _ uuid.UUID, r *[5]byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pushed = append(f.pushed, r)
+	return nil
+}
+
+func (f *fakeIdentity) set(w cell.IdentityWant) { f.mu.Lock(); f.want = w; f.mu.Unlock() }
+
+var (
+	rfpiOwn    = [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x68}
+	rfpiSystem = [5]byte{0x10, 0xf4, 0x20, 0x11, 0x01}
+)
+
+func TestIdentityPushAndWait(t *testing.T) {
+	recs := &fakeRecords{}
+	g := newRig(t, recs, nil)
+	idn := &fakeIdentity{want: cell.IdentityWant{Set: true, RFPI: rfpiSystem, ParkPLI: 19}}
+	g.core.Identity = idn
+	id := uuid.New()
+
+	// the cell broadcasts its own: it is asked, and no stack starts yet
+	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", RFPI: rfpiOwn, HasRFPI: true})
+	waitFor(t, "the push", func() bool { return g.link.nPushes() == 1 })
+	if p := g.link.pushes[0]; p == nil || *p != rfpiSystem {
+		t.Fatalf("asked for %v", p)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if g.nStacks() != 0 {
+		t.Fatal("a stack started on a cell about to reload its chip")
+	}
+	idn.mu.Lock()
+	if len(idn.pushed) != 1 || idn.pushed[0] == nil {
+		t.Errorf("the push was not recorded: %v", idn.pushed)
+	}
+	idn.mu.Unlock()
+
+	// it comes back with the identity: the stack starts with the PARK length
+	g.core.CellDown(id)
+	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", RFPI: rfpiSystem, HasRFPI: true})
+	waitFor(t, "the stack", func() bool { return g.stack(0) != nil })
+	g.stack(0).get(func(f *fakeStack) {
+		if f.cfg.ParkPLI != 19 {
+			t.Errorf("PARK length %d, want 19", f.cfg.ParkPLI)
+		}
+	})
+	if g.link.nPushes() != 1 {
+		t.Errorf("asked again: %d pushes", g.link.nPushes())
+	}
+}
+
+func TestIdentityRefusedIsNotAskedAgain(t *testing.T) {
+	g := newRig(t, &fakeRecords{}, nil)
+	g.core.Identity = &fakeIdentity{want: cell.IdentityWant{Set: true, RFPI: rfpiSystem, ParkPLI: 19}}
+	id := uuid.New()
+	up := cell.CellUp{StubVersion: "06.88", RFPI: rfpiOwn, HasRFPI: true}
+	g.core.CellUp(id, up)
+	waitFor(t, "the push", func() bool { return g.link.nPushes() == 1 })
+	// back with its own identity: it did not take it. The stack runs with it, and
+	// with no shortened PARK (that would be wrong for a class A RFPI).
+	g.core.CellDown(id)
+	g.core.CellUp(id, up)
+	waitFor(t, "the stack", func() bool { return g.stack(0) != nil })
+	if g.link.nPushes() != 1 {
+		t.Errorf("asked a second time: %d", g.link.nPushes())
+	}
+	g.stack(0).get(func(f *fakeStack) {
+		if f.cfg.ParkPLI != 0 {
+			t.Errorf("PARK length %d on a cell with its own identity", f.cfg.ParkPLI)
+		}
+	})
+}
+
+func TestIdentityRevertAndOldCells(t *testing.T) {
+	g := newRig(t, &fakeRecords{}, nil)
+	idn := &fakeIdentity{}
+	g.core.Identity = idn
+	// an older cell reports no RFPI: left alone, even if an identity is set
+	idn.set(cell.IdentityWant{Set: true, RFPI: rfpiSystem})
+	old := uuid.New()
+	g.core.CellUp(old, cell.CellUp{StubVersion: "06.88"})
+	waitFor(t, "the old cell's stack", func() bool { return g.stack(0) != nil })
+	if g.link.nPushes() != 0 {
+		t.Fatal("an old cell was asked")
+	}
+	// turned off after a push: the cell is asked for its own, once
+	idn.set(cell.IdentityWant{Revert: true})
+	id := uuid.New()
+	up := cell.CellUp{StubVersion: "06.88", RFPI: rfpiSystem, HasRFPI: true}
+	g.core.CellUp(id, up)
+	waitFor(t, "the way back", func() bool { return g.link.nPushes() == 1 })
+	if g.link.pushes[0] != nil {
+		t.Fatalf("asked for %v, want its own", g.link.pushes[0])
+	}
+	g.core.CellDown(id)
+	g.core.CellUp(id, up)
+	waitFor(t, "a stack for it", func() bool { return g.stack(1) != nil })
+	if g.link.nPushes() != 1 {
+		t.Errorf("the way back asked twice: %d", g.link.nPushes())
+	}
+}
+
+func TestIdentityCellThatNeverComesBack(t *testing.T) {
+	old := identityWait
+	identityWait = 50 * time.Millisecond
+	defer func() { identityWait = old }()
+	g := newRig(t, &fakeRecords{}, nil)
+	g.core.Identity = &fakeIdentity{want: cell.IdentityWant{Set: true, RFPI: rfpiSystem, ParkPLI: 19}}
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "06.88", RFPI: rfpiOwn, HasRFPI: true})
+	waitFor(t, "the push", func() bool { return g.link.nPushes() == 1 })
+	waitFor(t, "the stack after the wait", func() bool { return g.stack(0) != nil })
 }

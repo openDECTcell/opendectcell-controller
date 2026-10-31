@@ -75,6 +75,10 @@ type HelloMsg struct {
 	ResumeToken      []byte  // nil or 16 bytes
 	RadioState       uint8
 	CellTimeMs       uint64 // 0 if absent
+	// RFPI is the 40-bit identity the cell's chip broadcasts (tag 17), if
+	// the cell reports it; HasRFPI says it did.
+	RFPI    [5]byte
+	HasRFPI bool
 }
 
 func (m HelloMsg) Encode() []byte {
@@ -99,6 +103,9 @@ func (m HelloMsg) Encode() []byte {
 	}
 	if len(m.AudioFormatsUp) > 0 {
 		w.Bytes(16, m.AudioFormatsUp)
+	}
+	if m.HasRFPI {
+		w.Bytes(17, m.RFPI[:])
 	}
 	return w.Build()
 }
@@ -165,6 +172,14 @@ func DecodeHello(b []byte) (HelloMsg, error) {
 			return m, fmt.Errorf("%w: audio_formats_up must list 1 to 16 formats", ErrMalformed)
 		}
 		m.AudioFormatsUp = append([]uint8(nil), f...)
+	}
+	if t.Has(17) {
+		r, err := t.Fixed(17, 5)
+		if err != nil {
+			return m, err
+		}
+		copy(m.RFPI[:], r)
+		m.HasRFPI = true
 	}
 	return m, nil
 }
@@ -471,6 +486,9 @@ type StatusMsg struct {
 	ChipEpoch, UptimeS    uint32
 	Detail                string
 	HasRadio, HasChip     bool
+	// RFPI is the identity the chip broadcasts (tag 6), if reported.
+	RFPI    [5]byte
+	HasRFPI bool
 }
 
 func (m StatusMsg) Encode() []byte {
@@ -484,6 +502,9 @@ func (m StatusMsg) Encode() []byte {
 	w.U32(3, m.ChipEpoch).U32(4, m.UptimeS)
 	if m.Detail != "" {
 		w.String(5, truncate(m.Detail, 128))
+	}
+	if m.HasRFPI {
+		w.Bytes(6, m.RFPI[:])
 	}
 	return w.Build()
 }
@@ -516,8 +537,50 @@ func DecodeStatus(b []byte) (StatusMsg, error) {
 			return m, err
 		}
 	}
-	m.Detail, err = t.OptStr(5, 128)
-	return m, err
+	if m.Detail, err = t.OptStr(5, 128); err != nil {
+		return m, err
+	}
+	if t.Has(6) {
+		r, err := t.Fixed(6, 5)
+		if err != nil {
+			return m, err
+		}
+		copy(m.RFPI[:], r)
+		m.HasRFPI = true
+	}
+	return m, nil
+}
+
+// ConfigSetMsg is CONFIG_SET (§10). Only the DECT identity is built here;
+// the cell applies what it understands.
+type ConfigSetMsg struct {
+	// RFPI, if HasRFPI, is the identity the cell's chip is to broadcast
+	// (tag 6): class A or B, E bit 0. A change reloads the chip.
+	RFPI    [5]byte
+	HasRFPI bool
+	// Revert asks the cell to go back to its own identity: tag 6 empty.
+	Revert bool
+}
+
+func (m ConfigSetMsg) Encode() []byte {
+	w := new(Builder)
+	switch {
+	case m.HasRFPI:
+		w.Bytes(6, m.RFPI[:])
+	case m.Revert:
+		w.Bytes(6, nil)
+	}
+	return w.Build()
+}
+
+// DecodeConfigAck returns CONFIG_ACK's status: 0 everything applied, 1 only
+// part of it.
+func DecodeConfigAck(b []byte) (uint16, error) {
+	t, err := ParseTLV(b)
+	if err != nil {
+		return 0, err
+	}
+	return t.U16(1)
 }
 
 // Stats counter ids (§10).

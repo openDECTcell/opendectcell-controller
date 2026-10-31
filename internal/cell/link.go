@@ -107,6 +107,10 @@ type CellUp struct {
 	CapSubRecords uint8
 	StubVersion   string // tag 3: the chip firmware build, "06.88" etc.
 	HWModel       string
+	// RFPI is what the cell's chip broadcasts (tag 17); HasRFPI is false for
+	// a cell that does not report it (older software).
+	RFPI    [5]byte
+	HasRFPI bool
 }
 
 func (s *Server) watcher() CellWatcher {
@@ -120,6 +124,29 @@ var ErrNoCell = errors.New("cell: not connected or not active")
 // SendMail queues a MAIL_DOWN for an active cell (§7.1). corr 0 means the
 // cell drops it silently if the chip cannot take it; any other corr comes
 // back in a MAIL_REJECT (§7.2). Mails of one caller keep their order.
+// SetIdentity asks an active cell to broadcast rfpi (CONFIG_SET tag 6), or, with
+// nil, to go back to its own identity. The cell reloads its chip if it differs
+// from what it broadcasts now, and reconnects.
+func (s *Server) SetIdentity(id uuid.UUID, rfpi *[5]byte) error {
+	s.mu.Lock()
+	var ss *session
+	if rec := s.cells[id]; rec != nil {
+		ss = rec.sess
+	}
+	s.mu.Unlock()
+	if ss == nil || !ss.active.Load() {
+		return ErrNoCell
+	}
+	var m wire.ConfigSetMsg
+	if rfpi != nil {
+		m = wire.ConfigSetMsg{RFPI: *rfpi, HasRFPI: true}
+	} else {
+		m = wire.ConfigSetMsg{Revert: true}
+	}
+	ss.send(wire.Frame{Type: wire.ConfigSet, Corr: 1, Body: m.Encode()})
+	return nil
+}
+
 func (s *Server) SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error {
 	s.mu.Lock()
 	var ss *session
@@ -158,6 +185,8 @@ type Status struct {
 	SWVersion   string
 	RadioState  uint8
 	ChipState   uint8
+	RFPI        [5]byte // what the chip broadcasts, if the cell said (HasRFPI)
+	HasRFPI     bool
 	ChipEpoch   uint32
 	UptimeS     uint32
 	Detail      string
@@ -522,7 +551,7 @@ loop:
 func (ss *session) cellUp(resumed bool) CellUp {
 	h := ss.hello
 	return CellUp{Resumed: resumed, RadioState: h.RadioState, CapSubRecords: h.CapSubRecords,
-		StubVersion: h.StubVersion, HWModel: h.HWModel}
+		StubVersion: h.StubVersion, HWModel: h.HWModel, RFPI: h.RFPI, HasRFPI: h.HasRFPI}
 }
 
 func (ss *session) shutdown() {
@@ -666,6 +695,9 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 				st.ChipState = m.ChipState
 			}
 			st.ChipEpoch, st.UptimeS, st.Detail = m.ChipEpoch, m.UptimeS, m.Detail
+			if m.HasRFPI {
+				st.RFPI, st.HasRFPI = m.RFPI, true
+			}
 		})
 		if w, ok := ss.srv.Mails.(StatusWatcher); ok && m.HasRadio && m.HasChip {
 			w.CellRadio(ss.cell.ID, m.RadioState, m.ChipState)
@@ -741,7 +773,13 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 		}
 		ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.MailsUp++ })
 		sink.MailUp(ss.cell.ID, m)
-	case wire.ConfigAck, wire.TrustAck, wire.MediaOpenAck, wire.MediaClosed:
+	case wire.ConfigAck:
+		st, err := wire.DecodeConfigAck(f.Body)
+		if err != nil {
+			return malformed(err)
+		}
+		ss.log.Info("cell answered CONFIG_SET", "status", st)
+	case wire.TrustAck, wire.MediaOpenAck, wire.MediaClosed:
 		// Answers to requests the controller does not send yet.
 	case wire.Hello, wire.EnrollRequest:
 		ss.errorReply(f, wire.ErrNotAllowed, "already established")

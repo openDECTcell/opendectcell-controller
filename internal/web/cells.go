@@ -29,6 +29,8 @@ func (s *Server) cellRoutes() {
 	s.mux.Handle("GET /cells", s.requireAdmin(s.cellList))
 	s.mux.Handle("POST /cells/identity", s.requireAdmin(s.identityPropose))
 	s.mux.Handle("POST /cells/identity/save", s.requireAdmin(s.identitySave))
+	s.mux.Handle("POST /cells/identity/apply", s.requireAdmin(s.identityApply))
+	s.mux.Handle("POST /cells/{id}/identity-donor", s.requireAdmin(s.identityDonor))
 	s.mux.Handle("GET /cells/{id}", s.requireAdmin(s.cellPage))
 	s.mux.Handle("POST /cells/{id}", s.requireAdmin(s.cellUpdate))
 	s.mux.Handle("POST /cells/{id}/state", s.requireAdmin(s.cellState))
@@ -156,6 +158,64 @@ func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.Us
 		return
 	}
 	http.Redirect(w, r, "/cells?done=System+identity+saved.", http.StatusSeeOther)
+}
+
+// identityApply turns the cells' use of the system identity on or off. On:
+// every cell broadcasts it from its next connection, so every handset must
+// register again; the admin confirms that.
+func (s *Server) identityApply(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	on := r.PostFormValue("apply") == "on"
+	if on && r.PostFormValue("understood") != "on" {
+		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "Tick the box to confirm that every handset has to register again."})
+		return
+	}
+	if err := s.Cells.SetIdentityApply(r.Context(), u, on); err != nil {
+		if errors.Is(err, cell.ErrBadIdentity) {
+			s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "There is no system identity to apply: set one first."})
+			return
+		}
+		s.internalError(w, r, err)
+		return
+	}
+	msg := "The+cells+take+their+own+identity+back+when+they+next+connect."
+	if on {
+		msg = "The+cells+take+the+system+identity+when+they+next+connect."
+	}
+	http.Redirect(w, r, "/cells?done="+msg, http.StatusSeeOther)
+}
+
+// identityDonor makes a cell's own identity the system's (class A, at most 7
+// cells). Only while the system identity is not applied: until then every
+// cell still broadcasts its factory identity, which is what is taken.
+func (s *Server) identityDonor(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	c, ok := s.cellByPath(w, r, u)
+	if !ok {
+		return
+	}
+	cur, err := s.Cells.SystemIdentity(r.Context())
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	live := s.liveStatus(c.ID)
+	switch {
+	case cur != nil && cur.Apply:
+		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "The system identity is applied; turn that off first, so the cells broadcast their own again."})
+		return
+	case !live.Online || !live.HasRFPI:
+		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "That cell is offline or does not report its identity (older software)."})
+		return
+	}
+	if err := s.Cells.SystemIdentityFromCell(r.Context(), u, live.RFPI); err != nil {
+		if errors.Is(err, cell.ErrBadIdentity) {
+			s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "That cell's identity is not a class A one; take another cell, or use a class B identity."})
+			return
+		}
+		s.internalError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/cells?done=System+identity+taken+from+the+cell.", http.StatusSeeOther)
 }
 
 func (s *Server) cellByPath(w http.ResponseWriter, r *http.Request, u *auth.User) (*cell.Cell, bool) {

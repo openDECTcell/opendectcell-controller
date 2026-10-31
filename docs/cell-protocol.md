@@ -1070,19 +1070,27 @@ and answers **CONFIG_ACK**, tag 1 `status` u16: 0 ok, 1 partially applied):
 | 3 | stats_interval_s | u16 | 60 |
 | 4 | media_dscp | u8 | 46 |
 | 5 | allow_plain_rtp | u8 | 0 |
+| 6 | rfpi | 5 octets, or empty | the box's factory RFPI |
 
-The DECT configuration of the chip (RFPI/RPN, radio on/off) is **not** cell
-configuration: the controller sets it directly by mail.
+Radio on/off is **not** cell configuration: the controller sets it directly by
+mail. The DECT identity is, since 2026-11-01 (tag 6, the only tag a cell applies):
+the 40-bit RFPI the chip is to broadcast, class A or B with E 0; **empty** asks
+the cell to go back to its own. No mail sets the RFPI at runtime (room A-0131), so
+the cell stores it in `/etc/opendectcell/cell/rfpi`, which the init script uploads the
+chip with, and restarts its service once per value asked for: a chip that still
+reports another RFPI after that reload is not reloaded again (CONFIG_ACK status 1).
+A message holding only tag 6 is answered status 0 when it was accepted.
 
-*2026-10-29:* no mail is known that sets the RFPI. Today it is patched into
-the chip firmware at upload (`dect-fwload`), so a cell's RPN changes with a
-firmware reload. How the system identity is chosen and why a class A system
+*2026-10-29:* no mail is known that sets the RFPI. It is patched into the chip
+firmware at upload (`dect-fwload`), so a cell's RPN changes with a firmware
+reload. How the system identity is chosen and why a class A system
 has at most 7 cells: openDECTcell `docs/multicell-identities.md`.
 
 **STATUS** (cell → controller, sent on every change and in reply to
 STATUS_REQUEST): tag 1 `radio_state` u8, tag 2 `chip_state` u8 (0 down,
 1 starting, 2 running, 3 fault), tag 3 `chip_epoch` u32, tag 4 `uptime_s` u32,
-tag 5 `detail` string ≤ 128.
+tag 5 `detail` string ≤ 128, tag 6 `rfpi` 5 octets (2026-11-01): the RFPI the
+chip broadcasts, from its contact answer; HELLO carries it as tag 17.
 
 **STATS** (cell → controller, every `stats_interval_s` and on request): tag 1,
 repeatable, `counter_id u16 | value u64`.

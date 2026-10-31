@@ -233,3 +233,34 @@ func TestMailCodec(t *testing.T) {
 		t.Fatalf("MAIL_REJECT: %+v %v", r, err)
 	}
 }
+
+func TestIdentityTags(t *testing.T) {
+	rfpi := [5]byte{0x10, 0xf4, 0x20, 0x11, 0x01}
+	h := HelloMsg{Major: 1, SWVersion: "x", CapSubRecords: 6, RFPI: rfpi, HasRFPI: true, AudioFormats: []uint8{1}}
+	got, err := DecodeHello(h.Encode())
+	if err != nil || !got.HasRFPI || got.RFPI != rfpi {
+		t.Fatalf("hello: %+v %v", got, err)
+	}
+	got, err = DecodeHello(HelloMsg{Major: 1, SWVersion: "x", AudioFormats: []uint8{1}}.Encode())
+	if err != nil || got.HasRFPI {
+		t.Fatalf("hello without an RFPI: %+v %v", got, err)
+	}
+	s, err := DecodeStatus(StatusMsg{HasRadio: true, HasChip: true, RFPI: rfpi, HasRFPI: true}.Encode())
+	if err != nil || !s.HasRFPI || s.RFPI != rfpi {
+		t.Fatalf("status: %+v %v", s, err)
+	}
+	if _, err := DecodeStatus(new(Builder).Bytes(6, []byte{1, 2, 3}).Build()); err == nil {
+		t.Error("a 3-octet RFPI accepted")
+	}
+	body := ConfigSetMsg{RFPI: rfpi, HasRFPI: true}.Encode()
+	tl, err := ParseTLV(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := tl.Fixed(6, 5); err != nil || [5]byte(v) != rfpi {
+		t.Fatalf("config set tag 6: %x %v", v, err)
+	}
+	if st, err := DecodeConfigAck(new(Builder).U16(1, 1).Build()); err != nil || st != 1 {
+		t.Fatalf("config ack: %d %v", st, err)
+	}
+}

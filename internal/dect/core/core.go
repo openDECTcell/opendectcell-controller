@@ -27,6 +27,18 @@ import (
 // Link is the cell link (cell.Server).
 type Link interface {
 	SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error
+	// SetIdentity asks an active cell to broadcast rfpi, or with nil to go
+	// back to its own identity (CONFIG_SET tag 6).
+	SetIdentity(id uuid.UUID, rfpi *[5]byte) error
+}
+
+// Identity is the system identity the cells share (cell.Store). nil in Core:
+// every cell keeps its box's own identity.
+type Identity interface {
+	// Want says what the cell should broadcast.
+	Want(ctx context.Context, id uuid.UUID) (cell.IdentityWant, error)
+	// Pushed records what the cell was told: an RFPI, or nil for its own.
+	Pushed(ctx context.Context, id uuid.UUID, rfpi *[5]byte) error
 }
 
 // Defaults.
@@ -45,8 +57,11 @@ const (
 type Core struct {
 	Link    Link
 	Records Records
-	New     stack.New
-	Log     *slog.Logger
+	// Identity gives the cells the system's DECT identity; nil leaves them
+	// their own.
+	Identity Identity
+	New      stack.New
+	Log      *slog.Logger
 	// Reg is the registration windows (adr/0005-registration-flow.md); a
 	// handset enrols only through one (the maintainers' notes point 2). nil: none is
 	// ever open.

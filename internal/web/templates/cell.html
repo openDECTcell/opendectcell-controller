@@ -7,6 +7,7 @@
   <dt>Link</dt><dd>{{.Live.Health}}{{if .Live.Online}} · since {{fmtTime .Live.Since}} from {{.Live.RemoteAddr}} · RTT p50 {{ms .Live.RTTp50}}, p95 {{ms .Live.RTTp95}}{{end}}</dd>
   <dt>Software</dt><dd>{{with .SoftwareVersion}}{{.}}{{end}}{{with .StubVersion}} · STUB {{.}}{{end}}</dd>
   <dt>Capacity announced</dt><dd>{{with .CapSubRecords}}{{.}} records{{end}}{{with .CapAudioNB}} · {{.}} narrowband{{end}}{{with .CapAudioWB}} · {{.}} wideband{{end}}</dd>
+  <dt>Identity</dt><dd>{{if .Live.HasRFPI}}<code>{{printf "%x" .Live.RFPI}}</code>{{with .RPN}} · cell number {{.}}{{end}}{{else}}not reported (older software, or offline){{end}}</dd>
   <dt>Certificate valid until</dt><dd>{{with .CertExpiresAt}}{{fmtTime .}}{{else}}—{{end}}</dd>
   <dt>Enrolled</dt><dd>{{with .EnrolledAt}}{{fmtTime .}}{{end}}</dd>
   {{if .Live.Online}}<dt>Mail tunnel</dt><dd>{{.Live.MailsUp}} up · {{.Live.MailsDown}} down{{with .Live.MailsReject}} · {{.}} rejected by the cell{{end}}{{with .Live.MailsDrop}} · {{.}} dropped (no DECT core){{end}}</dd>{{end}}
@@ -19,6 +20,14 @@
 <form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="disabled"><button type="submit" class="btn btn-primary">Disable</button></form>
 {{else if eq .State "disabled"}}
 <form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="active"><button type="submit" class="btn btn-primary">Enable</button></form>
+{{end}}
+
+{{if and .Live.Online .Live.HasRFPI}}
+<h3 class="mt-4 mb-2">Identity</h3>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/{{.ID}}/identity-donor" class="narrow">
+  <p class="text-secondary">Make this box's own identity the identity of the whole system (class A, at most 7 cells, no EIC needed). Only while the system identity is not applied: until then this cell still broadcasts its factory one.</p>
+  <button type="submit" class="btn btn-outline-primary">Take this cell's identity as the system's</button>
+</form></div></div>
 {{end}}
 
 {{if ne .State "revoked"}}

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 )
@@ -110,5 +112,162 @@ func TestSystemIdentityStored(t *testing.T) {
 	if err := e.store.Pool.QueryRow(e.ctx,
 		"SELECT count(*) FROM audit_log WHERE action = 'dect_identity.set' AND details ? 'previous'").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("audit entries with the previous identity: %d, %v", n, err)
+	}
+}
+
+// Class A: the donor's factory RFPI with the cell's RPN in its last 3 bits,
+// nothing else changed.
+func TestClassAIdentity(t *testing.T) {
+	// E 0, ARC 000, EMC 0x0270, FPN 0x1abcd (17 bits), RPN 0 in the low 3 bits
+	donor := [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x68}
+	id := cell.SystemIdentity{Class: "A", Donor: fmt.Sprintf("%x", donor), Source: cell.IdentityDonor}
+	if err := id.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if id.MaxRPN() != 7 || id.ParkPLI() != 0 || !id.IsA() {
+		t.Fatalf("class A: max %d, PLI %d", id.MaxRPN(), id.ParkPLI())
+	}
+	got := id.RFPI(5)
+	want := donor
+	want[4] |= 5
+	if got != want {
+		t.Fatalf("RFPI(5) = % x, want % x", got, want)
+	}
+	if id.RFPI(0x0d) != id.RFPI(5) {
+		t.Error("an RPN of more than 3 bits leaks into the ARI")
+	}
+	for name, bad := range map[string]cell.SystemIdentity{
+		"class B donor":  {Class: "A", Donor: "1002701101", Source: cell.IdentityDonor},
+		"RPN set":        {Class: "A", Donor: "0270000005", Source: cell.IdentityDonor},
+		"E bit set":      {Class: "A", Donor: "8270000000", Source: cell.IdentityDonor},
+		"short":          {Class: "A", Donor: "027000", Source: cell.IdentityDonor},
+		"wrong source":   {Class: "A", Donor: "0270000000", Source: cell.IdentityRandom},
+		"not hex":        {Class: "A", Donor: "zz70000000", Source: cell.IdentityDonor},
+		"B without EIC":  {Class: "B", FPS: 1, Source: cell.IdentityRandom},
+		"B with a donor": {EIC: 1, FPS: 1, Donor: "0270000000", Source: "x"},
+	} {
+		if err := bad.Validate(); !errors.Is(err, cell.ErrBadIdentity) {
+			t.Errorf("%s accepted: %v", name, err)
+		}
+	}
+}
+
+// RPNs are handed out from 1, stay with the cell, are freed by a revocation
+// and never go beyond the class's range.
+func TestAssignRPNAndWant(t *testing.T) {
+	e := newEnv(t)
+	ins := func(name string) uuid.UUID {
+		var id uuid.UUID
+		if err := e.store.Pool.QueryRow(e.ctx, "INSERT INTO cell (name, state) VALUES ($1, 'active') RETURNING id", name).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	a, b := ins("A"), ins("B")
+	idA := cell.SystemIdentity{Class: "A", Donor: "0270000000", Source: cell.IdentityDonor}
+
+	// nothing set, nothing pushed: leave the cell alone
+	if w, err := e.store.Want(e.ctx, a); err != nil || w.Set || w.Revert {
+		t.Fatalf("no identity: %+v %v", w, err)
+	}
+	if err := e.store.SetIdentityApply(e.ctx, e.admin, true); !errors.Is(err, cell.ErrBadIdentity) {
+		t.Fatalf("applying an identity that is not there: %v", err)
+	}
+	if err := e.store.SetSystemIdentity(e.ctx, e.admin, idA); err != nil {
+		t.Fatal(err)
+	}
+	// set but not applied: still nothing
+	if w, err := e.store.Want(e.ctx, a); err != nil || w.Set || w.Revert {
+		t.Fatalf("identity not applied: %+v %v", w, err)
+	}
+	if err := e.store.SetIdentityApply(e.ctx, e.admin, true); err != nil {
+		t.Fatal(err)
+	}
+	wa, err := e.store.Want(e.ctx, a)
+	if err != nil || !wa.Set || wa.RFPI != idA.RFPI(1) || wa.ParkPLI != 0 {
+		t.Fatalf("first cell: %+v %v", wa, err)
+	}
+	wb, _ := e.store.Want(e.ctx, b)
+	if wb.RFPI != idA.RFPI(2) {
+		t.Fatalf("second cell: % x", wb.RFPI)
+	}
+	if again, _ := e.store.Want(e.ctx, a); again.RFPI != wa.RFPI {
+		t.Error("a cell's RPN changed between two looks")
+	}
+	// seven cells fill class A; an eighth gets no number
+	for i := 3; i <= 7; i++ {
+		c := ins(fmt.Sprintf("C%d", i))
+		if w, err := e.store.Want(e.ctx, c); err != nil || w.RFPI != idA.RFPI(uint8(i)) {
+			t.Fatalf("cell %d: %+v %v", i, w, err)
+		}
+	}
+	eighth := ins("eighth")
+	if _, err := e.store.Want(e.ctx, eighth); !errors.Is(err, cell.ErrNoRPN) {
+		t.Fatalf("the eighth cell of class A: %v", err)
+	}
+	// revoking frees a number
+	if err := e.store.Revoke(e.ctx, e.admin, b); err != nil {
+		t.Fatal(err)
+	}
+	if w, err := e.store.Want(e.ctx, eighth); err != nil || w.RFPI != idA.RFPI(2) {
+		t.Fatalf("the freed number: %+v %v", w, err)
+	}
+
+	// the way back: pushed once, then turned off
+	rf := wa.RFPI
+	if err := e.store.Pushed(e.ctx, a, &rf); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.SetIdentityApply(e.ctx, e.admin, false); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ := e.store.Want(e.ctx, a); !w.Revert || w.Set {
+		t.Fatalf("turned off after a push: %+v", w)
+	}
+	if w, _ := e.store.Want(e.ctx, eighth); w.Revert || w.Set {
+		t.Fatalf("a cell never pushed to: %+v", w)
+	}
+	if err := e.store.Pushed(e.ctx, a, nil); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ := e.store.Want(e.ctx, a); w.Revert || w.Set {
+		t.Fatalf("after the way back: %+v", w)
+	}
+
+	// a class B identity: PLI 19, numbers up to 255, a new identity is not applied
+	idB := cell.SystemIdentity{EIC: 0x0f42, FPN: 1, FPS: 1, Source: cell.IdentityRandom}
+	if err := e.store.SetSystemIdentity(e.ctx, e.admin, idB); err != nil {
+		t.Fatal(err)
+	}
+	cur, _ := e.store.SystemIdentity(e.ctx)
+	if cur.Apply {
+		t.Error("a new identity came already applied")
+	}
+	if err := e.store.SetIdentityApply(e.ctx, e.admin, true); err != nil {
+		t.Fatal(err)
+	}
+	w, err := e.store.Want(e.ctx, a)
+	if err != nil || w.ParkPLI != 19 || w.RFPI != idB.RFPI(1) {
+		t.Fatalf("class B: %+v %v", w, err)
+	}
+	// a user cannot turn it on or off
+	user, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "plain", Password: "plain password", Role: auth.RoleUser})
+	if err := e.store.SetIdentityApply(e.ctx, user, false); !errors.Is(err, cell.ErrNotFound) {
+		t.Fatalf("a user turned it off: %v", err)
+	}
+}
+
+// The donor's own identity: the RPN bits are cleared.
+func TestIdentityFromCell(t *testing.T) {
+	e := newEnv(t)
+	if err := e.store.SystemIdentityFromCell(e.ctx, e.admin, [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x6b}); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := e.store.SystemIdentity(e.ctx)
+	if id == nil || !id.IsA() || id.Donor != "02700d5e68" {
+		t.Fatalf("%+v", id)
+	}
+	if err := e.store.SystemIdentityFromCell(e.ctx, e.admin, [5]byte{0x10, 0xf4, 0x20, 0x11, 0x01}); !errors.Is(err, cell.ErrBadIdentity) {
+		t.Fatalf("a class B RFPI as a donor: %v", err)
 	}
 }

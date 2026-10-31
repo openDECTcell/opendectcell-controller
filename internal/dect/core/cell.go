@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"log/slog"
 	"runtime/debug"
 	"slices"
@@ -25,16 +26,24 @@ type cellRun struct {
 	in   chan event
 	log  *slog.Logger
 
-	up      cell.CellUp // the last HELLO
-	linkUp  bool
-	st      stack.Stack
-	gen     *gen
-	bring   []stack.Mail // start-up mails still to send, one per BringUp
-	nextAt  time.Time
-	slots   []uint // the slots the records went into, for Installed
-	install bool   // the radio is on: the records go in at the next tick
-	retryAt time.Time
-	noStack bool // said once: this binary has no libopendectcell
+	up     cell.CellUp // the last HELLO
+	linkUp bool
+	// The identity (CONFIG_SET): what the cell was last asked to take, so a
+	// cell that does not take it is not asked on every connection; when the
+	// stack may start anyway; the PARK length this cell's stack uses.
+	tried       [5]byte
+	triedSet    bool
+	revertTried bool
+	waitUntil   time.Time
+	parkPLI     uint
+	st          stack.Stack
+	gen         *gen
+	bring       []stack.Mail // start-up mails still to send, one per BringUp
+	nextAt      time.Time
+	slots       []uint // the slots the records went into, for Installed
+	install     bool   // the radio is on: the records go in at the next tick
+	retryAt     time.Time
+	noStack     bool // said once: this binary has no libopendectcell
 	// resumed: the session resumed, so the radio may carry calls and is
 	// never switched off for the bring-up (the maintainers' notes)
 	resumed bool
@@ -111,6 +120,9 @@ func (r *cellRun) handle(ev event) {
 			r.log.Info("DECT stack resumed")
 			return
 		}
+		if r.negotiateIdentity() {
+			return
+		}
 		r.restart()
 	case evDown:
 		r.linkUp = false
@@ -164,8 +176,75 @@ func (r *cellRun) handle(ev event) {
 // believed.
 const radioSettle = 3 * time.Second
 
+// identityWait (a variable for the tests) is how long a cell asked to take another identity has to
+// reload its chip and come back before its stack starts anyway.
+var identityWait = 90 * time.Second
+
+// negotiateIdentity asks the cell to take the system's identity (or give it
+// back) if its chip broadcasts another. True: the cell was asked and will come
+// back with a new HELLO, so no stack yet. A cell that does not report its
+// RFPI is older than the identity messages and is left alone.
+func (r *cellRun) negotiateIdentity() bool {
+	r.waitUntil, r.parkPLI = time.Time{}, 0
+	if r.core.Identity == nil || !r.up.HasRFPI {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	defer cancel()
+	w, err := r.core.Identity.Want(ctx, r.id)
+	if err != nil {
+		r.log.Error("the cell's identity is not known: it keeps what it has", "err", err)
+		return false
+	}
+	switch {
+	case w.Set:
+		r.revertTried = false
+		if r.up.RFPI == w.RFPI {
+			r.triedSet = false
+			r.parkPLI = w.ParkPLI
+			return false
+		}
+		if r.triedSet && r.tried == w.RFPI {
+			r.log.Warn("the cell did not take the system identity: its stack runs with its own", "wanted", fmt.Sprintf("%x", w.RFPI), "has", fmt.Sprintf("%x", r.up.RFPI))
+			return false
+		}
+		if err := r.core.Link.SetIdentity(r.id, &w.RFPI); err != nil {
+			r.log.Warn("the cell could not be asked to take the system identity", "err", err)
+			return false
+		}
+		r.tried, r.triedSet = w.RFPI, true
+		if err := r.core.Identity.Pushed(ctx, r.id, &w.RFPI); err != nil {
+			r.log.Error("the identity pushed to the cell is not recorded", "err", err)
+		}
+		r.log.Info("the cell is asked to broadcast the system identity: it reloads its chip", "rfpi", fmt.Sprintf("%x", w.RFPI))
+	case w.Revert:
+		if r.revertTried {
+			return false
+		}
+		if err := r.core.Link.SetIdentity(r.id, nil); err != nil {
+			r.log.Warn("the cell could not be asked to take its own identity back", "err", err)
+			return false
+		}
+		r.revertTried, r.triedSet = true, false
+		if err := r.core.Identity.Pushed(ctx, r.id, nil); err != nil {
+			r.log.Error("the identity taken back is not recorded", "err", err)
+		}
+		r.log.Info("the cell is asked to go back to its own identity: it reloads its chip")
+	default:
+		r.triedSet, r.revertTried = false, false
+		return false
+	}
+	r.waitUntil = time.Now().Add(identityWait)
+	return true
+}
+
 func (r *cellRun) tick() {
 	now := time.Now()
+	if r.st == nil && r.linkUp && !r.waitUntil.IsZero() && now.After(r.waitUntil) {
+		r.log.Warn("the cell did not come back after the identity change: the stack starts with what it reported")
+		r.waitUntil = time.Time{}
+		r.restart()
+	}
 	if r.st == nil && r.linkUp && !r.retryAt.IsZero() && now.After(r.retryAt) {
 		r.restart()
 	}
@@ -260,7 +339,7 @@ func (r *cellRun) restart() {
 	}()
 	// r.st and r.gen are set as soon as they exist, so a panic from here
 	// on leaves them for guard's drop: the keys are wiped, the writer ends.
-	st := r.core.New(g, stack.Config{NamesRO: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion})
+	st := r.core.New(g, stack.Config{NamesRO: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion, ParkPLI: r.parkPLI})
 	r.st = st
 	ids := map[int]uuid.UUID{}
 	r.slots = r.slots[:0]

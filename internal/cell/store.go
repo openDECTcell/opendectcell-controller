@@ -513,6 +513,7 @@ type Cell struct {
 	AllowPlainRTP   bool
 	LastSeenAt      *time.Time
 	CertExpiresAt   *time.Time
+	RPN             *int16 // the cell's number in the system identity, once it has one
 	Profile
 }
 
@@ -533,13 +534,13 @@ type Profile struct {
 const cellCols = `c.id, c.name, c.location, c.state, c.enrolled_by, c.enrolled_at, c.approved_at, c.software_version,
 	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.max_calls, c.allow_plain_rtp, c.last_seen_at,
 	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL),
-	c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats`
+	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats`
 
 func scanCell(r pgx.Row) (*Cell, error) {
 	var c Cell
 	err := r.Scan(&c.ID, &c.Name, &c.Location, &c.State, &c.EnrolledBy, &c.EnrolledAt, &c.ApprovedAt, &c.SoftwareVersion,
 		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.MaxCalls, &c.AllowPlainRTP, &c.LastSeenAt, &c.CertExpiresAt,
-		&c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats)
+		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -630,7 +631,7 @@ func (s *Store) Revoke(ctx context.Context, u *auth.User, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, "UPDATE cell SET state = 'revoked' WHERE id = $1 AND state <> 'revoked'", id)
+		tag, err := tx.Exec(ctx, "UPDATE cell SET state = 'revoked', rpn = NULL WHERE id = $1 AND state <> 'revoked'", id)
 		if err != nil {
 			return err
 		}
