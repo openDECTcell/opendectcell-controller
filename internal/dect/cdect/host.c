@@ -656,7 +656,8 @@ void cdect_host_free_store(struct cdect_host *c, unsigned i)
  */
 int cdect_host_start(struct cdect_host *c)
 {
-	unsigned i, k, slot, used;
+	unsigned i, k, slot;
+	uint64_t used;
 
 	if (c->pin[0])
 		c->b.cfg.pin = c->pin;
@@ -669,8 +670,8 @@ int cdect_host_start(struct cdect_host *c)
 		used = 0;
 		for (i = 1; i < c->b.n_hs; i++)
 			if (c->b.loaded[i])
-				used |= 1u << c->b.hs[i].slot;
-		for (slot = 1; slot <= DECT_MM_MAX_SLOT && (used & (1u << slot)); slot++)
+				used |= (uint64_t)1 << c->b.hs[i].slot;
+		for (slot = 1; slot <= DECT_MM_MAX_SLOT && (used & ((uint64_t)1 << slot)); slot++)
 			;
 		if (slot > DECT_MM_MAX_SLOT)
 			return -1;
@@ -682,8 +683,8 @@ int cdect_host_start(struct cdect_host *c)
 		used = 0;
 		for (k = 0; k < c->b.n_hs; k++)
 			if (k != i && (c->b.loaded[k] || k < i))
-				used |= 1u << c->b.hs[k].slot;
-		for (slot = 1; slot <= DECT_MM_MAX_SLOT && (used & (1u << slot)); slot++)
+				used |= (uint64_t)1 << c->b.hs[k].slot;
+		for (slot = 1; slot <= DECT_MM_MAX_SLOT && (used & ((uint64_t)1 << slot)); slot++)
 			;
 		if (slot > DECT_MM_MAX_SLOT) {
 			c->b.remote[i] = 1;	/* never a free store */

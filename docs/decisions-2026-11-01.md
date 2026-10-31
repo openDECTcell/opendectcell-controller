@@ -119,10 +119,12 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 18. **Handsets enrolled before stay on their home cells**, in chip slots, with the old TPUI. There is no migration
     (a handset takes a new TPUI only at its next locate, and its key would have to leave the chip). Re-enrolling a
     handset through a window makes it pooled (same IPUI, same owner). Want a button for it?
-19. **Limits of the pool**: 249 pooled handsets in the installation (TPUI `{00,11,N}`, N 7 to 255) and ten on a cell
-    (record numbers 7 to 16). A cell that is full says so in the log and does not hold the handset. Enough for a
-    makerspace; a hosted installation with hundreds of handsets per cell needs a bigger TPUI form, which is a
-    question for the clean-room Q&A.
+19. **Limits of the pool (corrected 2026-11-01 after your question).** Every cell holds every pooled handset, so
+    one cell's table limits the whole installation: record numbers 7 to 32 (API 145, 32 as you asked), that is 26
+    pooled handsets in total. I had written "249 in the installation and ten per cell"; 249 is only the TPUI range,
+    and that was benched up to N = 0x43. For hundreds or thousands of handsets the table must be a working set per
+    cell (`roaming.md` §4.2: records come in when a handset is heard or paged on the cell and go out when it has
+    not re-located for a while; the controller would set the re-location interval, API 20). Build that?
 20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it** (radio stays on; a call in progress on
     that cell would end). Fine while there is no call path; once there is, the rebuild should wait for an idle cell.
 21. **Records numbered 8 or more have no entry in the handsets' Internal Names list and no call list** (library

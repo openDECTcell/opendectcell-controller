@@ -356,3 +356,29 @@ func TestStoreTPUIPool(t *testing.T) {
 		t.Errorf("pool off: %x %v", tp, err)
 	}
 }
+
+// A cell holds the record numbers above the chip's slots, 7 to 32: 26 pooled
+// handsets. The 27th is not placed and says so.
+func TestStorePooledCellFull(t *testing.T) {
+	s, ctx := newStore(t)
+	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
+	anna := s.newUser(t, ctx, "anna")
+	for i := range maxRecord - maxSlot + 1 {
+		tp, err := s.ReserveTPUI(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := rec(1, byte(i+1))
+		r.TPUI = tp
+		if _, err := s.SaveRecord(ctx, a, uuid.Nil, anna, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hs, unplaced, err := s.CellRecords(ctx, b, 6)
+	if err != nil || len(hs) != maxRecord-maxSlot || len(unplaced) != 1 {
+		t.Fatalf("cell b: %d placed, %d unplaced, %v", len(hs), len(unplaced), err)
+	}
+	if hs[len(hs)-1].Rec.Slot != maxRecord {
+		t.Errorf("the last record number is %d, want %d", hs[len(hs)-1].Rec.Slot, maxRecord)
+	}
+}

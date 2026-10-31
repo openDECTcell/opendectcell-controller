@@ -98,7 +98,7 @@ In order; 1 and 2 are the preconditions, 3 to 5 are what the user feels.
 | Point | State |
 |---|---|
 | 1 Shared identity | Built end to end (controller assigns the RFPI, cell patches and reloads, reports back). Unit-tested on both sides; the identity-aware `dect-cell` has not run on the boxes yet. |
-| 2 Record on every cell | Built. A handset that enrols gets a TPUI from the pool `{00, 11, N}` (N from 7, so at most 249 pooled handsets) and every cell holds it under a record number from 7 to 16 (libopendectcell API 144), host-only: no chip slot, no key in the chip, admitted keyless (`more-than-six.md` §6). A cell holds at most ten pooled handsets, for now. The cell a handset enrolled on rebuilds its stack 3 s later, so the handset leaves the chip slot it enrolled in; the other cells take it into the running stack without a restart. A handset that deregisters anywhere is dropped from every cell (the others rebuild). Config switch `cells.handset_pool` (default on). Handsets enrolled earlier stay chip-slot handsets of their home cells; there is no migration. |
+| 2 Record on every cell | Built. A handset that enrols gets a TPUI from the pool `{00, 11, N}` (N from 7) and every cell holds it under a record number from 7 to 16 (libopendectcell API 144), host-only: no chip slot, no key in the chip, admitted keyless (`more-than-six.md` §6). **Because every cell holds every pooled handset, the table of one cell is the limit of the whole installation: record numbers 7 to 32 (API 145), so 26 pooled handsets in total, not the 249 the TPUI form would allow (and that form was benched up to N = 0x43 only).** More handsets need a working set per cell instead of all of them everywhere (§4.2). The cell a handset enrolled on rebuilds its stack 3 s later, so the handset leaves the chip slot it enrolled in; the other cells take it into the running stack without a restart. A handset that deregisters anywhere is dropped from every cell (the others rebuild). Config switch `cells.handset_pool` (default on). Handsets enrolled earlier stay chip-slot handsets of their home cells; there is no migration. |
 | 3 Where it is | Built: `last_seen_cell_id` / `last_seen_at` are written from the stack's per-record contact time (at most one write per 30 s per handset and cell), and every change of cell is a row in `handset_move`. |
 | 4 Routing | Built as an API without a caller: `core.Ring(handset, call)` offers the call on the cell the handset was last heard on, after 3 s on every other cell that holds it, and the first answer takes the call; the other legs get `remote-released`. Busy legs do not hold the next wave back. It is tested against fake stacks that speak the bridge verbs; there is no SIP side to call it yet, and nobody has paged a handset by pool TPUI on air. Withdrawing a pending page on the other cells is Q7 and is not done: the extra legs are released with `remote-released`; whether the stack then stops its page was not checked. |
 | 5 UI | Handset page: "every cell" or "home cell only", the last ten cell changes. Statistics: cell changes in 24 h and 7 days. Cell changes are location data: retention erases them with the call details. |
@@ -107,6 +107,28 @@ What is not built: the controller does not choose the location area size (class 
 maintainer sets the identity per cell on the cells page. IPUI O for class B cross-site subscription (needs a window
 option). Records numbered 8 or more have no names-list entry and no call-list terminal id (the library keeps eight and
 seven, `api-versions.md` #144); a pooled handset beyond the first eight records of a cell is a plain phone there.
+
+### 4.2 Beyond 26 handsets: a working set per cell (proposal, not built)
+
+The controller keeps every record in the database and every cell's stack lives in the controller, so a cell
+does not need all handsets, only the ones that can be on it. Proposed: a cell's table is a cache.
+
+- **In:** a handset enters a cell's table when it is heard there (a locate or an access request that the stack
+  could answer), when the router is about to page it there (`addHandset` already adds a record to a running
+  stack), and at enrolment on the cell it enrolled on.
+- **Out:** a record that has not been heard on that cell for a few multiples of the re-location interval is
+  dropped. The interval is the lever of API 20: `locate_validity` puts <<DURATION>> into {LOCATE-ACCEPT}, the
+  handset locates again after N x 40.96 s (N up to 255, about 2.9 h). The AS690H was measured to renew at
+  41.5 s with N = 1 (`multicell-experiments.md` M6a); the A540 and C430A are not measured. The controller
+  does not set it today (`stack.Config` has no field for it). A handset that stops renewing is off or gone, so
+  "not heard for 2 x validity" is also presence.
+- **Needs:** (1) a library call to remove a record from a running stack (today only a rebuild does it);
+  (2) a hook for a locate from an IPUI the cell does not hold, so the controller can look the record up and
+  admit it instead of rejecting it (a handset told "IPUI unknown" may take it as losing its registration; API 19
+  holds a {CC-SETUP} from an unknown identity, the same idea for the locate); (3) TPUIs that are unique per
+  cell, not per installation, or a wider TPUI form (bench).
+- **Cost of a re-location interval:** a link setup per handset per interval, which is battery. 30 minutes to
+  2 hours is plausible; that is a number for the bench.
 
 ## 5. What can be tried now, with what we have
 

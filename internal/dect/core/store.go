@@ -97,11 +97,11 @@ func uakLoc(id uuid.UUID) secret.Location {
 }
 
 // maxSlot is the chip's subscription table (DECT_MM_MAX_SLOT); maxRecord is
-// how many records a stack holds (DECT_HS_MAX): the record numbers above
+// how many records a stack holds (DECT_HS_MAX, 32): the record numbers above
 // maxSlot belong to the host alone (libopendectcell API 144).
 const (
 	maxSlot   = 6
-	maxRecord = 16
+	maxRecord = 32
 	poolFirst = maxSlot + 1 // the first TPUI low byte of the pool: 11 01 to 11 06 are the chip's
 )
 
