@@ -6,7 +6,6 @@
  */
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "host.h"
 #include "_cgo_export.h"
@@ -86,25 +85,6 @@ void cdect_host_hello(struct cdect_host *c)
 	for (i = 0; i < c->b.n_hs; i++)
 		if (dect_base_listed(&c->b, i))
 			hs_line(c, CDECT_TO_ASKER, i, "registered");
-}
-
-/* A struct dect_time from seconds since the epoch and the zone's offset. */
-static void to_dect_time(int64_t t, long off, struct dect_time *dt)
-{
-	time_t lt = (time_t)(t + off);
-	struct tm tm;
-
-	memset(dt, 0, sizeof(*dt));
-	if (!gmtime_r(&lt, &tm))
-		return;
-	dt->year   = (uint8_t)(tm.tm_year % 100);
-	dt->month  = (uint8_t)(tm.tm_mon + 1);
-	dt->day    = (uint8_t)tm.tm_mday;
-	dt->hour   = (uint8_t)tm.tm_hour;
-	dt->minute = (uint8_t)tm.tm_min;
-	dt->second = (uint8_t)tm.tm_sec;
-	dt->tz_quarters = (int16_t)(off / 900);
-	dt->tz_valid = 1;
 }
 
 /* ---- The chip's slots: dect-stubd's send_subscription() ---------------- */
@@ -368,27 +348,20 @@ static void op_mask(void *ctx)
 	dect_base_slot_mask(&c->b, live_slot_mask(c));
 }
 
+/* The date and time come from Go, local time with its zone (host.go). */
 static int op_clock(void *ctx, struct dect_time *dt, long *off_s)
 {
 	struct cdect_host *c = ctx;
-	int64_t t = 0;
-	long off = 0;
 
-	if (!cdectClock(c->h, &t, &off))
-		return 0;
-	to_dect_time(t, off, dt);
-	*off_s = off;
-	return 1;
+	return cdectClock(c->h, dt, off_s);
 }
 
 static void op_wall(void *ctx, struct dect_time *dt)
 {
 	struct cdect_host *c = ctx;
-	int64_t t = 0;
-	long off = 0;
+	long off;
 
-	(void)cdectClock(c->h, &t, &off);
-	to_dect_time(t, off, dt);
+	(void)cdectClock(c->h, dt, &off);
 }
 
 static void op_named(void *ctx, unsigned i)

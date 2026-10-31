@@ -9,101 +9,43 @@ import "C"
 import (
 	"errors"
 	"runtime/cgo"
-	"time"
 	"unsafe"
+
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 )
 
-// Mail is one STUB mail, as MAIL_UP and MAIL_DOWN carry it
-// (docs/cell-protocol.md §7.1). Never log the Param of the primitives in
-// §7.3.
-type Mail struct {
-	Src, Dst uint8
-	Prim     uint16
-	Param    []byte
-}
+// The types that cross the boundary are package stack's, so the DECT core
+// builds without cgo.
+type (
+	Mail   = stack.Mail
+	Record = stack.Record
+	To     = stack.To
+	Env    = stack.Env
+	Config = stack.Config
+)
 
-// Record is a handset record (libopendectcell's struct dect_hs_rec). UAK is the
-// long-term key: store it encrypted (AGENTS.md §5), never log it.
-type Record struct {
-	Slot      uint
-	UAK       [16]byte
-	PortID    []byte // MM <<PORTABLE-IDENTITY>> content
-	CCPortID  []byte // the identities an FP-originated {CC-SETUP} carries
-	CCFixedID []byte
-}
-
-// To says where a bridge line goes (docs/bridge-interface.md §2).
-type To int
-
+// Where a bridge line goes; the values are host.h's enum cdect_to.
 const (
-	ToAsker  To = C.CDECT_TO_ASKER  // the reply to the client that sent the verb
-	ToBridge To = C.CDECT_TO_BRIDGE // call traffic, to the bridge
-	ToAll    To = C.CDECT_TO_ALL    // `hs` lines, to every client
+	ToAsker  = stack.ToAsker
+	ToBridge = stack.ToBridge
+	ToAll    = stack.ToAll
 )
 
-// Env is what one cell's stack needs from the controller. Every method runs
-// on the goroutine that called into the Host, inside that call: it must not
-// call back into the same Host.
-type Env interface {
-	// Send hands a mail to the cell (MAIL_DOWN). An error means it could
-	// not be taken now.
-	Send(m Mail) error
-	// Room reports whether the tunnel can take one more C-plane mail;
-	// LAPC frames leave the stack only then (hosting-dect-base.md §4, pump).
-	Room() bool
-	// Random fills b from a CSPRNG.
-	Random(b []byte)
-	// Log takes one line. Lines never carry keys; they do carry IPUIs.
-	Log(line string)
-	// Event takes one bridge line, newline included.
-	Event(to To, line string)
-	// Save stores record i, which changed.
-	Save(i int, r Record)
-	// Forget: record i is deregistered.
-	Forget(i int, why string)
-	// Named: record i was renamed to name.
-	Named(i int, name string)
-	// NameVisible: may the handset in chip slot viewer see slot's entry in
-	// its Internal Names List (docs/list-access.md §1.1)?
-	NameVisible(viewer, slot uint) bool
-	// Switched: record cur is now the one the main link serves.
-	Switched(cur int, why string)
-	// Registered: record cur enrolled and is in the chip.
-	Registered(cur int)
-	// CapLearned: record i's capability is known.
-	CapLearned(i int)
-	// Clock is the time now and whether it is known to be right (NTP).
-	Clock() (t time.Time, ok bool)
-	// Media: the audio of the call on handle is bound to channel (up), or
-	// released: MEDIA_OPEN and MEDIA_CLOSE (cell-protocol.md §8.1).
-	Media(handle, channel uint8, wideband, up bool)
-}
-
-// Config is a cell's stack settings (libopendectcell's struct dect_base_cfg and
-// struct dect_base_chip). The zero value is dect-stubd's default.
-type Config struct {
-	PIN          string // 4 to 8 decimal digits
-	Narrowband   bool
-	TwoCalls     bool
-	NamesRO      bool // no handset renames (list-access.md §1.1)
-	NoCipher     bool // a lab option: never in production
-	NoLocAuth    bool
-	BindFirst    bool
-	AlertMs      uint
-	DialWaitMs   uint // 0: 3000
-	TimeEveryMin uint
-	IPUIO        *uint32
-
-	UAKTable     uint32 // from the cell's stub_version (hosting-dect-base.md §6)
-	CheckDelayMs uint32
-	Stub         string
-}
+// The two numberings must agree: a mismatch fails to compile.
+var (
+	_ [stack.ToAsker - C.CDECT_TO_ASKER]struct{}
+	_ [C.CDECT_TO_ASKER - stack.ToAsker]struct{}
+	_ [stack.ToBridge - C.CDECT_TO_BRIDGE]struct{}
+	_ [C.CDECT_TO_BRIDGE - stack.ToBridge]struct{}
+	_ [stack.ToAll - C.CDECT_TO_ALL]struct{}
+	_ [C.CDECT_TO_ALL - stack.ToAll]struct{}
+)
 
 // ErrNoSlot means no chip slot is left for a free store.
 var ErrNoSlot = errors.New("cdect: no chip slot left")
 
-// Host is one cell's DECT base stack. It is not safe for concurrent use:
-// one goroutine per cell owns it.
+// Host is one cell's DECT base stack (stack.Stack). It is not safe for
+// concurrent use: one goroutine per cell owns it.
 type Host struct {
 	c     *C.struct_cdect_host
 	h     cgo.Handle
@@ -333,10 +275,12 @@ func cdectCapLearned(h C.uintptr_t, i C.unsigned) {
 }
 
 //export cdectClock
-func cdectClock(h C.uintptr_t, t *C.int64_t, off *C.long) C.int {
+func cdectClock(h C.uintptr_t, dt *C.struct_dect_time, off *C.long) C.int {
 	now, ok := hostOf(h).env.Clock()
 	_, o := now.Zone()
-	*t = C.int64_t(now.Unix())
+	*dt = C.struct_dect_time{year: C.uint8_t(now.Year() % 100), month: C.uint8_t(now.Month()),
+		day: C.uint8_t(now.Day()), hour: C.uint8_t(now.Hour()), minute: C.uint8_t(now.Minute()),
+		second: C.uint8_t(now.Second()), tz_quarters: C.int16_t(o / 900), tz_valid: 1}
 	*off = C.long(o)
 	return cbool(ok)
 }
@@ -344,4 +288,11 @@ func cdectClock(h C.uintptr_t, t *C.int64_t, off *C.long) C.int {
 //export cdectMedia
 func cdectMedia(h C.uintptr_t, handle, channel C.uint8_t, wideband, up C.int) {
 	hostOf(h).env.Media(uint8(handle), uint8(channel), wideband != 0, up != 0)
+}
+
+var _ stack.Stack = (*Host)(nil)
+
+// NewStack is NewHost as a stack.New, for the DECT core.
+func NewStack(env stack.Env, cfg stack.Config) stack.Stack {
+	return NewHost(env, cfg)
 }
