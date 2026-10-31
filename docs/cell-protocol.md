@@ -706,8 +706,21 @@ identity at every move. So:
 
 **Placement: which cells get a handset's record.**
 
-1. **Home set.** At registration the user picks one or more cells
-   (`architecture.md` §5). The record goes to every cell in that set.
+*Changed 2026-10-31 (maintainer, the maintainers' notes point 4; proposed
+details in `adr/0004-shared-network.md`):* the controller is a **shared
+network**. Any handset may attach to any cell that accepts foreign
+handsets, so the home set is no longer the access rule but a **placement
+hint** (prefetch), and on-demand placement (rule 3) becomes the main
+rule wherever the chip admits a handset it holds no key for. That is
+known for 07.56 only; the bench day of 2026-11-01 tests 08.25 and 06.88
+(openDECTcell T-B). **Until it has, rules 1, 2 and 4 stay the working
+assumption** (step 3). Where the chip does not admit such a handset, a
+cell serves only handsets placed there beforehand.
+
+1. **Home set** (now: the prefetch set). The cell the handset registered
+   at (`architecture.md` §5, one cell per registration window), plus the
+   owner's own cells and cells the handset was last seen on. The record
+   goes to every cell in that set.
 2. **No-eviction fast path.** If a cell's home-set handsets fit into its
    slots, nothing is ever evicted. Installations with ≤ 6 handsets just put
    every record on every cell.
@@ -721,7 +734,11 @@ identity at every move. So:
    seen so far already had its record on the chip; the access observed is
    connection-oriented (`0x0200` + `0x0203`), a different path (openDECTcell#58).
    Until a bench run with an empty slot table settles it, rule 3 is off and
-   placement is home set only (rules 1, 2 and 4).
+   placement is home set only (rules 1, 2 and 4). On 07.56 the first
+   contact is the host's identity gate (above), which sees the IPUI
+   before anything else; the record must then go into the running stack,
+   which libopendectcell cannot do today (records go in before start; a
+   question to the cell side once T-B has an answer).
 4. **Neighbour prefetch** (C9, later): when a handset is seen on cell A, make
    sure its record is on the cells an admin has marked as A's neighbours.
 
@@ -731,8 +748,10 @@ identity at every move. So:
    connection on that cell.
 2. Prefer slots not written in the last 5 minutes (hysteresis, so two cells
    don't ping-pong one handset).
-3. Among those, evict the least recent `last_seen_at`. On a tie, the oldest
-   `written_at`.
+3. Among those, evict a foreign handset (not the cell operator's) before
+   one of the operator's own, so a busy public cell never locks its
+   operator out (*proposed*, ADR 0004); then the least recent
+   `last_seen_at`. On a tie, the oldest `written_at`.
 4. No candidate → refuse the placement, log an alarm ("cell X: all slots
    pinned or busy"), and show it in the admin UI.
 

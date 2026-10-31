@@ -247,12 +247,16 @@ state fields (`mm.state == DECT_MM_FAILED`).
 | MM or CC enters a failure state, or a stats counter shows a reject | `cdect` reports a state change as an event. `session` decides: release the connection, tell the UI the registration failed |
 | `dect_lapc_send` returns `-1` (window busy) | Not an error: the message stays queued in MM/CC and goes out on the next drain, as in `drain_nwk()` |
 | Go panic in a cell's goroutine | **Contained to the cell** (`21a8c66`). Each exported callback recovers a panic (a recover must not unwind through C frames), keeps the first as a `cdect.Fault` and returns a safe default (`send` → -1, `room`/`name_visible`/`clock` → 0); the `Host` method that called into C panics with it once C has returned. The cell's goroutine recovers, logs it with both stacks, closes the host and rebuilds the stack after the retry delay (5 s); the other cells carry on. The record writer logs a panicking job and goes on. Calls on that cell are lost |
-| Crash inside C (SIGSEGV) | Can't be recovered in-process: the controller dies, and Docker's restart policy brings it back. Cells resume or reconnect (`cell-protocol.md` §6.4). Prevented rather than handled: length checks in Go before every call, fuzzing, sanitizer builds (§9, §10) |
+| Crash inside C (SIGSEGV) | Can't be recovered in-process: the controller dies, and Docker's restart policy brings it back. Cells resume or reconnect (`cell-protocol.md` §6.4). Prevented rather than handled: length checks in Go before every call, fuzzing, sanitizer builds (§9, §10). **Not acceptable any more** (the maintainer, 2026-10-31): `adr/0003-stack-isolation.md` proposes a worker process per cell |
 
 The library uses no `assert`/`abort` (checked at `88d61af`, rechecked at `ee72c4d`), so a crash means
 memory corruption, not a deliberate stop.
 
-**Alternative rejected for v1:** running `libopendectcell` in a worker process per
+**Superseded 2026-10-31:** the maintainer requires that no failure in one
+cell's stack, a C crash included, stops the controller; the worker
+process per cell is now the proposal (`adr/0003-stack-isolation.md`). The
+original v1 reasoning, kept for the record: **alternative rejected for
+v1:** running `libopendectcell` in a worker process per
 cell, so that a C crash takes down one cell instead of the controller. It adds
 an IPC hop to the latency-critical path, against a failure mode the library's
 design (no allocation, no I/O, fixed bounds) makes unlikely. Revisit if crashes

@@ -35,7 +35,7 @@
 | `handset` | id, owner (a user, **always set**; a team's handset belongs to an organisation or admin account), IPUI, TPUI, auth key (UAK, **encrypted**), model info (manufacturer/EMC, model, profile/capabilities), display name, default line, last seen cell, registration time |
 | `sip_account` | id, owner (user), display name, user, domain, auth user, password (**encrypted**), registrar, outbound proxy, transport, encryption policy, codec list, DTMF mode, NAT options, … (`voip-requirements.md` §2) |
 | `handset_line` | handset, slot (1 or 2), sip_account. **0–2 lines per handset**; one account may serve several handsets. Per handset: `dual_ring_policy` (call waiting / busy) for when both lines ring |
-| `cell` | id, name, location, RFPI/RPN, certificate fingerprint, enrolled by, status, firmware/STUB version, last heartbeat |
+| `cell` | id, name, location, RFPI/RPN, certificate fingerprint, enrolled by, status, firmware/STUB version, last heartbeat. *Proposed (ADR 0004):* operator (a user, optional: who runs the box; no rights over the handsets on it), accepts foreign handsets (yes/no) |
 | `cell_enrollment_token` | token hash, created by, expiry, single use |
 | `call_log` | handset, line, direction, remote party, start/answer/end, cell(s), codec, encrypted yes/no, quality metrics |
 | `feature_setting` | handset, feature id, enabled, parameters (per-model feature framework) |
@@ -56,11 +56,15 @@
 
 ## 5. Registration flow (user view)
 
-1. The user selects "Register handset" and picks one or more cells (or all of their allowed cells).
-2. The controller opens a registration window (e.g. 120 s) with a one-time PIN shown in the UI.
-3. The user starts registration on the handset and enters the PIN.
-4. The controller stores the IPUI, keys and the model/capability info. The handset belongs to the user.
+*Changed 2026-10-31 (maintainer, the maintainers' notes points 4-5; details in `adr/0004-shared-network.md` and `adr/0005-registration-flow.md`, proposed).* The controller is a **shared network**: a handset may attach to any user's cell that accepts foreign handsets, and a user needs no cell of their own. A handset emits nothing before its user starts "register", so the controller cannot choose the cell; the user does.
+
+1. The user selects "Register handset" and **picks the cell they stand at**: their own cells, then the cells that accept foreign handsets.
+2. The controller opens a registration window **on that cell only** (default 120 s; one window per cell at a time) with a random **8-digit PIN**, bound to the user, single use, shown once.
+3. The user starts registration on the handset and enters the PIN; the handset finds the one cell advertising open registration.
+4. The controller stores the IPUI, keys and the model/capability info. **The handset belongs to the window's user**; an enrolment without a window is refused. The window closes.
 5. The user assigns line 1 and optionally line 2 (SIP accounts), chooses the default outgoing line, and enables optional features.
+
+Afterwards the handset's record is placed on other cells on demand or by prefetch (`cell-protocol.md` §7.4, ADR 0004).
 
 ## 6. Non-goals (not a PBX)
 
@@ -77,8 +81,8 @@ Not provided: dial plans, routing, hunt and ring groups, voicemail, IVR, confere
 | Authentication | Local accounts + OIDC (e.g. Authentik); **OIDC groups map to roles**; **users are created on first login** (just-in-time) | |
 | Handset ownership | Personal handsets **and shared/admin-owned handsets** (e.g. a reception handset) | *Changed 2026-10-31 (maintainer, the maintainers' notes):* **a handset always has an owner**, the user whose registration window it enrolled through; a team's handset belongs to an organisation or admin account created in the UI, never to nobody |
 | Lines | **0, 1 or 2 SIP accounts per handset.** With 0 lines a handset still works for paging/locating | **When both lines ring at the same time, the user chooses the behaviour per handset:** call waiting, or busy for the second call |
-| Internal calls | **Only via the SIP server**; no handset-to-handset routing in the controller | No call routing in the controller (not a PBX) |
-| Scale | Design target **10 cells / 50 handsets** per installation, but keep scaling easy: stateless web/API, state in PostgreSQL, no hard-coded limits. *2026-10-29:* one class A DECT system has **at most 7 cells** (EN 300 175-6 §5.1); more needs an EIC or EMC from ETSI (openDECTcell `docs/multicell-identities.md` §7.6). *2026-10-30, maintainer:* the later goal is a **hosted instance controlling dozens to hundreds of cells across makerspaces in Germany**; the identity route is class B with a project EIC: one ARI per site, up to 256 cells each, one PARK{19} valid at every site, assigned IPUI O (openDECTcell `docs/multicell-identities.md` §7.7) | Multi-site and multi-tenant were not goals for the first version; the hosted goal makes multi-site one later |
+| Internal calls | **Only via the SIP server**; no handset-to-handset routing in the controller | No call routing in the controller (not a PBX). *2026-10-31, maintainer:* short internal calls within one user's handsets are fine (`list-access.md` §1.1); no PBX features beyond that |
+| Scale | Design target **10 cells / 50 handsets** per installation, but keep scaling easy: stateless web/API, state in PostgreSQL, no hard-coded limits. *2026-10-29:* one class A DECT system has **at most 7 cells** (EN 300 175-6 §5.1); more needs an EIC or EMC from ETSI (openDECTcell `docs/multicell-identities.md` §7.6). *2026-10-30, maintainer:* the later goal is a **hosted instance controlling dozens to hundreds of cells across makerspaces in Germany**; the identity route is class B with a project EIC: one ARI per site, up to 256 cells each, one PARK{19} valid at every site, assigned IPUI O (openDECTcell `docs/multicell-identities.md` §7.7) | Multi-site and multi-tenant were not goals for the first version; the hosted goal makes multi-site one later. *2026-10-31, maintainer:* the cells and handsets of all users form **one shared network** (ADR 0004) |
 | UI language | **English only** | No frontend framework preference; pick what fits Go best (decision at implementation start) |
 
 ## 8. Still open
