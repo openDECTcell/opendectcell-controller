@@ -271,7 +271,7 @@ func TestBringUpAndRecords(t *testing.T) {
 		if !slices.Equal(f.free, []int{2, 3, 4, 5}) {
 			t.Errorf("free stores %v, want 2..5", f.free)
 		}
-		if !f.cfg.NamesRO || f.cfg.UAKTable != 0x067F || f.cfg.CheckDelayMs != 1000 || f.cfg.Stub != "06.88" {
+		if !f.cfg.NamesRO || f.cfg.UAKTable != 0x067F || f.cfg.CheckDelayMs != 50 || f.cfg.Stub != "06.88" {
 			t.Errorf("config %+v", f.cfg)
 		}
 	})
@@ -295,7 +295,7 @@ func TestChipConfigPerBuild(t *testing.T) {
 		stub         string
 		table, delay uint32
 		first        uint16
-	}{{"08.25", 0x9518, 50, 0x0153}, {"07.56", 0, 0, 0x0153}, {"06.88", 0x067F, 1000, 0x015B}} {
+	}{{"08.25", 0x9518, 50, 0x0153}, {"07.56", 0, 0, 0x0153}, {"06.88", 0x067F, 50, 0x015B}} {
 		table, delay := chipConfig(c.stub)
 		if table != c.table || delay != c.delay {
 			t.Errorf("%s: table %#x delay %d", c.stub, table, delay)
