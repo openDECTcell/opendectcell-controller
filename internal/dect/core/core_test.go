@@ -233,11 +233,13 @@ func handset(slot uint, owner *uuid.UUID) Handset {
 	return h
 }
 
-func radioOn(g *rig) func() bool {
+func radioOn(g *rig) func() bool { return radioOnAt(g, 0) }
+
+// radioOnAt: the i-th stack built has its radio on.
+func radioOnAt(g *rig, i int) func() bool {
 	return func() bool {
-		f := g.stack(0)
 		on := false
-		if f != nil {
+		if f := g.stack(i); f != nil {
 			f.get(func(f *fakeStack) { on = f.radio })
 		}
 		return on
@@ -468,6 +470,30 @@ func TestSlotWriteRejected(t *testing.T) {
 		recs.get(func(r *fakeRecords) { u = slices.Clone(r.unknown) })
 		return slices.Equal(u, []uint{3})
 	})
+}
+
+// A panic while the stack is built still closes it (its keys are wiped)
+// and ends its writer, and the build is retried.
+func TestPanicWhileBuilding(t *testing.T) {
+	var mu sync.Mutex
+	broken := 1
+	g := newRig(t, &fakeRecords{hs: []Handset{handset(1, nil)}}, func(f *fakeStack) {
+		mu.Lock()
+		defer mu.Unlock()
+		if broken > 0 {
+			broken--
+			f.records = nil // AddRecord panics: assignment to a nil map
+		}
+	})
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "the broken stack closed", func() bool {
+		c := false
+		if f := g.stack(0); f != nil {
+			f.get(func(f *fakeStack) { c = f.closed })
+		}
+		return c
+	})
+	waitFor(t, "rebuilt", radioOnAt(g, 1))
 }
 
 func TestRecordsRetried(t *testing.T) {

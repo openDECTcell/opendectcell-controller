@@ -177,12 +177,19 @@ func (r *cellRun) restart() {
 	}
 	table, delay := chipConfig(r.up.StubVersion)
 	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]*uuid.UUID{}, jobs: make(chan job, saveQueue)}
+	defer func() {
+		for i := range hs {
+			clear(hs[i].Rec.UAK[:])
+		}
+	}()
+	// r.st and r.gen are set as soon as they exist, so a panic from here
+	// on leaves them for guard's drop: the keys are wiped, the writer ends.
 	st := r.core.New(g, stack.Config{NamesRO: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion})
+	r.st = st
 	ids := map[int]uuid.UUID{}
 	r.slots = r.slots[:0]
 	for i, h := range hs {
 		st.AddRecord(i, h.Rec)
-		clear(hs[i].Rec.UAK[:])
 		ids[i] = h.ID
 		g.place(i, h.Rec.Slot, h.Owner)
 		r.slots = append(r.slots, h.Rec.Slot)
@@ -191,13 +198,12 @@ func (r *cellRun) restart() {
 		st.AddFreeStore(i)
 	}
 	g.start(ids)
+	r.gen = g
 	if err := st.Start(); err != nil {
-		st.Close()
-		g.stop()
+		r.drop()
 		r.log.Error("DECT stack did not start", "err", err)
 		return
 	}
-	r.st, r.gen = st, g
 	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1, r.resumed)
 	r.nextAt = time.Now()
 	r.log.Info("DECT stack started", "records", len(hs), "free", max-len(hs), "stub", r.up.StubVersion)
