@@ -184,8 +184,8 @@ the maintainers' notes):
 | C5.3 Call quality | **Done** (no call writes it yet: C3) | `media.Summarise`, `internal/calllog`, `/admin/calls` |
 | C5.4 Wideband as a capability | **Done** | `media.Choose`, `CellCaps.Wideband` |
 | C5.5 Regression corpus | **Done** | `internal/media/corpus_test.go`, its own CI step |
-| C3.1 Golden-trace replay | **Done, awaiting review** | `internal/dect/cdect/host.c` (one cell's `dect_base`), `trace_test.go`: all 15 openDECTcell traces replay; one known one-pass difference (worklog 2026-10-31, C3.1) |
-| C3.2 One stack per cell | **Done, awaiting review** (no hardware) | `internal/dect/core`, `internal/dect/stack`, `cell.CellWatcher`, migration 0003; on with `-tags libopendectcell` / `LIBOPENDECTCELL=1` (worklog 2026-10-31, C3.2) |
+| C3.1 Golden-trace replay | **Reviewed 2026-10-31** (the maintainers' notes: `host.c` stays as is; its steps move into libopendectcell, S7) | `internal/dect/cdect/host.c` (one cell's `dect_base`), `trace_test.go`: all 15 openDECTcell traces replay; one known one-pass difference (worklog 2026-10-31, C3.1) |
+| C3.2 One stack per cell | **Reviewed 2026-10-31**; the ownerless handset removed (`0c6715d`). ADRs 0003-0005 from the review await review (no hardware) | `internal/dect/core`, `internal/dect/stack`, `cell.CellWatcher`, migration 0003; on with `-tags libopendectcell` / `LIBOPENDECTCELL=1` (worklog 2026-10-31, C3.2) |
 
 Per `AGENTS.md` §10, the next task is chosen by the maintainers.
 *2026-10-22:* they did, in opendectcell-controller#46: C0 leftovers, C1, C4, C6/C7,
