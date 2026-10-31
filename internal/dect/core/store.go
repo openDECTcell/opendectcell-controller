@@ -35,7 +35,7 @@ type Records interface {
 	// SaveRecord stores a record the stack changed. id uuid.Nil is a
 	// handset that just enrolled on cell; its id is returned.
 	SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Record) (uuid.UUID, error)
-	// Forget frees a deregistered handset's slot on cell.
+	// Forget: a handset deregistered on cell; it is no longer placed there.
 	Forget(ctx context.Context, cell, id uuid.UUID) error
 	// Rename sets a handset's name.
 	Rename(ctx context.Context, id uuid.UUID, name string) error
@@ -244,10 +244,18 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Reco
 	return id, nil
 }
 
+// Forget: the handset is deregistered on cell. Its slot there is free, and
+// the cell leaves its home set, or the next load would place it again. The
+// handset's row stays; deleting it is an admin's decision.
 func (s *Store) Forget(ctx context.Context, cell, id uuid.UUID) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
-		WHERE cell_id = $1 AND handset_id = $2`, cell, id)
-	return err
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
+			WHERE cell_id = $1 AND handset_id = $2`, cell, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, "DELETE FROM handset_home_cell WHERE cell_id = $1 AND handset_id = $2", cell, id)
+		return err
+	})
 }
 
 func (s *Store) Rename(ctx context.Context, id uuid.UUID, name string) error {

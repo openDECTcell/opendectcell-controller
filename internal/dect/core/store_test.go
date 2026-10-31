@@ -119,12 +119,16 @@ func TestStoreEnrolAndLoad(t *testing.T) {
 		t.Errorf("slot 3 after a reject is %s", st)
 	}
 
-	// Deregistered on a: its slot there is free; the handset stays.
+	// Deregistered on a: its slot there is free and it is not placed there
+	// again; the handset stays, still at home on b.
 	if err := s.Forget(ctx, a, id); err != nil {
 		t.Fatal(err)
 	}
 	if hs, _, _ := s.CellRecords(ctx, a, 6); len(hs) != 0 {
 		t.Errorf("cell a after forget: %v", hs)
+	}
+	if hs, _, _ := s.CellRecords(ctx, b, 6); len(hs) != 1 || hs[0].ID != id {
+		t.Errorf("cell b after forget on a: %v", hs)
 	}
 }
 
