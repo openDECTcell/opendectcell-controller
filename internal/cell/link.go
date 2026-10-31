@@ -78,6 +78,14 @@ type MailSink interface {
 	MailReject(cell uuid.UUID, m wire.MailRejectMsg)
 }
 
+// StatusWatcher is also told of the cell's STATUS (radio and chip state), if
+// Server.Mails implements it. Same rules as CellWatcher.
+type StatusWatcher interface {
+	// CellRadio: the cell reported its radio (0 off, 1 on, 2 fault) and its
+	// chip session (1 down, 2 up).
+	CellRadio(cell uuid.UUID, radio, chip uint8)
+}
+
 // CellWatcher is told when an active cell's mail tunnel opens and when its
 // DECT state ends (§6.4). Server.Mails gets these calls if it implements
 // it. The methods must not block or call back into the Server.
@@ -659,6 +667,9 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			}
 			st.ChipEpoch, st.UptimeS, st.Detail = m.ChipEpoch, m.UptimeS, m.Detail
 		})
+		if w, ok := ss.srv.Mails.(StatusWatcher); ok && m.HasRadio && m.HasChip {
+			w.CellRadio(ss.cell.ID, m.RadioState, m.ChipState)
+		}
 	case wire.Stats:
 		c, err := wire.DecodeStats(f.Body)
 		if err != nil {

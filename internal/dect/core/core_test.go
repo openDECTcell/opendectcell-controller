@@ -684,3 +684,52 @@ func TestNoLibopendectcell(t *testing.T) {
 	cancel()
 	c.Wait()
 }
+
+// A cell whose chip is still starting rejects the bring-up (CHIP_DOWN): the
+// stack must not stay "radio on" on a chip that heard nothing, but start again.
+func TestChipDownRejectRestartsTheStack(t *testing.T) {
+	recs := &fakeRecords{hs: []Handset{handset(2, owner)}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	n := len(g.link.all())
+	g.core.MailReject(id, wire.MailRejectMsg{RefCorr: 0, Reason: wire.RejectChipDown})
+	waitFor(t, "a second stack", func() bool { return g.stack(1) != nil })
+	waitFor(t, "the bring-up again", func() bool { return len(g.link.all()) >= 2*n-1 })
+	// slots must not be marked unknown by such a reject
+	recs.get(func(r *fakeRecords) {
+		if len(r.unknown) != 0 {
+			t.Errorf("slots marked unknown: %v", r.unknown)
+		}
+	})
+}
+
+// A cell whose daemon restarted behind a live link reports its radio parked
+// while the stack believes it is on: the stack starts again and brings it up.
+func TestParkedRadioAfterBringUpRestartsTheStack(t *testing.T) {
+	recs := &fakeRecords{hs: []Handset{handset(2, owner)}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	// right after the bring-up a stale "off" is ignored
+	g.core.CellRadio(id, 0, 2)
+	time.Sleep(50 * time.Millisecond)
+	if g.stack(1) != nil {
+		t.Fatal("a STATUS right after the bring-up restarted the stack")
+	}
+	time.Sleep(radioSettle + 100*time.Millisecond)
+	g.core.CellRadio(id, 1, 2) // radio on: nothing
+	time.Sleep(50 * time.Millisecond)
+	if g.stack(1) != nil {
+		t.Fatal("radio on restarted the stack")
+	}
+	g.core.CellRadio(id, 0, 1) // chip down: not our case
+	time.Sleep(50 * time.Millisecond)
+	if g.stack(1) != nil {
+		t.Fatal("a down chip restarted the stack")
+	}
+	g.core.CellRadio(id, 0, 2)
+	waitFor(t, "a second stack", func() bool { return g.stack(1) != nil })
+}

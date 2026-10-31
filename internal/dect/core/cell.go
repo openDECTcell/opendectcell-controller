@@ -49,6 +49,7 @@ type cellRun struct {
 	// The registration window (ADR 0005): the radio is on, the PIN list's
 	// version the stack has, and the closing time it was opened with.
 	radioOn  bool
+	radioAt  time.Time // when the bring-up finished
 	regSet   bool
 	regVer   uint64
 	regUntil time.Time
@@ -123,7 +124,29 @@ func (r *cellRun) handle(ev event) {
 		if r.st != nil {
 			r.st.Mail(ev.mail, r.core.now())
 		}
+	case evRadio:
+		// The cell's daemon restarted behind a link that stayed up: its chip is
+		// up again but parked, and none of our keys or bring-up is in it. A
+		// STATUS soon after our own bring-up can still show the old state, so
+		// only one later than a few seconds counts.
+		if r.st != nil && r.radioOn && ev.radio == 0 && ev.chip == 2 && time.Since(r.radioAt) > radioSettle {
+			r.log.Warn("the cell's radio is parked but the stack thinks it is on (its daemon restarted): starting the stack again", "retry", r.core.Retry)
+			r.drop()
+			r.retryAt = time.Now().Add(r.core.Retry)
+		}
 	case evReject:
+		if ev.reject.Reason == wire.RejectChipDown {
+			// The cell's chip session was not up when the bring-up went out
+			// (a chip freshly uploaded takes a few seconds; seen on the 7520,
+			// 2026-11-01). Nothing reached the chip, so the stack's idea that
+			// the radio is on is wrong: start it again after the retry delay.
+			if r.st != nil {
+				r.log.Warn("the cell's chip is not up yet: starting the stack again", "retry", r.core.Retry)
+				r.drop()
+				r.retryAt = time.Now().Add(r.core.Retry)
+			}
+			return
+		}
 		slot, ok := r.corrSlot[ev.reject.RefCorr]
 		if !ok {
 			r.log.Warn("MAIL_REJECT", "corr", ev.reject.RefCorr, "reason", ev.reject.Reason)
@@ -136,6 +159,10 @@ func (r *cellRun) handle(ev event) {
 		}
 	}
 }
+
+// radioSettle is how long after our bring-up a STATUS saying "radio off" is
+// believed.
+const radioSettle = 3 * time.Second
 
 func (r *cellRun) tick() {
 	now := time.Now()
@@ -156,6 +183,7 @@ func (r *cellRun) tick() {
 			r.st.RadioUp(true)
 			r.install = true
 			r.radioOn = true
+			r.radioAt = time.Now()
 			r.log.Info("cell radio on")
 		}
 	}

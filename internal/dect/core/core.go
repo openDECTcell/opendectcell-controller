@@ -154,10 +154,11 @@ const (
 	evGone
 	evMail
 	evReject
+	evRadio
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio"}[k]
 }
 
 type event struct {
@@ -165,6 +166,8 @@ type event struct {
 	up     cell.CellUp
 	mail   stack.Mail
 	reject wire.MailRejectMsg
+	radio  uint8 // evRadio: the cell's radio and chip state
+	chip   uint8
 }
 
 // MailUp takes a mail from the cell (§7). The parameters are copied: the
@@ -176,6 +179,12 @@ func (c *Core) MailUp(id uuid.UUID, m wire.MailUpMsg) {
 
 func (c *Core) MailReject(id uuid.UUID, m wire.MailRejectMsg) {
 	c.post(id, event{kind: evReject, reject: m})
+}
+
+// CellRadio takes the cell's STATUS: a cell whose daemon restarted reports its
+// radio parked while the stack believes it is on.
+func (c *Core) CellRadio(id uuid.UUID, radio, chip uint8) {
+	c.post(id, event{kind: evRadio, radio: radio, chip: chip})
 }
 
 func (c *Core) CellUp(id uuid.UUID, up cell.CellUp) { c.post(id, event{kind: evUp, up: up}) }
