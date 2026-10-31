@@ -90,15 +90,15 @@ type identityPage struct {
 func identityForm(r *http.Request, source string) (cell.SystemIdentity, error) {
 	eic, err := strconv.ParseUint(r.PostFormValue("eic"), 16, 16)
 	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The EIC is four hexadecimal digits.")
+		return cell.SystemIdentity{}, errors.New("The EIC is four hexadecimal digits.") //nolint:staticcheck // ST1005: shown on the page as a sentence
 	}
 	fpn, err := strconv.ParseUint(r.PostFormValue("fpn"), 10, 8)
 	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The FPN is a number from 0 to 255.")
+		return cell.SystemIdentity{}, errors.New("The FPN is a number from 0 to 255.") //nolint:staticcheck // ST1005: as above
 	}
 	fps, err := strconv.ParseUint(r.PostFormValue("fps"), 10, 8)
 	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The FPS is a number from 1 to 15.")
+		return cell.SystemIdentity{}, errors.New("The FPS is a number from 1 to 15.") //nolint:staticcheck // ST1005: as above
 	}
 	id := cell.SystemIdentity{EIC: uint16(eic), FPN: uint8(fpn), FPS: uint8(fps), Source: source}
 	if err := id.Validate(); err != nil {
