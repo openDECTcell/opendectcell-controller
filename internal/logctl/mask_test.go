@@ -6,10 +6,10 @@ import "testing"
 
 func TestMaskNumber(t *testing.T) {
 	for in, want := range map[string]string{
-		"+4930123456":                 "*******456",
+		"+4930123456":                 "********456",
 		"123":                         "123",
 		"":                            "",
-		"sip:+4930123456@example.org": "*******456@example.org",
+		"sip:+4930123456@example.org": "********456@example.org",
 		"alice@example.org":           "**ice@example.org",
 	} {
 		if got := MaskNumber(in); got != want {

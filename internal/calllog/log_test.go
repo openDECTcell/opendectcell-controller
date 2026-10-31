@@ -40,7 +40,7 @@ func TestCallsLevelLines(t *testing.T) {
 	}
 	id2, _ := s.Start(ctx, calllog.Call{Direction: "in", RemoteParty: "+4930123456", StartedAt: time.Now()})
 	out := buf.String()
-	for _, want := range []string{"call answered", "call ended", "call started", "remote=*******456"} {
+	for _, want := range []string{"call answered", "call ended", "call started", "remote=********456"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in\n%s", want, out)
 		}
