@@ -678,9 +678,6 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up CellU
 			max_calls = coalesce($4, max_calls), allow_plain_rtp = coalesce($5, allow_plain_rtp) WHERE id = $1`,
 			id, up.Name, up.Location, up.MaxCalls, up.AllowPlainRTP)
 		if err != nil {
-			if strings.Contains(err.Error(), "cell_name_key") {
-				return errors.New("a cell with that name exists")
-			}
 			return err
 		}
 		if tag.RowsAffected() == 0 {
@@ -795,9 +792,6 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 			id, name, up.Location, strings.TrimSpace(up.BoxModel), up.Latitude, up.Longitude, up.PositionPrecision,
 			up.ShareName, up.SharePosition, up.ShareSpecs, up.ShareStats)
 		if err != nil {
-			if strings.Contains(err.Error(), "cell_name_key") {
-				return errors.New("a base station with that name exists")
-			}
 			return err
 		}
 		if err := audit.Record(ctx, tx, audit.Entry{Action: "cell.profile", ObjectType: "cell", ObjectID: id.String(), Details: map[string]any{
@@ -811,17 +805,27 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 	return c, err
 }
 
+// PublicStats are the counts a station shares when its owner switched
+// statistics on: numbers only, no times of day, no numbers dialled, no
+// handsets.
+type PublicStats struct {
+	ConnectedHandsets int   `json:"handsets"`
+	UptimeSeconds     int64 `json:"uptime_s"`
+	Calls7d           int   `json:"calls_7d"`
+	TalkSeconds7d     int64 `json:"talk_s_7d"`
+}
+
 // PublicStation is what a base station shares with the world, after its
 // owner's switches: a field the owner did not share is not in the struct at
 // all (nil or empty), whatever else is stored. It never holds an address, a
 // handset or a number.
 type PublicStation struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name,omitempty"`
-	Latitude  *float64  `json:"lat,omitempty"`
-	Longitude *float64  `json:"lon,omitempty"`
-	BoxModel  string    `json:"model,omitempty"`
-	ShareStat bool      `json:"-"`
+	ID        uuid.UUID    `json:"id"`
+	Name      string       `json:"name,omitempty"`
+	Latitude  *float64     `json:"lat,omitempty"`
+	Longitude *float64     `json:"lon,omitempty"`
+	BoxModel  string       `json:"model,omitempty"`
+	Stats     *PublicStats `json:"stats,omitempty"`
 }
 
 // BlurPosition rounds a position to the precision the owner chose: approx
@@ -836,11 +840,15 @@ func BlurPosition(lat, lon float64, precision string) (float64, float64) {
 	return lat, lon
 }
 
-// Public returns the shared view of an active cell. The id is a random UUID
+// Public returns the shared view of an active cell; st is only used when the
+// owner shares statistics. The id is a random UUID
 // and always present, so a map can tell stations apart even when the owner
 // shares no name.
-func (c *Cell) Public() PublicStation {
-	p := PublicStation{ID: c.ID, ShareStat: c.ShareStats}
+func (c *Cell) Public(st PublicStats) PublicStation {
+	p := PublicStation{ID: c.ID}
+	if c.ShareStats {
+		p.Stats = &st
+	}
 	if c.ShareName {
 		p.Name = c.Name
 	}

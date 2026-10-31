@@ -53,7 +53,7 @@ func (s *Server) loggingView(r *http.Request, u *auth.User) (loggingData, error)
 		Admin: u.IsAdmin(), HasEmail: u.Email != "", MailOK: s.Mailer.Enabled()}
 	err := s.Pool.QueryRow(r.Context(), "SELECT notify_log_changes FROM app_user WHERE id = $1", u.ID).Scan(&d.Notify)
 	if err == nil && u.IsAdmin() {
-		err = s.Pool.QueryRow(r.Context(), "SELECT count(*) FROM app_user WHERE notify_log_changes AND NOT disabled AND coalesce(email, '') <> ''").Scan(&d.Subscribers)
+		err = s.Pool.QueryRow(r.Context(), "SELECT count(*) FROM app_user WHERE (notify_log_changes OR role = 'admin') AND NOT disabled AND coalesce(email, '') <> ''").Scan(&d.Subscribers)
 	}
 	return d, err
 }
@@ -205,7 +205,7 @@ func (s *Server) notifyLogChange(who, diff string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	rows, err := s.Pool.Query(ctx, "SELECT email FROM app_user WHERE notify_log_changes AND NOT disabled AND coalesce(email, '') <> ''")
+	rows, err := s.Pool.Query(ctx, "SELECT email FROM app_user WHERE (notify_log_changes OR role = 'admin') AND NOT disabled AND coalesce(email, '') <> ''")
 	if err != nil {
 		s.Log.Error("log notice: list", "err", err)
 		return
@@ -221,7 +221,7 @@ func (s *Server) notifyLogChange(who, diff string) {
 	if len(to) == 0 {
 		return
 	}
-	body := fmt.Sprintf("The logging of %s was changed by %s.\n\n%s\n\nYou get this message because you asked for it on the Logging page. You can turn it off there.\n", s.brand(ctx).Name, who, diff)
+	body := fmt.Sprintf("The logging of %s was changed by %s.\n\n%s\n\nYou get this message because you are an administrator or asked for it on the Logging page.\n", s.brand(ctx).Name, who, diff)
 	if err := s.Mailer.Send(ctx, to, "Logging was changed", body); err != nil {
 		s.Log.Error("log notice: send", "err", err)
 	}

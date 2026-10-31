@@ -416,12 +416,15 @@ func TestStationProfile(t *testing.T) {
 		"half position":          {"name": {"A"}, "precision": {"exact"}, "lat": {"50"}},
 		"out of range":           {"name": {"A"}, "precision": {"exact"}, "lat": {"95"}, "lon": {"1"}},
 		"not a number":           {"name": {"A"}, "precision": {"exact"}, "lat": {"north"}, "lon": {"1"}},
-		"taken":                  {"name": {"Cellar"}, "precision": {"exact"}},
 		"bad precision":          {"name": {"A"}, "precision": {"street"}},
 	} {
 		if r := e.post(t, u, "/stations/"+mine.String(), f); r.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s accepted: %d", name, r.StatusCode)
 		}
+	}
+	// names need not be unique
+	if r := e.post(t, u, "/stations/"+mine.String(), url.Values{"name": {"Cellar"}, "precision": {"exact"}}); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("a duplicate name was refused: %d", r.StatusCode)
 	}
 	// the audit entry has the switches but not the coordinates
 	_, aud := e.get(t, e.adminBrowser(t), "/admin/audit")

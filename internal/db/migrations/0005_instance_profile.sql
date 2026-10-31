@@ -21,7 +21,7 @@ ALTER TABLE cell
     ADD COLUMN box_model          text NOT NULL DEFAULT '' CHECK (length(box_model) <= 64),
     ADD COLUMN latitude           double precision CHECK (latitude BETWEEN -90 AND 90),
     ADD COLUMN longitude          double precision CHECK (longitude BETWEEN -180 AND 180),
-    ADD COLUMN position_precision text NOT NULL DEFAULT 'approx'
+    ADD COLUMN position_precision text NOT NULL DEFAULT 'exact'
                                   CHECK (position_precision IN ('exact', 'approx', 'region')),
     ADD COLUMN share_name         boolean NOT NULL DEFAULT false,
     ADD COLUMN share_position     boolean NOT NULL DEFAULT false,

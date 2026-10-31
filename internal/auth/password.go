@@ -24,7 +24,7 @@ const (
 	saltLen = 16
 	hashLen = 32
 	// MinPasswordLen is the minimum length of a local password.
-	MinPasswordLen = 10
+	MinPasswordLen = 12
 	// MaxPasswordLen bounds the work an attacker can make us do per attempt.
 	MaxPasswordLen = 256
 )
