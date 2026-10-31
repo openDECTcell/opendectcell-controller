@@ -49,6 +49,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
+	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
@@ -294,7 +295,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Cells: cells, CellLink: link,
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
 		Registrations: windows,
-		Settings:      instance, Stats: &stats.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
+		Settings:      instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
 		SMTPHost: cfg.SMTP.Host,
 	}
 	if cfg.SMTP.Enabled() {

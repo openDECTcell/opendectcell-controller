@@ -25,6 +25,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/dbtest"
+	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
@@ -50,7 +51,7 @@ func newEnvWith(t *testing.T, setup func(*Server)) *env {
 	t.Cleanup(e.idp.Close)
 	s := &Server{Pool: pool, Auth: store, LocalLogin: true, OIDCName: "Sign in with Test IdP",
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test",
-		Settings: &settings.Store{Pool: pool}, Stats: &stats.Store{Pool: pool}, LogCtl: logctl.New(slog.LevelInfo)}
+		Settings: &settings.Store{Pool: pool}, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logctl.New(slog.LevelInfo)}
 	e.srv = httptest.NewUnstartedServer(nil)
 	base, _ := url.Parse("http://" + e.srv.Listener.Addr().String())
 	s.BaseURL = base

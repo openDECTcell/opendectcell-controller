@@ -861,3 +861,22 @@ func (c *Cell) Public(st PublicStats) PublicStation {
 	}
 	return p
 }
+
+// SharedPositions returns the active cells whose owners share their position.
+// Cells that share only a name or specs are not mappable and are left out.
+func (s *Store) SharedPositions(ctx context.Context) ([]*Cell, error) {
+	rows, err := s.Pool.Query(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.state = 'active' AND c.share_position AND c.latitude IS NOT NULL ORDER BY c.id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Cell
+	for rows.Next() {
+		c, err := scanCell(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

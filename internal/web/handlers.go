@@ -31,6 +31,7 @@ type page struct {
 	Path    string
 
 	// set by a handler
+	Wide             bool // an anonymous page that needs the full width (the public map)
 	Leaflet          bool // the page has a map: load Leaflet and say where the tiles come from
 	Tiles            string
 	TilesAttribution string

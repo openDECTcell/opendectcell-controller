@@ -30,6 +30,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
+	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
@@ -71,6 +72,7 @@ type Server struct {
 	Registrations  *regwin.Registry // nil: no registration API
 	Settings       *settings.Store  // nil: the default instance name, no settings pages
 	Stats          *stats.Store     // nil: no statistics pages
+	Handsets       *handset.Store   // nil: no handset pages
 	LogCtl         *logctl.Controller
 	Mailer         Mailer // nil: no mail
 	SMTPHost       string
@@ -96,8 +98,15 @@ func (s *Server) Handler() (http.Handler, error) {
 		"icon":       s.iconFunc(),
 		"callsChart": callsChart, "hms": hms, "hours": hours, "pct": pct,
 		"deref": func(b *bool) bool { return b != nil && *b },
-		"join":  strings.Join,
-		"list":  func(xs ...string) []string { return xs },
+		"deref2": func(n *int) int {
+			if n == nil {
+				return 0
+			}
+			return *n
+		},
+		"atoi": func(s string) int { n, _ := strconv.Atoi(s); return n },
+		"join": strings.Join,
+		"list": func(xs ...string) []string { return xs },
 		"fieldErr": func(m map[string]string, k string) string {
 			if m == nil {
 				return ""
@@ -158,6 +167,8 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
 	s.mux.Handle("GET /admin/calls", s.requireAdmin(s.adminCalls))
 	s.settingsRoutes()
+	s.handsetRoutes()
+	s.publicMapRoutes()
 	s.stubRoutes()
 	s.stationRoutes()
 	s.statsRoutes()

@@ -189,6 +189,9 @@ func (s *Store) Logo(ctx context.Context) (contentType string, data []byte, upda
 type Map struct {
 	TileURL     string `json:"tile_url"`    // https://host/{z}/{x}/{y}.png
 	Attribution string `json:"attribution"` // shown on the map
+	// Public shows the map of shared stations to visitors who are not logged
+	// in, and serves the same data as JSON. Off by default.
+	Public bool `json:"public"`
 }
 
 // OSMTileURL is the OpenStreetMap Foundation's standard tile server. Its usage

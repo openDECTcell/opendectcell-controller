@@ -1,0 +1,10 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "map.html"}}{{template "head" .}}
+<div class="card">
+  <div class="card-body">
+    <div id="public-map" class="public-map" data-tiles="{{.Tiles}}" data-attribution="{{.TilesAttribution}}" data-feed="/api/v1/public/stations" aria-label="Map of shared base stations"></div>
+    {{if not .Tiles}}<p class="text-secondary small mt-2 mb-0">This instance has no map tiles configured, so the stations are shown as points on a blank map.</p>{{end}}
+    <p class="text-secondary small mt-2 mb-0">Only base stations whose owners chose to share their position appear here, at the precision they chose. A name, model and statistics show only where the owner shared those too.</p>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

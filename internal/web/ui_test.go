@@ -71,15 +71,11 @@ func TestNavigationAndNoExternalRequests(t *testing.T) {
 func TestStubPages(t *testing.T) {
 	e := newEnv(t)
 	u, a := e.userBrowser(t), e.adminBrowser(t)
-	if resp, body := e.get(t, u, "/handsets"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "Not built yet") {
-		t.Errorf("/handsets: %d", resp.StatusCode)
+
+	if resp, body := e.get(t, u, "/calls"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "Not built yet") {
+		t.Errorf("/calls: %d", resp.StatusCode)
 	}
-	if resp, _ := e.get(t, u, "/admin/handsets"); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("user on /admin/handsets: %d", resp.StatusCode)
-	}
-	if resp, _ := e.get(t, a, "/admin/handsets"); resp.StatusCode != http.StatusOK {
-		t.Errorf("admin on /admin/handsets: %d", resp.StatusCode)
-	}
+	_ = a
 }
 
 func TestSelfRegistration(t *testing.T) {
@@ -435,3 +431,89 @@ func TestStationProfile(t *testing.T) {
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+func TestPublicMapFeed(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		ks, _ := secret.GenerateMasterKey()
+		mk, _ := secret.ParseMasterKey(ks)
+		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	q := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := e.store.Pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q(`INSERT INTO cell (name, state, latitude, longitude, position_precision, share_position, share_name, box_model, share_specs)
+		VALUES ('Public Attic', 'active', 52.37593, 9.73201, 'approx', true, true, 'FRITZ!Box 7520', false)`)
+	q(`INSERT INTO cell (name, state, latitude, longitude, position_precision, share_position, share_stats) VALUES ('Quiet Cellar', 'active', 48.13743, 11.57549, 'exact', true, true)`)
+	q(`INSERT INTO cell (name, state, latitude, longitude, share_position) VALUES ('Private Garage', 'active', 50.0, 8.0, false)`)
+	q(`INSERT INTO cell (name, state, latitude, longitude, share_position) VALUES ('Disabled Shed', 'disabled', 51.0, 9.0, true)`)
+	q(`INSERT INTO cell (name, state, share_name, box_model, share_specs) VALUES ('Name only', 'active', true, 'FRITZ!Box 7412', true)`)
+
+	anon := e.browser()
+	if resp, _ := e.get(t, anon, "/api/v1/public/stations"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("feed open before an admin allowed it: %d", resp.StatusCode)
+	}
+	if resp, _ := e.get(t, anon, "/map"); resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("map open before an admin allowed it: %d", resp.StatusCode)
+	}
+	// logged-in users see it regardless
+	if resp, body := e.get(t, e.userBrowser(t), "/api/v1/public/stations"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "stations") {
+		t.Errorf("feed for a user: %d", resp.StatusCode)
+	}
+	if r := e.post(t, e.adminBrowser(t), "/admin/settings/map", url.Values{"choice": {"none"}, "public": {"on"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("make public: %d", r.StatusCode)
+	}
+	resp, body := e.get(t, anon, "/api/v1/public/stations")
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("feed: %d %v", resp.StatusCode, resp.Header)
+	}
+	var feed struct {
+		Stations []map[string]any `json:"stations"`
+	}
+	if err := json.Unmarshal([]byte(body), &feed); err != nil {
+		t.Fatal(err)
+	}
+	if len(feed.Stations) != 2 {
+		t.Fatalf("want the two stations that share a position, got %d: %s", len(feed.Stations), body)
+	}
+	for _, st := range feed.Stations {
+		switch st["name"] {
+		case "Public Attic":
+			if st["lat"] != 52.38 || st["lon"] != 9.73 {
+				t.Errorf("position not blurred to about 1 km: %v %v", st["lat"], st["lon"])
+			}
+			if _, has := st["model"]; has {
+				t.Error("specs shared with the switch off")
+			}
+			if _, has := st["stats"]; has {
+				t.Error("statistics shared with the switch off")
+			}
+		case nil:
+			// the station that shares no name: exact position, counts only
+			if st["lat"] != 48.13743 {
+				t.Errorf("exact position changed: %v", st["lat"])
+			}
+			if _, has := st["stats"]; !has {
+				t.Error("statistics switched on but missing")
+			}
+		default:
+			t.Errorf("unexpected station %v", st["name"])
+		}
+	}
+	for _, leak := range []string{"Private Garage", "Disabled Shed", "Name only", "Quiet Cellar", "enrolled", "state"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("feed mentions %q: %s", leak, body)
+		}
+	}
+	if resp, page := e.get(t, anon, "/map"); resp.StatusCode != http.StatusOK || !strings.Contains(page, `id="public-map"`) {
+		t.Errorf("public map page: %d", resp.StatusCode)
+	}
+}

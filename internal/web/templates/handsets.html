@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "handsets.html"}}{{template "head" .}}
+<p><a class="btn btn-primary" href="/handsets/register">{{icon "plus"}} Register a handset</a></p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
+<thead><tr><th>Name</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}<th>Model</th><th>Lines</th><th>Last seen</th></tr></thead>
+<tbody>
+{{range .Data}}
+<tr>
+  <td><a href="/handsets/{{.ID}}">{{.Display}}</a></td>
+  {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
+  <td>{{with .Model}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td>
+  <td>{{range .Lines}}<span class="badge bg-blue-lt me-1">{{.Line}}: {{.Label}}</span>{{else}}<span class="text-secondary">none</span>{{end}}</td>
+  <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}{{if .LastSeenCell}} · {{.LastSeenCell}}{{end}}</td>
+</tr>
+{{else}}
+<tr><td colspan="5" class="text-secondary">No handsets yet. <a href="/handsets/register">Register one</a>.</td></tr>
+{{end}}
+</tbody>
+</table></div></div>
+{{template "foot" .}}{{end}}

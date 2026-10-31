@@ -61,7 +61,7 @@
       <div class="container-xl">
 {{else}}
 <div class="page page-center">
-  <div class="container container-tight py-4">
+  <div class="container {{if .Wide}}container-xl{{else}}container-tight{{end}} py-4">
     <div class="text-center mb-4">
       <a href="/" class="navbar-brand navbar-brand-autodark brand-link brand-center">
         {{if .Brand.HasLogo}}<img class="brand-logo brand-logo-lg" src="/branding/logo?v={{.Brand.Rev}}" alt="">{{end}}

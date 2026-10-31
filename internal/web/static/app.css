@@ -28,6 +28,7 @@ code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-sele
 .card-link:hover { text-decoration: none; }
 
 .station-map { height: 20rem; border-radius: var(--tblr-border-radius); border: 1px solid var(--tblr-border-color); z-index: 0; }
+.public-map { height: 70vh; min-height: 22rem; border-radius: var(--tblr-border-radius); border: 1px solid var(--tblr-border-color); z-index: 0; }
 .station-map-blank { background: var(--tblr-bg-surface-secondary); }
 
 .chart { width: 100%; height: auto; display: block; }
@@ -37,3 +38,5 @@ code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-sele
 .legend { font-size: .8rem; color: var(--tblr-secondary-color, #6c7a91); }
 .legend-dot { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin: 0 .2rem 0 .6rem; vertical-align: middle; background: var(--tblr-primary); }
 .legend-all { opacity: .3; }
+
+.reg-pin { font-family: var(--tblr-font-monospace, monospace); letter-spacing: .15em; }

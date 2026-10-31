@@ -1,0 +1,25 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "handset_register.html"}}{{template "head" .}}
+{{if not .Data}}<div class="alert alert-warning">Registration is not available: this controller runs without the DECT core.</div>{{end}}
+<div class="card" id="reg" data-available="{{.Data}}">
+  <div class="card-body">
+    <div id="reg-start">
+      <p>Registering opens a window of one minute on every base station that is online. You get a PIN to type into the handset.</p>
+      <button type="button" id="reg-go" class="btn btn-primary" {{if not .Data}}disabled{{end}}>Start registration</button>
+      <noscript><p class="text-secondary mt-3">This page needs JavaScript to show the PIN and wait for the handset.</p></noscript>
+    </div>
+    <div id="reg-open" hidden>
+      <div class="subheader">PIN</div>
+      <div class="display-4 mb-2 reg-pin" id="reg-pin"></div>
+      <p class="text-secondary" id="reg-left"></p>
+      <ol>
+        <li>On the handset: Menu, Settings, Registration, Register handset.</li>
+        <li>Choose the base station, then enter the PIN above.</li>
+      </ol>
+      <button type="button" id="reg-cancel" class="btn btn-outline-secondary">Cancel</button>
+    </div>
+    <div id="reg-done" hidden></div>
+    <div id="reg-err" class="alert alert-danger mt-3" hidden></div>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

@@ -170,6 +170,7 @@ func (s *Server) settingsRegistration(w http.ResponseWriter, r *http.Request, u 
 func (s *Server) settingsMap(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var m settings.Map
+	public := r.PostFormValue("public") == "on"
 	switch r.PostFormValue("choice") {
 	case "none":
 	case "osm":
@@ -180,6 +181,7 @@ func (s *Server) settingsMap(w http.ResponseWriter, r *http.Request, u *auth.Use
 		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: "Choose one of the three map options."})
 		return
 	}
+	m.Public = public
 	if _, err := m.Validate(); err != nil {
 		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: err.Error() + "."})
 		return
@@ -189,7 +191,7 @@ func (s *Server) settingsMap(w http.ResponseWriter, r *http.Request, u *auth.Use
 		return
 	}
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyMap,
-		Details: map[string]any{"tile_url": m.TileURL}})
+		Details: map[string]any{"tile_url": m.TileURL, "public": m.Public}})
 	s.brandChanged()
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
 }
