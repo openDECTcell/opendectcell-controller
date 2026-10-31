@@ -1,6 +1,20 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "home.html"}}{{template "head" .}}
-<h1>Overview</h1>
-<p>Logged in as <strong>{{.User.Name}}</strong> ({{.User.Role}}).</p>
-<p class="muted">Handsets, SIP accounts and cells will appear here as the controller's milestones land (ROADMAP C2–C7).</p>
+{{with .Data}}
+<div class="row row-cards mb-3">
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/stations"><div class="card-body"><div class="subheader">Base stations</div><div class="h1 mb-0">{{.Stations}}</div><div class="text-secondary small">{{.Online}} online</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/handsets"><div class="card-body"><div class="subheader">Handsets</div><div class="h1 mb-0">{{.Summary.Handsets}}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/sip-accounts"><div class="card-body"><div class="subheader">Phone lines</div><div class="h1 mb-0">{{.Summary.SIPAccounts}}</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/statistics"><div class="card-body"><div class="subheader">Calls, last 7 days</div><div class="h1 mb-0">{{.Summary.Calls7d}}</div><div class="text-secondary small">{{hours .Summary.TalkSeconds7d}} talk time</div></div></a></div>
+</div>
+<div class="card">
+  <div class="card-header"><h3 class="card-title">Getting started</h3></div>
+  <div class="list-group list-group-flush">
+    {{range .Steps}}<div class="list-group-item d-flex align-items-center">
+      <span class="me-3 {{if .Done}}text-success{{else}}text-secondary{{end}}">{{if .Done}}{{icon "check"}}{{else}}{{icon "clock"}}{{end}}</span>
+      <span>{{.Text}}</span><a class="ms-auto" href="{{.Href}}">{{.Label}}</a>
+    </div>{{end}}
+  </div>
+</div>
+{{end}}
 {{template "foot" .}}{{end}}

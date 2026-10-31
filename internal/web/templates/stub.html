@@ -1,0 +1,17 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "stub.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="empty">
+  <div class="empty-icon">{{icon "tool"}}</div>
+  <p class="empty-title">Not built yet</p>
+  <p class="empty-subtitle text-secondary">{{.Lead}}</p>
+</div>
+<div class="card">
+  <div class="card-header"><h3 class="card-title">What this page will do</h3></div>
+  <div class="card-body">
+    <ul class="mb-0">{{range .Plans}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  <div class="card-footer text-secondary small">Planned in milestone {{.Roadmap}} of the roadmap.</div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

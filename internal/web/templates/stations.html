@@ -1,0 +1,27 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "stations.html"}}{{template "head" .}}
+{{if .User.CanAddCells}}<p><a class="btn btn-primary" href="/enroll">{{icon "plus"}} Enroll a base station</a></p>{{end}}
+<div class="row row-cards">
+{{range .Data}}
+  <div class="col-md-6 col-xl-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-center mb-2">
+          <h3 class="card-title mb-0"><a href="/stations/{{.ID}}">{{.Name}}</a></h3>
+          <span class="ms-auto">{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else if eq .State "active"}}<span class="badge bg-danger-lt">offline</span>{{else}}<span class="badge bg-secondary-lt">{{.State}}</span>{{end}}</span>
+        </div>
+        <dl class="kv mb-0">
+          <dt>Model</dt><dd>{{with .BoxModel}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</dd>
+          <dt>Place</dt><dd>{{with .Location}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</dd>
+          <dt>Shared</dt><dd>{{if or .ShareName .SharePosition .ShareSpecs .ShareStats}}{{if .ShareName}}name {{end}}{{if .SharePosition}}position {{end}}{{if .ShareSpecs}}specs {{end}}{{if .ShareStats}}statistics{{end}}{{else}}nothing{{end}}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+{{else}}
+  <div class="col-12"><div class="empty"><div class="empty-icon">{{icon "antenna-bars-5"}}</div>
+    <p class="empty-title">No base stations yet</p>
+    <p class="empty-subtitle text-secondary">{{if .User.CanAddCells}}Enroll a FRITZ!Box running opendectcell as a cell.{{else}}Ask an administrator to let you enroll base stations.{{end}}</p></div></div>
+{{end}}
+</div>
+{{template "foot" .}}{{end}}

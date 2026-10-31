@@ -1,0 +1,89 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_settings.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "palette"}} Name and logo</h3></div>
+      <form method="post" action="/admin/settings/general" enctype="multipart/form-data">
+        <div class="card-body">
+          <div class="mb-3"><label class="form-label" for="name">Name of this controller</label>
+            <input class="form-control" id="name" name="name" value="{{.Instance.Name}}" maxlength="64" required>
+            <div class="form-hint">Shown in the menu, on the login page and in e-mails.</div></div>
+          <div class="mb-3"><label class="form-label" for="tagline">Tagline (optional)</label>
+            <input class="form-control" id="tagline" name="tagline" value="{{.Instance.Tagline}}" maxlength="120"></div>
+          <div class="mb-3"><label class="form-label" for="logo">Logo</label>
+            {{if .Instance.HasLogo}}<div class="mb-2"><img class="settings-logo" src="/branding/logo" alt="Current logo"></div>{{end}}
+            <input class="form-control" id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp">
+            <div class="form-hint">PNG, JPEG or WebP, up to 256 KiB. SVG is not accepted: it can carry script.</div>
+            {{if .Instance.HasLogo}}<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="remove_logo"><span class="form-check-label">Remove the logo</span></label>{{end}}</div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "user-plus"}} Self-registration</h3></div>
+      <form method="post" action="/admin/settings/registration">
+        <div class="card-body">
+          {{if not .LocalLogin}}<div class="alert alert-warning">Local accounts are switched off in the configuration, so there is nothing to sign up for.</div>{{end}}
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="enabled" {{if .Registration.Enabled}}checked{{end}}><span class="form-check-label">Visitors may create an account themselves</span></label>
+          <div class="form-hint mb-3">They give a username, an e-mail address and a password, and get the role <em>user</em>. Off by default.</div>
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="require_approval" {{if .Registration.RequireApproval}}checked{{end}}><span class="form-check-label">An administrator approves each new account first</span></label>
+          <div class="mb-3"><label class="form-label" for="domains">Only these e-mail domains (optional)</label>
+            <input class="form-control" id="domains" name="domains" value="{{.Domains}}" placeholder="example.org, makerspace.example">
+            <div class="form-hint">Comma separated. Empty: any address. The address is not verified yet; for an open instance use approval.</div></div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "map-pin"}} Map tiles</h3></div>
+      <form method="post" action="/admin/settings/map">
+        <div class="card-body">
+          <p class="text-secondary">The position picker on a base station's page and the public map need map tiles from a tile server. A tile server sees the address of every visitor who opens a map.</p>
+          <label class="form-check mb-2"><input class="form-check-input" type="radio" name="choice" value="none" {{if eq .MapChoice "none"}}checked{{end}}><span class="form-check-label"><strong>None</strong> (default): no request leaves the controller; coordinates are typed in.</span></label>
+          <label class="form-check mb-2"><input class="form-check-input" type="radio" name="choice" value="osm" {{if eq .MapChoice "osm"}}checked{{end}}><span class="form-check-label"><strong>OpenStreetMap</strong>: visitors' addresses go to the OpenStreetMap Foundation. Fine for a small installation; its tile policy rules out heavy use.</span></label>
+          <label class="form-check mb-3"><input class="form-check-input" type="radio" name="choice" value="custom" {{if eq .MapChoice "custom"}}checked{{end}}><span class="form-check-label"><strong>Your own tile server</strong> (recommended for a large public map)</span></label>
+          <div class="mb-3"><label class="form-label" for="tile_url">Tile URL</label>
+            <input class="form-control" id="tile_url" name="tile_url" value="{{if eq .MapChoice "custom"}}{{.Map.TileURL}}{{end}}" placeholder="https://tiles.example.org/{z}/{x}/{y}.png">
+            <div class="form-hint">https, with {z}, {x} and {y}. One fixed host (no {s}), because the page's security policy names it.</div></div>
+          <div class="mb-3"><label class="form-label" for="attribution">Attribution</label>
+            <input class="form-control" id="attribution" name="attribution" value="{{if eq .MapChoice "custom"}}{{.Map.Attribution}}{{end}}" maxlength="200"></div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "mail"}} E-mail</h3></div>
+      <div class="card-body">
+        {{if .SMTP}}<p>Mail goes out through <code>{{.SMTPHost}}</code>. Users who ask for it get a message when the log level changes.</p>
+        {{else}}<div class="alert alert-warning mb-0">No mail server is configured, so notifications cannot be sent. Set <code>OPENDECTCELL_SMTP_HOST</code> and <code>OPENDECTCELL_SMTP_FROM</code> (see <code>docs/configuration.md</code>).</div>{{end}}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "key"}} Sign-in</h3></div>
+      <div class="card-body">
+        <dl class="kv">
+          <dt>Local accounts</dt><dd>{{if .LocalLogin}}on{{else}}off{{end}}</dd>
+          <dt>Single sign-on (OpenID Connect)</dt><dd>{{if .OIDC}}on · {{.OIDCName}} · <code>{{.OIDCIssuer}}</code>{{else}}not configured{{end}}</dd>
+          <dt>Address of this controller</dt><dd><code>{{.BaseURL}}</code></dd>
+        </dl>
+        <p class="text-secondary small mb-0">Sign-in methods are part of the configuration file or environment, not of this page: a wrong value here could lock every admin out. Authentik, Keycloak and other OpenID Connect providers are set up as described in <code>docs/authentik.md</code>.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

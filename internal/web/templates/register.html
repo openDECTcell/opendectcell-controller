@@ -1,0 +1,28 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "register.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="card card-md">
+  <div class="card-body">
+    {{if .Done}}
+    <h2 class="h2 text-center mb-3">Thank you</h2>
+    <p>Your account was created. An administrator has to approve it before you can log in.</p>
+    <a class="btn btn-primary w-100" href="/login">Back to the login</a>
+    {{else}}
+    <h2 class="h2 text-center mb-4">Create an account</h2>
+    <form method="post" action="/register">
+      <div class="mb-3"><label class="form-label" for="username">Username</label>
+        <input class="form-control" id="username" name="username" value="{{.Username}}" autocomplete="username" maxlength="128" required autofocus></div>
+      <div class="mb-3"><label class="form-label" for="email">E-mail address</label>
+        <input class="form-control" id="email" name="email" type="email" value="{{.Email}}" autocomplete="email" maxlength="254" required></div>
+      <div class="mb-3"><label class="form-label" for="password">Password</label>
+        <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="10" required>
+        <div class="form-hint">At least 10 characters.</div></div>
+      {{if .Approval}}<p class="text-secondary small">An administrator approves new accounts before they can log in.</p>{{end}}
+      <div class="form-footer"><button type="submit" class="btn btn-primary w-100">Register</button></div>
+    </form>
+    {{end}}
+  </div>
+</div>
+<div class="text-center text-secondary mt-3">Have an account? <a href="/login">Log in</a></div>
+{{end}}
+{{template "foot" .}}{{end}}

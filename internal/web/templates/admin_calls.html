@@ -1,8 +1,7 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "admin_calls.html"}}{{template "head" .}}
-<h1>Calls</h1>
-<p class="muted">Media quality per leg. <em>SIP</em> is the leg to the PBX or provider: loss and jitter as received here, and as the peer reported them over RTCP. <em>Cell</em> is the leg to the cell, from sequence numbers (no RTCP on the cell link). MOS is an E-model estimate for the worse direction.</p>
-<table>
+<p class="text-secondary">Media quality per leg. <em>SIP</em> is the leg to the PBX or provider: loss and jitter as received here, and as the peer reported them over RTCP. <em>Cell</em> is the leg to the cell, from sequence numbers (no RTCP on the cell link). MOS is an E-model estimate for the worse direction.</p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Started</th><th></th><th>Remote</th><th>Duration</th><th>Ended</th><th>Codecs</th><th>MOS</th><th>SIP leg</th><th>Cell leg</th><th>Worse</th></tr></thead>
 <tbody>
 {{range .Data.Rows}}
@@ -10,22 +9,22 @@
   <td>{{fmtTime .StartedAt}}</td>
   <td>{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
   <td>{{.RemoteParty}}</td>
-  <td>{{if .AnsweredAt}}{{dur .Duration}}{{else}}<span class="muted">not answered</span>{{end}}</td>
-  <td>{{with .EndReason}}{{.}}{{else}}<span class="muted">ongoing</span>{{end}}</td>
+  <td>{{if .AnsweredAt}}{{dur .Duration}}{{else}}<span class="text-secondary">not answered</span>{{end}}</td>
+  <td>{{with .EndReason}}{{.}}{{else}}<span class="text-secondary">ongoing</span>{{end}}</td>
   <td>{{with .SIPCodec}}{{.}}{{end}}{{with .CellCodec}} · cell {{.}}{{end}}{{if deref .SRTP}} · SRTP{{end}}</td>
   {{with .Quality}}
   <td>{{f1 .MOS}}</td>
   <td>loss {{f1 .SIP.LossPct}} %{{with .SIP.PeerLossPct}} / peer {{f1 .}} %{{end}}, jitter {{f1 .SIP.JitterMs}} ms{{with .SIP.RTTMs}}, RTT {{f1 .}} ms{{end}}</td>
   <td>loss {{f1 .Cell.LossPct}} %, jitter {{f1 .Cell.JitterMs}} ms</td>
-  <td>{{with .WorseLeg}}<strong>{{.}}</strong>{{else}}<span class="muted">—</span>{{end}}</td>
+  <td>{{with .WorseLeg}}<strong>{{.}}</strong>{{else}}<span class="text-secondary">—</span>{{end}}</td>
   {{else}}
-  <td colspan="4" class="muted">no media</td>
+  <td colspan="4" class="text-secondary">no media</td>
   {{end}}
 </tr>
 {{else}}
-<tr><td colspan="10" class="muted">No calls yet.</td></tr>
+<tr><td colspan="10" class="text-secondary">No calls yet.</td></tr>
 {{end}}
 </tbody>
-</table>
+</table></div></div>
 {{if .Data.NextBefore}}<p><a href="/admin/calls?before={{.Data.NextBefore}}">Older calls</a></p>{{end}}
 {{template "foot" .}}{{end}}

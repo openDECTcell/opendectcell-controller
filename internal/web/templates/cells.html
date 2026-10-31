@@ -1,8 +1,7 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "cells.html"}}{{template "head" .}}
-<h1>Cells</h1>
-<p><a class="button" href="/enroll">Enroll a cell</a></p>
-<table>
+<p><a class="btn btn-primary" href="/enroll">Enroll a cell</a></p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Name</th><th>Location</th><th>State</th><th>Link</th><th>RTT p95</th><th>Software</th><th>Last seen</th></tr></thead>
 <tbody>
 {{range .Data.Cells}}
@@ -14,29 +13,29 @@
   <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="7" class="muted">No cells yet. Enroll one.</td></tr>
+<tr><td colspan="7" class="text-secondary">No cells yet. Enroll one.</td></tr>
 {{end}}
 </tbody>
-</table>
+</table></div></div>
 
-<h2>DECT system identity</h2>
+<h3 class="mt-4 mb-2">DECT system identity</h3>
 {{with .Data.Identity}}
 <dl class="kv">
   <dt>Identity</dt><dd>{{.String}} · {{if eq .Source "random"}}made up on this controller{{else}}an EIC allocated by ETSI{{end}}</dd>
   <dt>Set</dt><dd>by {{.SetBy}}, {{fmtTime .SetAt}}</dd>
 </dl>
 {{else}}
-<p class="muted">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity (ARI class B) makes up to 256 cells one system.</p>
+<p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity (ARI class B) makes up to 256 cells one system.</p>
 {{end}}
-<p class="muted">Cells do not take this identity yet: the cell side of it is still to be built (opendectcell <code>docs/multicell-identities.md</code> §7.4).</p>
-<form method="post" action="/cells/identity" class="narrow">
+<p class="text-secondary">Cells do not take this identity yet: the cell side of it is still to be built (opendectcell <code>docs/multicell-identities.md</code> §7.4).</p>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity" class="narrow">
   <input type="hidden" name="action" value="random">
-  <button type="submit">Make one up…</button>
-</form>
-<form method="post" action="/cells/identity" class="narrow">
-  <label>EIC from ETSI, 4 hex digits <input name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
-  <label>FPN, 0 to 255 <input name="fpn" type="number" min="0" max="255" value="0" required></label>
-  <label>FPS, 1 to 15 <input name="fps" type="number" min="1" max="15" value="1" required></label>
-  <button type="submit">Use this EIC…</button>
-</form>
+  <button type="submit" class="btn btn-primary">Make one up…</button>
+</form></div></div>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity" class="narrow">
+  <label class="form-label">EIC from ETSI, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
+  <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
+  <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
+  <button type="submit" class="btn btn-primary">Use this EIC…</button>
+</form></div></div>
 {{template "foot" .}}{{end}}

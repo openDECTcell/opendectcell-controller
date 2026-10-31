@@ -1,0 +1,72 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "station.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <form method="post" action="/stations/{{.Cell.ID}}">
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">{{icon "antenna-bars-5"}} Base station</h3></div>
+        <div class="card-body">
+          <div class="mb-3"><label class="form-label" for="name">Name</label>
+            <input class="form-control" id="name" name="name" value="{{.Cell.Name}}" maxlength="64" required></div>
+          <div class="mb-3"><label class="form-label" for="location">Place (free text)</label>
+            <input class="form-control" id="location" name="location" value="{{.Cell.Location}}" maxlength="128" placeholder="Workshop, first floor"></div>
+          <div class="mb-3"><label class="form-label" for="box_model">Model</label>
+            <input class="form-control" id="box_model" name="box_model" value="{{.Cell.BoxModel}}" maxlength="64" list="models" placeholder="FRITZ!Box 7520">
+            <datalist id="models">{{range .Models}}<option value="{{.}}">{{end}}</datalist></div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">{{icon "map-pin"}} Position</h3></div>
+        <div class="card-body">
+          <div id="station-map" class="station-map mb-3" data-tiles="{{$.Tiles}}" data-attribution="{{$.TilesAttribution}}" data-lat="{{.Lat}}" data-lon="{{.Lon}}" aria-label="Map: click to set the position"></div>
+          {{if not $.Tiles}}<p class="text-secondary small">No map tiles are configured (an administrator can turn them on under Settings), so type the coordinates in. Every map click or drag fills them in.</p>{{end}}
+          <div class="row">
+            <div class="col-6 mb-3"><label class="form-label" for="lat">Latitude</label>
+              <input class="form-control" id="lat" name="lat" value="{{.Lat}}" inputmode="decimal" placeholder="52.3759"></div>
+            <div class="col-6 mb-3"><label class="form-label" for="lon">Longitude</label>
+              <input class="form-control" id="lon" name="lon" value="{{.Lon}}" inputmode="decimal" placeholder="9.7320"></div>
+          </div>
+          <div class="mb-0"><label class="form-label" for="precision">Precision when shared</label>
+            <select class="form-select" id="precision" name="precision">
+              <option value="exact" {{if eq .Cell.PositionPrecision "exact"}}selected{{end}}>Exact</option>
+              <option value="approx" {{if eq .Cell.PositionPrecision "approx"}}selected{{end}}>About 1 km (rounded)</option>
+              <option value="region" {{if eq .Cell.PositionPrecision "region"}}selected{{end}}>About 10 km (rounded)</option>
+            </select>
+            <div class="form-hint">Applies to the shared position only. Here you always see your exact one.</div></div>
+        </div>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">{{icon "world"}} Sharing</h3></div>
+        <div class="card-body">
+          <p class="text-secondary">What may appear on the public map and in public listings. Each switch is separate; everything is off until you turn it on. No address, handset or phone number is ever shared.</p>
+          <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_name" {{if .Cell.ShareName}}checked{{end}}><span class="form-check-label"><strong>Name</strong>: “{{.Cell.Name}}”</span></label>
+          <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_position" {{if .Cell.SharePosition}}checked{{end}}><span class="form-check-label"><strong>Position</strong>: the point above, at the precision chosen</span></label>
+          <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_specs" {{if .Cell.ShareSpecs}}checked{{end}}><span class="form-check-label"><strong>Specs</strong>: the model ({{with .Cell.BoxModel}}{{.}}{{else}}not set{{end}})</span></label>
+          <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="share_stats" {{if .Cell.ShareStats}}checked{{end}}><span class="form-check-label"><strong>Statistics</strong>: number of connected handsets, uptime and number of calls (counts only)</span></label>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "activity-heartbeat"}} Right now</h3></div>
+      <div class="card-body">
+        <dl class="kv mb-0">
+          <dt>Link</dt><dd>{{if .Live.Online}}<span class="badge bg-success-lt">online</span> since {{fmtTime .Live.Since}}{{else}}<span class="badge bg-danger-lt">offline</span>{{with .Cell.LastSeenAt}} · last seen {{fmtTime .}}{{end}}{{end}}</dd>
+          <dt>State</dt><dd>{{.Cell.State}}</dd>
+          <dt>Software</dt><dd>{{with .Cell.SoftwareVersion}}{{.}}{{else}}—{{end}}</dd>
+          {{if .HasStats}}<dt>Handsets, last 24 h</dt><dd>{{.Stats.HandsetsSeen24h}}</dd>
+          <dt>Calls, last 7 days</dt><dd>{{.Stats.Calls7d}}</dd>
+          <dt>Talk time, last 7 days</dt><dd>{{.Stats.TalkSeconds7d}} s</dd>{{end}}
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

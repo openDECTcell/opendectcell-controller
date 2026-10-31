@@ -1,0 +1,63 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "statistics.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="d-flex mb-3 align-items-center">
+  <p class="text-secondary mb-0">{{if .All}}Everything on this controller.{{else}}Your handsets, accounts and calls only.{{end}}</p>
+  <div class="btn-group ms-auto" role="group" aria-label="Time range">
+    {{range $d := list "7" "14" "30" "90"}}<a class="btn btn-sm {{if eq (printf "%d" $.Data.Days) $d}}btn-primary{{else}}btn-outline-secondary{{end}}" href="?days={{$d}}">{{$d}} days</a>{{end}}
+  </div>
+</div>
+
+<div class="row row-cards mb-3">
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Calls, last 24 h</div><div class="h1 mb-0">{{.Summary.Calls24h}}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Calls, last 7 days</div><div class="h1 mb-0">{{.Summary.Calls7d}}</div><div class="text-secondary small">{{pct .Summary.Answered7d .Summary.Calls7d}} answered</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Talk time, 7 days</div><div class="h1 mb-0">{{hours .Summary.TalkSeconds7d}}</div><div class="text-secondary small">longest {{hms .Summary.LongestSeconds}}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Encrypted on the SIP side</div><div class="h1 mb-0">{{pct .Summary.Encrypted7d .Summary.Calls7d}}</div><div class="text-secondary small">of the last 7 days' calls (SRTP)</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Handsets</div><div class="h1 mb-0">{{.Summary.Handsets}}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Phone lines</div><div class="h1 mb-0">{{.Summary.SIPAccounts}}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Failed outgoing, 7 days</div><div class="h1 mb-0">{{.Summary.Failed7d}}</div><div class="text-secondary small">never reached a conversation</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Calls, all time</div><div class="h1 mb-0">{{.Summary.CallsTotal}}</div></div></div></div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Calls per day</h3><div class="card-actions legend"><span class="legend-dot legend-answered"></span> answered <span class="legend-dot legend-all"></span> not answered</div></div>
+  <div class="card-body">{{callsChart .Series}}</div>
+</div>
+
+<div class="row row-cards">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">How calls ended, last {{.Days}} days</h3></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Reason</th><th class="w-1">Calls</th></tr></thead><tbody>
+      {{range .Reasons}}<tr><td>{{.Reason}}</td><td>{{.Count}}</td></tr>{{else}}<tr><td colspan="2" class="text-secondary">No calls in this range.</td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">Base stations used, last {{.Days}} days</h3></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Base station</th><th>Calls</th><th>Talk time</th></tr></thead><tbody>
+      {{range .Cells}}<tr><td>{{.Name}}</td><td>{{.Calls}}</td><td>{{hours .TalkSeconds}}</td></tr>{{else}}<tr><td colspan="3" class="text-secondary">No calls in this range.</td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+</div>
+
+{{if .Fleet}}
+<h3 class="mt-4 mb-2">The controller</h3>
+<div class="row row-cards mb-3">
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Cells</div><div class="h1 mb-0">{{.Fleet.CellsActive}}</div><div class="text-secondary small">active{{with .Fleet.CellsPending}} · {{.}} waiting for approval{{end}}{{with .Fleet.CellsDisabled}} · {{.}} disabled{{end}}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Users</div><div class="h1 mb-0">{{.Fleet.Users}}</div><div class="text-secondary small">{{.Fleet.UsersPending}} waiting for approval</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Handsets seen, 24 h</div><div class="h1 mb-0">{{.Fleet.HandsetsSeen24h}}</div><div class="text-secondary small">{{.Fleet.HandsetsNeverSeen}} never seen</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Certificates ending in 14 days</div><div class="h1 mb-0">{{.Fleet.CertsExpiring}}</div><div class="text-secondary small">cells that could not renew</div></div></div></div>
+</div>
+{{end}}
+{{if .Live}}
+<div class="card">
+  <div class="card-header"><h3 class="card-title">Cells right now</h3><div class="card-actions">{{.Live.Online}} online · {{.Live.Offline}} offline</div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Cell</th><th>Link</th><th>Round trip (p95)</th><th>Software</th><th>Last seen</th></tr></thead><tbody>
+    {{range .Live.Rows}}<tr><td><a href="/cells/{{.ID}}">{{.Name}}</a></td>
+      <td>{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}</td>
+      <td>{{if .Live.Online}}{{ms .Live.RTTp95}}{{end}}</td><td>{{with .SoftwareVersion}}{{.}}{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td></tr>
+    {{else}}<tr><td colspan="5" class="text-secondary">No active cells.</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

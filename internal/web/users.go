@@ -17,6 +17,7 @@ func (s *Server) userRoutes() {
 	s.mux.Handle("GET /admin/users/{id}", s.requireAdmin(s.userEdit))
 	s.mux.Handle("POST /admin/users/{id}", s.requireAdmin(s.userUpdate))
 	s.mux.Handle("POST /admin/users/{id}/password", s.requireAdmin(s.userPassword))
+	s.mux.Handle("POST /admin/users/{id}/approve", s.requireAdmin(s.userApprove))
 	s.mux.Handle("POST /admin/users/{id}/delete", s.requireAdmin(s.userDelete))
 }
 

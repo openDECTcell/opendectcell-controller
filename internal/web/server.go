@@ -30,7 +30,11 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
+	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
+	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
+	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
+	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 )
 
 //go:embed templates/*.html
@@ -57,9 +61,16 @@ type Server struct {
 	Contacts       *contacts.Store   // nil: no contact API
 	SIP            SIPStatus
 	Registrations  *regwin.Registry // nil: no registration API
+	Settings       *settings.Store  // nil: the default instance name, no settings pages
+	Stats          *stats.Store     // nil: no statistics pages
+	LogCtl         *logctl.Controller
+	Mailer         *mailer.Mailer // nil or without a host: no mail
+	SMTPHost       string
+	StartedAt      time.Time
 
-	tmpl *template.Template
-	mux  *http.ServeMux
+	brands brandCache
+	tmpl   *template.Template
+	mux    *http.ServeMux
 }
 
 // Handler builds the server's handler.
@@ -73,7 +84,9 @@ func (s *Server) Handler() (http.Handler, error) {
 		"dur": func(d time.Duration) string {
 			return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 		},
-		"f1":    func(f float64) string { return strconv.FormatFloat(f, 'f', 1, 64) },
+		"f1":         func(f float64) string { return strconv.FormatFloat(f, 'f', 1, 64) },
+		"icon":       s.iconFunc(),
+		"callsChart": callsChart, "hms": hms, "hours": hours, "pct": pct,
 		"deref": func(b *bool) bool { return b != nil && *b },
 		"join":  strings.Join,
 		"list":  func(xs ...string) []string { return xs },
@@ -101,7 +114,8 @@ func (s *Server) Handler() (http.Handler, error) {
 	h = s.withSession(h)
 	h = cop.Handler(h)
 	h = s.withClientAddr(h)
-	h = securityHeaders(h)
+	h = s.securityHeaders(h)
+	h = withRequest(h)
 	h = s.withRecover(h)
 	return h, nil
 }
@@ -111,9 +125,12 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /static/", http.StripPrefix("/static/", cacheStatic(http.FileServerFS(static))))
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
 	s.mux.HandleFunc("GET /readyz", s.readyz)
+	s.mux.HandleFunc("GET /branding/logo", s.logo)
 
 	s.mux.HandleFunc("GET /login", s.loginPage)
 	s.mux.HandleFunc("POST /login", s.loginPost)
+	s.mux.HandleFunc("GET /register", s.registerPage)
+	s.mux.HandleFunc("POST /register", s.registerPost)
 	s.mux.HandleFunc("POST /logout", s.logout)
 	s.mux.HandleFunc("GET /auth/oidc/start", s.oidcStart)
 	s.mux.HandleFunc("GET /auth/oidc/callback", s.oidcCallback)
@@ -125,6 +142,12 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
 	s.mux.Handle("GET /admin/calls", s.requireAdmin(s.adminCalls))
+	s.settingsRoutes()
+	s.stubRoutes()
+	s.stationRoutes()
+	s.statsRoutes()
+	s.loggingRoutes()
+	s.adminRoutes()
 	s.cellRoutes()
 	s.sipRoutes()
 	s.userRoutes()
@@ -153,10 +176,14 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 
 // middleware
 
-func securityHeaders(h http.Handler) http.Handler {
+func (s *Server) securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
-		hd.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		img := "'self' data:"
+		if _, origin := s.mapConfig(r.Context()); origin != "" {
+			img += " " + origin // the admin's tile server, the only outside host a page may load from
+		}
+		hd.Set("Content-Security-Policy", "default-src 'self'; img-src "+img+"; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
 		hd.Set("X-Frame-Options", "DENY")

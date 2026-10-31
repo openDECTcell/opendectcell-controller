@@ -49,10 +49,14 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
+	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
+	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
+	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
+	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 	"github.com/openDECTcell/opendectcell-controller/internal/web"
 )
 
@@ -133,7 +137,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	log := newLogger(cfg.Log, stderr)
+	log, logCtl := newLogger(cfg.Log, stderr)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -145,7 +149,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	switch cmd {
 	case "serve":
-		return serve(ctx, cfg, pool, log, rest)
+		return serve(ctx, cfg, pool, log, logCtl, rest)
 	case "migrate":
 		return migrate(ctx, pool, rest, stdout)
 	case "rekey", "rotate-dek":
@@ -157,14 +161,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	return fmt.Errorf("unknown command %q", cmd)
 }
 
-func newLogger(c config.Log, w io.Writer) *slog.Logger {
+// newLogger builds the logger. The configured level is the default; an admin
+// can change it per component while running (internal/logctl). The handler
+// underneath lets everything through, logctl decides what is written.
+func newLogger(c config.Log, w io.Writer) (*slog.Logger, *logctl.Controller) {
 	var lvl slog.Level
 	_ = lvl.UnmarshalText([]byte(c.Level)) // validated by config.Validate
-	opts := &slog.HandlerOptions{Level: lvl}
+	ctl := logctl.New(lvl)
+	opts := &slog.HandlerOptions{Level: logctl.LevelCalls}
+	var inner slog.Handler = slog.NewTextHandler(w, opts)
 	if c.Format == "json" {
-		return slog.New(slog.NewJSONHandler(w, opts))
+		inner = slog.NewJSONHandler(w, opts)
 	}
-	return slog.New(slog.NewTextHandler(w, opts))
+	return slog.New(ctl.Handler(inner)), ctl
 }
 
 func masterKeys(cfg config.Config) (secret.MasterKey, *secret.MasterKey, error) {
@@ -217,7 +226,7 @@ func authStore(cfg config.Config, pool *pgxpool.Pool) *auth.Store {
 	}
 }
 
-func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, args []string) error {
+func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog.Logger, logCtl *logctl.Controller, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	noMigrate := fs.Bool("no-migrate", false, "do not apply pending migrations; refuse to start if any are pending")
 	if err := fs.Parse(args); err != nil {
@@ -225,6 +234,13 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	if err := ensureSchema(ctx, pool, !*noMigrate, log); err != nil {
 		return err
+	}
+	instance := &settings.Store{Pool: pool}
+	var saved logctl.State
+	if ok, err := instance.Get(ctx, settings.KeyLogging, &saved); err != nil {
+		log.Warn("saved log levels not read", "err", err)
+	} else if ok {
+		logCtl.Apply(saved)
 	}
 	mk, old, err := masterKeys(cfg)
 	if err != nil {
@@ -278,7 +294,18 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Cells: cells, CellLink: link,
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
 		Registrations: windows,
+		Settings:      instance, Stats: &stats.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
+		SMTPHost: cfg.SMTP.Host,
 	}
+	if cfg.SMTP.Enabled() {
+		srv.Mailer = &mailer.Mailer{Cfg: cfg.SMTP, Name: func() string {
+			if in, err := instance.Instance(context.Background()); err == nil {
+				return in.Name
+			}
+			return settings.DefaultName
+		}}
+	}
+	go srv.RunLogExpiry(ctx)
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,
 			RedirectURL: strings.TrimRight(cfg.HTTP.BaseURL, "/") + "/auth/oidc/callback"}

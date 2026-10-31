@@ -4,31 +4,95 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · openDECTcell controller</title>
+<title>{{.Title}} · {{.Brand.Name}}</title>
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
+{{if .Leaflet}}<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">{{end}}
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="/">openDECTcell controller</a>
-  {{if .User}}
-  <nav>
-    <a href="/">Overview</a>
-    <a href="/sip-accounts">SIP accounts</a>
-    <a href="/contacts">Contacts</a>
-    {{if .User.IsAdmin}}<a href="/cells">Cells</a><a href="/admin/users">Users</a><a href="/admin/calls">Calls</a><a href="/admin/audit">Audit log</a>{{end}}
-    {{if and .User.CanAddCells (not .User.IsAdmin)}}<a href="/enroll">Enroll a cell</a>{{end}}
-    <a href="/account">{{.User.Name}}</a>
-    <form method="post" action="/logout" class="inline"><button type="submit" class="link">Log out</button></form>
-  </nav>
-  {{end}}
-</header>
-<main>
-{{if .Error}}<p class="msg error" role="alert">{{.Error}}</p>{{end}}
-{{if .Notice}}<p class="msg notice" role="status">{{.Notice}}</p>{{end}}
+{{if .User}}
+<div class="page">
+  <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+    <div class="container-fluid">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu" aria-controls="sidebar-menu" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+      <a class="navbar-brand navbar-brand-autodark brand-link" href="/">
+        {{if .Brand.HasLogo}}<img class="brand-logo" src="/branding/logo?v={{.Brand.Rev}}" alt="">{{else}}<span class="brand-mark">{{icon "antenna-bars-5"}}</span>{{end}}
+        <span class="brand-name">{{.Brand.Name}}</span>
+      </a>
+      <div class="collapse navbar-collapse" id="sidebar-menu">
+        <ul class="navbar-nav pt-lg-3">
+          {{range .Nav}}
+          <li class="nav-item nav-heading">{{.Title}}</li>
+          {{range .Items}}
+          <li class="nav-item{{if .Active}} active{{end}}">
+            <a class="nav-link" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}>
+              <span class="nav-link-icon d-md-none d-lg-inline-block">{{icon .Icon}}</span>
+              <span class="nav-link-title">{{.Label}}</span>{{if .Stub}}<span class="badge bg-secondary-lt ms-auto" title="Planned, not built yet">soon</span>{{end}}
+            </a>
+          </li>
+          {{end}}
+          {{end}}
+        </ul>
+        <div class="sidebar-user mt-auto">
+          <div class="small text-secondary">Signed in as</div>
+          <div class="fw-bold">{{.User.Name}}</div>
+          <div class="small text-secondary mb-2">{{.User.Role}}</div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-theme-toggle title="Switch light and dark" aria-label="Switch light and dark">{{icon "sun"}}</button>
+            <form method="post" action="/logout" class="m-0"><button type="submit" class="btn btn-sm btn-outline-secondary">{{icon "logout"}} Log out</button></form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <div class="row g-2 align-items-center">
+          <div class="col">
+            {{with .Section}}<div class="page-pretitle">{{.}}</div>{{end}}
+            <h2 class="page-title">{{.Title}}</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="container-xl">
+{{else}}
+<div class="page page-center">
+  <div class="container container-tight py-4">
+    <div class="text-center mb-4">
+      <a href="/" class="navbar-brand navbar-brand-autodark brand-link brand-center">
+        {{if .Brand.HasLogo}}<img class="brand-logo brand-logo-lg" src="/branding/logo?v={{.Brand.Rev}}" alt="">{{end}}
+        <span class="brand-name">{{.Brand.Name}}</span>
+      </a>
+      {{with .Brand.Tagline}}<div class="text-secondary">{{.}}</div>{{end}}
+    </div>
+{{end}}
+{{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
+{{if .Notice}}<div class="alert alert-success" role="status">{{.Notice}}</div>{{end}}
 {{end}}
 
-{{define "foot"}}</main>
-<footer>opendectcell-controller {{.Version}} · <a href="https://github.com/openDECTcell/opendectcell-controller">source (AGPL-3.0)</a></footer>
+{{define "foot"}}
+{{if .User}}
+      </div>
+    </div>
+    <footer class="footer footer-transparent d-print-none">
+      <div class="container-xl text-secondary small">
+        {{.Brand.Name}} · opendectcell-controller {{.Version}} · <a href="https://github.com/openDECTcell/opendectcell-controller">source (AGPL-3.0)</a>
+      </div>
+    </footer>
+  </div>
+</div>
+{{else}}
+    <div class="text-center text-secondary small mt-3">opendectcell-controller {{.Version}} · <a href="https://github.com/openDECTcell/opendectcell-controller">source (AGPL-3.0)</a></div>
+  </div>
+</div>
+{{end}}
+<script src="/static/vendor/tabler/tabler.min.js"></script>
+{{if .Leaflet}}<script src="/static/vendor/leaflet/leaflet.js"></script>{{end}}
+<script src="/static/app.js"></script>
 </body>
 </html>
 {{end}}

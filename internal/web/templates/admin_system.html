@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_system.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="card">
+  <div class="card-body">
+    <dl class="kv mb-0">
+      <dt>Version</dt><dd>{{.Version}} · built with {{.Go}}</dd>
+      <dt>Running for</dt><dd>{{with .Up}}{{.}}{{else}}—{{end}}</dd>
+      <dt>Address</dt><dd><code>{{.BaseURL}}</code></dd>
+      <dt>Database</dt><dd>{{if .DBOK}}<span class="badge bg-success-lt">{{.DB}}</span>{{else}}<span class="badge bg-danger-lt">{{.DB}}</span>{{end}}</dd>
+      <dt>Cells</dt><dd>{{if .Cells}}on{{else}}off{{end}}</dd>
+      <dt>Phone lines (SIP)</dt><dd>{{if .SIP}}on{{else}}off{{end}}</dd>
+      <dt>Sign-in</dt><dd>{{if .Local}}local accounts{{end}}{{if and .Local .OIDC}} · {{end}}{{if .OIDC}}single sign-on{{end}}</dd>
+      <dt>Outgoing mail</dt><dd>{{if .Mail}}through <code>{{.MailHost}}</code>{{else}}not configured{{end}}</dd>
+    </dl>
+  </div>
+  <div class="card-footer text-secondary small">Health checks for a load balancer or monitor: <code>/healthz</code> (the process is up) and <code>/readyz</code> (the database answers).</div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

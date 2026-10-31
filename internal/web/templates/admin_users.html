@@ -1,8 +1,7 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "admin_users.html"}}{{template "head" .}}
-<h1>Users</h1>
-<p><a class="button" href="/admin/users/new">Add local user</a></p>
-<table>
+<p><a class="btn btn-primary" href="/admin/users/new">{{icon "user-plus"}} Add local user</a></p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Sign-in</th><th>May add cells</th><th>Last login</th><th>Status</th></tr></thead>
 <tbody>
 {{range .Data}}
@@ -10,9 +9,9 @@
   <td><a href="/admin/users/{{.ID}}">{{.Username}}</a></td><td>{{.DisplayName}}</td><td>{{.Role}}</td><td>{{.AuthSource}}</td>
   <td>{{if .MayAddCells}}yes{{else}}no{{end}}</td>
   <td>{{with .LastLoginAt}}{{fmtTime .}}{{else}}never{{end}}</td>
-  <td>{{if .Disabled}}disabled{{else}}active{{end}}</td>
+  <td>{{if .PendingApproval}}<span class="badge bg-warning-lt">waiting for approval</span> <form method="post" action="/admin/users/{{.ID}}/approve" class="d-inline"><button type="submit" class="btn btn-sm btn-success">Approve</button></form>{{else if .Disabled}}<span class="badge bg-secondary-lt">disabled</span>{{else}}<span class="badge bg-success-lt">active</span>{{end}}</td>
 </tr>
 {{end}}
 </tbody>
-</table>
+</table></div></div>
 {{template "foot" .}}{{end}}

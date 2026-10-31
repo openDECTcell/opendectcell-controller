@@ -1,27 +1,27 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "admin_user.html"}}{{template "head" .}}
 {{with .Data}}
-<h1>{{if .New}}New user{{else}}{{.Target.Username}}{{end}}</h1>
-{{if not .New}}<p class="muted">{{if eq .Target.AuthSource "oidc"}}Signs in with single sign-on; the role is set from groups at each login.{{else}}Local account.{{end}}{{with .Target.LastLoginAt}} Last login {{fmtTime .}}.{{end}}</p>{{end}}
-<form method="post" action="{{if .New}}/admin/users{{else}}/admin/users/{{.Target.ID}}{{end}}" class="form-grid">
-  {{if .New}}<label>Username <input name="username" value="{{.Target.Username}}" required maxlength="128"></label>{{end}}
-  <label>Name <input name="display_name" value="{{.Target.DisplayName}}"></label>
-  <label>E-mail <input name="email" type="email" value="{{.Target.Email}}"></label>
-  <label>Role <select name="role">{{range $r := list "user" "admin"}}<option {{if eq $r (printf "%s" $.Data.Target.Role)}}selected{{end}}>{{$r}}</option>{{end}}</select></label>
-  <label class="check"><input type="checkbox" name="may_add_cells" {{if .Target.MayAddCells}}checked{{end}}>May enroll cells</label>
-  {{if .New}}<label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-  {{else}}<label class="check"><input type="checkbox" name="disabled" {{if .Target.Disabled}}checked{{end}} {{if .Self}}disabled{{end}}>Disabled (ends their sessions)</label>{{end}}
-  <button type="submit">{{if .New}}Create{{else}}Save{{end}}</button>
-</form>
+<h3 class="mb-3">{{if .New}}New user{{else}}{{.Target.Username}}{{end}}</h3>
+{{if not .New}}<p class="text-secondary">{{if eq .Target.AuthSource "oidc"}}Signs in with single sign-on; the role is set from groups at each login.{{else}}Local account.{{end}}{{with .Target.LastLoginAt}} Last login {{fmtTime .}}.{{end}}</p>{{end}}
+<div class="card mb-3"><div class="card-body"><form method="post" action="{{if .New}}/admin/users{{else}}/admin/users/{{.Target.ID}}{{end}}" class="form-grid">
+  {{if .New}}<label class="form-label">Username <input class="form-control" name="username" value="{{.Target.Username}}" required maxlength="128"></label>{{end}}
+  <label class="form-label">Name <input class="form-control" name="display_name" value="{{.Target.DisplayName}}"></label>
+  <label class="form-label">E-mail <input class="form-control" name="email" type="email" value="{{.Target.Email}}"></label>
+  <label class="form-label">Role <select class="form-select" name="role">{{range $r := list "user" "admin"}}<option {{if eq $r (printf "%s" $.Data.Target.Role)}}selected{{end}}>{{$r}}</option>{{end}}</select></label>
+  <label class="form-check"><input class="form-check-input" type="checkbox" name="may_add_cells" {{if .Target.MayAddCells}}checked{{end}}>May enroll cells</label>
+  {{if .New}}<label class="form-label">Password <input class="form-control" name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+  {{else}}<label class="form-check"><input class="form-check-input" type="checkbox" name="disabled" {{if .Target.Disabled}}checked{{end}} {{if .Self}}disabled{{end}}>Disabled (ends their sessions)</label>{{end}}
+  <button type="submit" class="btn btn-primary">{{if .New}}Create{{else}}Save{{end}}</button>
+</form></div></div>
 {{if and (not .New) (eq .Target.AuthSource "local")}}
-<h2>Set password</h2>
-<form method="post" action="/admin/users/{{.Target.ID}}/password" class="narrow">
-  <label>New password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-  <button type="submit">Set password</button>
-</form>
+<h3 class="mt-4 mb-2">Set password</h3>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/admin/users/{{.Target.ID}}/password" class="narrow">
+  <label class="form-label">New password <input class="form-control" name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+  <button type="submit" class="btn btn-primary">Set password</button>
+</form></div></div>
 {{end}}
 {{if and (not .New) (not .Self)}}
-<form method="post" action="/admin/users/{{.Target.ID}}/delete"><button type="submit" class="link">Delete this user</button></form>
+<form method="post" action="/admin/users/{{.Target.ID}}/delete"><button type="submit" class="btn btn-link px-0">Delete this user</button></form>
 {{end}}
 {{end}}
 {{template "foot" .}}{{end}}

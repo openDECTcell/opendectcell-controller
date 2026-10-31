@@ -1,21 +1,20 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "sip_accounts.html"}}{{template "head" .}}
-<h1>SIP accounts</h1>
-<p><a class="button" href="/sip-accounts/new">Add account</a></p>
-<table>
+<p><a class="btn btn-primary" href="/sip-accounts/new">Add account</a></p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Label</th><th>Address</th><th>Transport</th><th>Registration</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
 <tbody>
 {{range .Data}}
 <tr>
-  <td><a href="/sip-accounts/{{.ID}}">{{.Label}}</a>{{if not .Enabled}} <span class="muted">(disabled)</span>{{end}}</td>
+  <td><a href="/sip-accounts/{{.ID}}">{{.Label}}</a>{{if not .Enabled}} <span class="text-secondary">(disabled)</span>{{end}}</td>
   <td>{{.Username}}@{{.Domain}}</td>
   <td>{{.Transport}}{{if ne .MediaEncryption "off"}} · SRTP {{.MediaEncryption}}{{end}}</td>
-  <td>{{if .HasState}}{{.Status.State}}{{with .Status.LastError}} · <span class="muted">{{.}}</span>{{end}}{{else}}<span class="muted">not running</span>{{end}}</td>
+  <td>{{if .HasState}}{{.Status.State}}{{with .Status.LastError}} · <span class="text-secondary">{{.}}</span>{{end}}{{else}}<span class="text-secondary">not running</span>{{end}}</td>
   {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
 </tr>
 {{else}}
-<tr><td colspan="5" class="muted">No SIP accounts yet.</td></tr>
+<tr><td colspan="5" class="text-secondary">No SIP accounts yet.</td></tr>
 {{end}}
 </tbody>
-</table>
+</table></div></div>
 {{template "foot" .}}{{end}}

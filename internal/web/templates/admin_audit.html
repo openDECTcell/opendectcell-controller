@@ -1,7 +1,6 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "admin_audit.html"}}{{template "head" .}}
-<h1>Audit log</h1>
-<table>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Time</th><th>Actor</th><th>Address</th><th>Action</th><th>Object</th><th>Details</th></tr></thead>
 <tbody>
 {{range .Data.Rows}}
@@ -12,9 +11,9 @@
   <td>{{range $k, $v := .Details}}<span class="kvp">{{$k}}={{$v}}</span> {{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="6" class="muted">No entries.</td></tr>
+<tr><td colspan="6" class="text-secondary">No entries.</td></tr>
 {{end}}
 </tbody>
-</table>
+</table></div></div>
 {{if .Data.NextBefore}}<p><a href="/admin/audit?before={{.Data.NextBefore}}">Older entries</a></p>{{end}}
 {{template "foot" .}}{{end}}

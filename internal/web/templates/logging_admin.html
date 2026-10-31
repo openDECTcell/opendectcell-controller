@@ -1,0 +1,48 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "logging_admin.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <form method="post" action="/admin/logging">
+      <div class="card">
+        <div class="card-header"><h3 class="card-title">Log level per part</h3></div>
+        <div class="card-body">
+          <div class="mb-3"><label class="form-label" for="default">Default for every part</label>
+            <select class="form-select" id="default" name="default">{{range $l := .Levels}}<option value="{{$l}}" {{if eq $l $.Data.Default}}selected{{end}}>{{$l}}</option>{{end}}</select></div>
+          <div class="table-responsive"><table class="table table-vcenter"><thead><tr><th>Part</th><th>Level</th><th>Now</th></tr></thead><tbody>
+            {{range $row := .Rows}}<tr><td><label for="level_{{$row.Component}}">{{$row.Component}}</label></td>
+              <td><input type="hidden" name="orig_{{$row.Component}}" value="{{if $row.Override}}{{$row.Level}}{{else}}default{{end}}">
+                <select class="form-select form-select-sm" id="level_{{$row.Component}}" name="level_{{$row.Component}}">
+                <option value="default" {{if not $row.Override}}selected{{end}}>default</option>
+                {{range $l := $.Data.Levels}}<option value="{{$l}}" {{if and $row.Override (eq $l $row.Level)}}selected{{end}}>{{$l}}</option>{{end}}
+              </select></td>
+              <td><span class="badge bg-blue-lt">{{$row.Level}}</span>{{with $row.Until}} <span class="text-secondary small">until {{fmtTime .}}</span>{{end}}</td></tr>{{end}}
+          </tbody></table></div>
+          <div class="mb-0"><label class="form-label" for="ttl">A debug or calls level lasts</label>
+            <select class="form-select" id="ttl" name="ttl">
+              <option value="1h">1 hour, then back to the default</option>
+              <option value="6h">6 hours</option>
+              <option value="24h">24 hours</option>
+              <option value="">until I change it</option>
+            </select>
+            <div class="form-hint">Loud levels write more, including addresses and call details. They end by themselves unless you say otherwise.</div></div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Apply</button></div>
+      </div>
+    </form>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">The levels</h3></div>
+      <div class="card-body"><dl class="kv mb-0">{{range $l := .Levels}}<dt>{{$l}}</dt><dd>{{index $.Data.Help $l}}</dd>{{end}}</dl></div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <p class="mb-2">{{.Subscribers}} {{if eq .Subscribers 1}}person gets{{else}}people get{{end}} an e-mail when this changes.{{if not .MailOK}} <span class="text-warning">No mail server is configured, so none is sent.</span>{{end}}</p>
+        <form method="post" action="/logging/notify"><label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="notify" {{if .Notify}}checked{{end}}><span class="form-check-label">Send me one too</span></label><button type="submit" class="btn btn-sm btn-outline-primary">Save</button></form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}
