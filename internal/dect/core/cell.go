@@ -40,8 +40,11 @@ type cellRun struct {
 	gen         *gen
 	bring       []stack.Mail // start-up mails still to send, one per BringUp
 	nextAt      time.Time
-	slots       []uint // the slots the records went into, for Installed
-	install     bool   // the radio is on: the records go in at the next tick
+	slots       []uint    // the chip slots the records went into, for Installed
+	next        int       // the next free record index in the stack
+	offered     [][3]byte // pool TPUIs the free records were given, released on drop
+	reloadAt    time.Time
+	install     bool // the radio is on: the records go in at the next tick
 	retryAt     time.Time
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
@@ -130,6 +133,12 @@ func (r *cellRun) handle(ev event) {
 		r.restart()
 	case evDown:
 		r.linkUp = false
+	case evAdd:
+		r.addHandset(ev.hid)
+	case evReload:
+		if r.st != nil && r.reloadAt.IsZero() {
+			r.reloadAt = time.Now().Add(reloadDelay)
+		}
 	case evGone:
 		r.linkUp = false
 		if r.st != nil {
@@ -174,6 +183,40 @@ func (r *cellRun) handle(ev event) {
 			r.gen.job(job{kind: jobUnknown, slot: slot})
 		}
 	}
+}
+
+// reloadDelay (a variable for the tests) is how long after a change of the
+// handsets a stack is rebuilt, so a handset that has just enrolled finishes
+// what it started.
+var reloadDelay = 3 * time.Second
+
+// addHandset takes a pooled handset into the running stack, host-only: no
+// restart, no chip write.
+func (r *cellRun) addHandset(hid uuid.UUID) {
+	if r.st == nil || r.gen == nil {
+		return // it is loaded with the records when the stack starts
+	}
+	if r.next >= maxRecord {
+		r.log.Warn("this cell holds no more records: a pooled handset is not placed here", "handset", hid)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	h, ok, err := r.core.Records.PlaceHandset(ctx, r.id, hid)
+	cancel()
+	defer clear(h.Rec.UAK[:])
+	if err != nil {
+		r.log.Error("a pooled handset could not be placed on this cell", "handset", hid, "err", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	i := r.next
+	r.next++
+	r.st.AddRecord(i, h.Rec)
+	r.gen.place(i, h.Rec.Slot, h.Owner)
+	r.gen.job(job{kind: jobTrack, i: i, hid: h.ID})
+	r.log.Info("a pooled handset is held on this cell too", "handset", h.ID, "record", h.Rec.Slot)
 }
 
 // radioSettle is how long after our bring-up a STATUS saying "radio off" is
@@ -251,6 +294,12 @@ func (r *cellRun) tick() {
 	}
 	if r.st == nil && r.linkUp && !r.retryAt.IsZero() && now.After(r.retryAt) {
 		r.restart()
+	}
+	if r.st != nil && !r.reloadAt.IsZero() && now.After(r.reloadAt) {
+		r.log.Info("the handsets changed: DECT stack rebuilt from the records")
+		r.drop()
+		r.resumed = false // the calls went with the stack
+		r.retryAt = now
 	}
 	if r.st == nil {
 		return
@@ -361,7 +410,7 @@ func (r *cellRun) restart() {
 		return
 	}
 	for _, id := range unplaced {
-		r.log.Error("cell full: a home-set handset has no slot here (cell-protocol.md §7.4)", "handset", id)
+		r.log.Error("cell full: a handset has no record number free here (cell-protocol.md §7.4)", "handset", id)
 	}
 	table, delay := chipConfig(r.up.StubVersion)
 	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]uuid.UUID{}, jobs: make(chan job, saveQueue)}
@@ -375,15 +424,43 @@ func (r *cellRun) restart() {
 	st := r.core.New(g, stack.Config{NamesRO: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion, ParkPLI: r.parkPLI})
 	r.st = st
 	ids := map[int]uuid.UUID{}
-	r.slots = r.slots[:0]
-	for i, h := range hs {
-		st.AddRecord(i, h.Rec)
-		ids[i] = h.ID
-		g.place(i, h.Rec.Slot, h.Owner)
-		r.slots = append(r.slots, h.Rec.Slot)
+	r.slots, r.next = r.slots[:0], 0
+	// The chip-slot records first, then the places a new handset can enrol,
+	// then the host-only records: record 0 is the one the main link serves
+	// at start, and it keeps being a chip record, or a free one, as it was.
+	chipRecs := 0
+	for _, h := range hs {
+		if h.Rec.Slot <= maxSlot {
+			chipRecs++
+			st.AddRecord(r.next, h.Rec)
+			ids[r.next] = h.ID
+			g.place(r.next, h.Rec.Slot, h.Owner)
+			r.slots = append(r.slots, h.Rec.Slot)
+			r.next++
+		}
 	}
-	for i := len(hs); i < max; i++ {
-		st.AddFreeStore(i)
+	free := 0
+	for ; chipRecs+free < max; free++ {
+		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+		t, err := r.core.Records.ReserveTPUI(ctx)
+		cancel()
+		if err != nil {
+			// no pooled TPUI: this store takes a chip-slot handset as before
+			r.log.Warn("no pool TPUI for a free record: a handset enrolling here sits in a chip slot", "err", err)
+			t = [3]byte{}
+		} else if t != ([3]byte{}) {
+			r.offered = append(r.offered, t)
+		}
+		st.AddFreeStore(r.next, t)
+		r.next++
+	}
+	for _, h := range hs {
+		if h.Rec.Slot > maxSlot {
+			st.AddRecord(r.next, h.Rec)
+			ids[r.next] = h.ID
+			g.place(r.next, h.Rec.Slot, h.Owner)
+			r.next++
+		}
 	}
 	g.start(ids)
 	r.gen = g
@@ -394,7 +471,7 @@ func (r *cellRun) restart() {
 	}
 	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1, r.resumed)
 	r.nextAt = time.Now()
-	r.log.Info("DECT stack started", "records", len(hs), "free", max-len(hs), "stub", r.up.StubVersion)
+	r.log.Info("DECT stack started", "records", len(hs), "chip", chipRecs, "free", free, "stub", r.up.StubVersion)
 }
 
 // drop closes the stack. The fields are cleared first, so a panic in
@@ -404,6 +481,11 @@ func (r *cellRun) drop() {
 	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
 	r.seenMs, r.seenAt = nil, nil
+	r.reloadAt = time.Time{}
+	for _, t := range r.offered {
+		r.core.Records.ReleaseTPUI(t)
+	}
+	r.offered = nil
 	r.radioOn, r.regSet, r.regUntil = false, false, time.Time{}
 	clear(r.corrSlot)
 	if g != nil {
@@ -449,6 +531,7 @@ const (
 	jobInstalled
 	jobUnknown
 	jobSeen
+	jobTrack // a record added to the running stack: its handset
 )
 
 type job struct {
@@ -461,6 +544,7 @@ type job struct {
 	slot   uint
 	slots  []uint
 	at     time.Time // jobSeen: when the handset was heard
+	hid    uuid.UUID // jobTrack
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
@@ -507,22 +591,32 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 	var err error
 	switch j.kind {
 	case jobSave:
-		var hid uuid.UUID
-		hid, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.owner, j.rec)
+		var saved Saved
+		saved, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.owner, j.rec)
 		clear(j.rec.UAK[:])
 		if err == nil {
-			if ids[j.i] == uuid.Nil {
-				log.Info("handset enrolled: record stored", "handset", hid, "slot", j.rec.Slot)
+			hid := saved.ID
+			if saved.Enrolled {
+				log.Info("handset enrolled: record stored", "handset", hid, "record", j.rec.Slot, "pooled", saved.Pooled)
 			}
 			ids[j.i] = hid
 			if j.window != uuid.Nil && core.Reg != nil {
 				core.Reg.Enrolled(j.window, hid)
 			}
+			if saved.Enrolled && saved.Pooled {
+				core.enrolled(id, hid, saved.Again)
+			}
 		}
+	case jobTrack:
+		ids[j.i] = j.hid
 	case jobForget:
 		if hid, ok := ids[j.i]; ok {
-			err = core.Records.Forget(ctx, id, hid)
+			var pooled bool
+			pooled, err = core.Records.Forget(ctx, id, hid)
 			delete(ids, j.i)
+			if err == nil && pooled {
+				core.forgotten(id)
+			}
 		}
 	case jobRename:
 		if hid, ok := ids[j.i]; ok {

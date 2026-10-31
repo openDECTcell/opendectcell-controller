@@ -144,6 +144,10 @@ type Cells struct {
 	// into enrollment strings. Default: the base URL's host and the
 	// listen port.
 	PublicAddress string `yaml:"public_address"`
+	// HandsetPool: a handset that enrols is held by every cell under a
+	// TPUI of its own (docs/roaming.md), not by one cell's chip. Off: it
+	// is a chip-slot handset of the cell it enrolled on, as before.
+	HandsetPool bool `yaml:"handset_pool"`
 }
 
 // CellPublicAddress returns PublicAddress or its default.
@@ -175,7 +179,7 @@ func Default() Config {
 			SessionMaxAge:  7 * 24 * time.Hour,
 			LoginRateLimit: 10,
 		},
-		Cells: Cells{Listen: ":7300"},
+		Cells: Cells{Listen: ":7300", HandsetPool: true},
 		SIP:   SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
 		SMTP:  SMTP{Port: "587", Security: "starttls"},
 	}
@@ -273,6 +277,7 @@ func vars(c *Config) []envVar {
 		{"OIDC_PROVIDER_NAME", false, str(&c.Auth.OIDC.ProviderName)},
 		{"CELLS_LISTEN", false, str(&c.Cells.Listen)},
 		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
+		{"CELLS_HANDSET_POOL", false, boolean(&c.Cells.HandsetPool)},
 		{"SIP_UDP_LISTEN", false, str(&c.SIP.UDPListen)},
 		{"SIP_TCP_LISTEN", false, str(&c.SIP.TCPListen)},
 		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},

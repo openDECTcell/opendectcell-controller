@@ -41,6 +41,7 @@ echoed in error messages or logs.
 | `OPENDECTCELL_SIP_RTP_PORTS` | `sip.rtp_ports` | `41000-41999` | RTP/RTCP port pairs for the SIP side, two ports per call. Separate from the cell media ports (`cell-protocol.md` §1) |
 | `OPENDECTCELL_SIP_MEDIA_IP` | `sip.media_ip` | local address | Advertise this IP in SDP, for a controller behind a static NAT |
 | `OPENDECTCELL_CELLS_PUBLIC_ADDRESS` | `cells.public_address` | base URL host + listen port | `host:port` as cells reach the control port; written into enrollment strings. Set it when cells connect through NAT or another name |
+| `OPENDECTCELL_CELLS_HANDSET_POOL` | `cells.handset_pool` | `true` | A handset that enrols is held by every cell under a TPUI of its own and uses no chip slot (`roaming.md`); `false`: it sits in a chip slot of the cell it enrolled on, as before. Handsets enrolled earlier keep their chip slots either way |
 | `OPENDECTCELL_SMTP_HOST` | `smtp.host` | none | Outgoing mail server. Without it the controller sends no mail (log-level change notices, sign-up mails) and the settings page says so |
 | `OPENDECTCELL_SMTP_PORT` | `smtp.port` | `587` | |
 | `OPENDECTCELL_SMTP_USER` | `smtp.user` | none | Empty: no authentication |

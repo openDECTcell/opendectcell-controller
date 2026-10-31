@@ -49,6 +49,7 @@ struct cdect_rec_in {
 	size_t   cc_port_id_len;
 	uint8_t  cc_fixed_id[DECT_CC_ID_MAX];
 	size_t   cc_fixed_id_len;
+	uint8_t  tpui[3];	/* all zero: derived from the slot */
 };
 
 /* A side call's audio lane (dect-stubd's struct xlane, without the TDM). */
@@ -77,6 +78,7 @@ struct cdect_host {
 	int      radio_up;		/* the cell's radio is on (STATUS) */
 	int      sub_restored;		/* the records went into the chip */
 	int      no_dummy;		/* trace replays: no dummy key in an empty table */
+	int      started;		/* cdect_host_start has run: a new record is a runtime add */
 
 	/* Go stages here. */
 	struct dect_mail     in;
@@ -92,7 +94,7 @@ struct cdect_host {
 struct cdect_host *cdect_host_new(uintptr_t h);
 void cdect_host_free(struct cdect_host *c);
 
-/* Record i from c->rec (present), or a free store for an enrolment. */
+/* Record i from c->rec (present), or a free store for an enrolment (takes only c->rec.tpui). */
 void cdect_host_record(struct cdect_host *c, unsigned i);
 void cdect_host_free_store(struct cdect_host *c, unsigned i);
 /* After the records and cfg: slots for free stores, record 0 current. */

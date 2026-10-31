@@ -114,8 +114,14 @@ static int any_uak(const struct cdect_host *c);
 
 static void install(struct cdect_host *c)
 {
-	uint8_t slot = (uint8_t)dect_base_slot(&c->b, c->b.cur);
-	unsigned keep = c->b.rec.uak_valid ? 1u << slot : 0u;
+	/*
+	 * A record numbered above the chip's six slots is the host's alone
+	 * (API 144): it has no key in the chip and nothing to read back.
+	 */
+	unsigned cur = dect_base_slot(&c->b, c->b.cur);
+	int curchip = cur >= 1u && cur <= DECT_MM_MAX_SLOT && c->b.rec.uak_valid;
+	uint8_t slot = curchip ? (uint8_t)cur : 0u;
+	unsigned keep = curchip ? 1u << slot : 0u;
 	/*
 	 * No record holds a key: the chip still needs one in its table to
 	 * run (07.56 stays silent on an empty table, bench 2026-10-31), but
@@ -155,7 +161,7 @@ static void install(struct cdect_host *c)
 		    hsl >= 1u && hsl <= DECT_MM_MAX_SLOT && hsl != slot)
 			(void)dect_base_slot_install(&c->b, hsl, c->b.hs[i].uak);
 	}
-	if (c->b.rec.uak_valid) {
+	if (curchip) {
 		(void)dect_base_slot_install(&c->b, slot, c->b.rec.uak);
 		dect_base_uak_verify(&c->b, slot, c->now);
 	}
@@ -166,11 +172,17 @@ static int any_uak(const struct cdect_host *c)
 {
 	unsigned i;
 
-	if (c->b.rec.uak_valid)
+	unsigned cur = dect_base_slot(&c->b, c->b.cur);
+
+	if (c->b.rec.uak_valid && cur >= 1u && cur <= DECT_MM_MAX_SLOT)
 		return 1;
-	for (i = 0; i < c->b.n_hs; i++)
-		if (i != c->b.cur && c->b.loaded[i] && c->b.hs[i].uak_valid)
+	for (i = 0; i < c->b.n_hs; i++) {
+		unsigned sl = dect_base_slot(&c->b, i);
+
+		if (i != c->b.cur && c->b.loaded[i] && c->b.hs[i].uak_valid &&
+		    sl >= 1u && sl <= DECT_MM_MAX_SLOT)
 			return 1;
+	}
 	return 0;
 }
 
@@ -613,10 +625,14 @@ void cdect_host_record(struct cdect_host *c, unsigned i)
 		r->port_id_len = r->cc_port_id_len;
 	}
 	r->slot = in->slot;
+	memcpy(r->tpui, in->tpui, sizeof(r->tpui));
 	c->b.loaded[i] = 1;
 	c->b.absent[i] = 0;
 	if (i >= c->b.n_hs)
 		c->b.n_hs = i + 1u;
+	/* a record added to a running stack gets what start gave the others */
+	if (c->started)
+		dect_profile_defaults(&c->b.prof[i]);
 	wipe(&c->rec, sizeof(c->rec));
 }
 
@@ -625,6 +641,8 @@ void cdect_host_free_store(struct cdect_host *c, unsigned i)
 	if (i >= DECT_BASE_HS_MAX)
 		return;
 	memset(&c->b.hs[i], 0, sizeof(c->b.hs[i]));
+	memcpy(c->b.hs[i].tpui, c->rec.tpui, sizeof(c->b.hs[i].tpui));
+	wipe(&c->rec, sizeof(c->rec));
 	c->b.loaded[i] = 0;
 	c->b.absent[i] = 1;
 	if (i >= c->b.n_hs)
@@ -675,6 +693,7 @@ int cdect_host_start(struct cdect_host *c)
 	}
 	c->b.cur = 0;
 	dect_base_load(&c->b, 0);
+	c->started = 1;
 	return 0;
 }
 

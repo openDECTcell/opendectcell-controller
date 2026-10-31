@@ -170,10 +170,12 @@ const (
 	evMail
 	evReject
 	evRadio
+	evAdd    // a pooled handset enrolled elsewhere: this cell holds it too
+	evReload // rebuild the stack soon, from the records
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "add", "reload"}[k]
 }
 
 type event struct {
@@ -183,6 +185,43 @@ type event struct {
 	reject wire.MailRejectMsg
 	radio  uint8 // evRadio: the cell's radio and chip state
 	chip   uint8
+	hid    uuid.UUID // evAdd: the handset
+}
+
+// cellIDs are the cells that have a goroutine now.
+func (c *Core) cellIDs() []uuid.UUID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ids := make([]uuid.UUID, 0, len(c.cells))
+	for id := range c.cells {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// enrolled: a pooled handset enrolled on origin. Every other cell takes it
+// into its running stack; origin holds it in a chip slot until it reloads, so
+// it reloads. A handset that enrolled again may have another TPUI on the
+// cells that already hold it: they all reload.
+func (c *Core) enrolled(origin, hid uuid.UUID, again bool) {
+	for _, id := range c.cellIDs() {
+		switch {
+		case id == origin || again:
+			c.post(id, event{kind: evReload})
+		default:
+			c.post(id, event{kind: evAdd, hid: hid})
+		}
+	}
+}
+
+// forgotten: a pooled handset deregistered on origin, which is now without it;
+// the other cells reload so none keeps admitting it.
+func (c *Core) forgotten(origin uuid.UUID) {
+	for _, id := range c.cellIDs() {
+		if id != origin {
+			c.post(id, event{kind: evReload})
+		}
+	}
 }
 
 // MailUp takes a mail from the cell (§7). The parameters are copied: the

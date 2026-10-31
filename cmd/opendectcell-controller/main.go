@@ -266,7 +266,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	var windows *regwin.Registry
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
-		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr}, New: dectStack,
+		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)

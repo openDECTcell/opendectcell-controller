@@ -163,12 +163,19 @@ func (x *Host) AddRecord(i int, r Record) {
 	in.port_id_len = C.size_t(copyCapped(in.port_id[:], r.PortID))
 	in.cc_port_id_len = C.size_t(copyCapped(in.cc_port_id[:], r.CCPortID))
 	in.cc_fixed_id_len = C.size_t(copyCapped(in.cc_fixed_id[:], r.CCFixedID))
+	for k := range in.tpui {
+		in.tpui[k] = C.uint8_t(r.TPUI[k])
+	}
 	C.cdect_host_record(x.c, C.unsigned(i))
 	x.raise()
 }
 
-// AddFreeStore makes record i a place a new handset can enrol.
-func (x *Host) AddFreeStore(i int) {
+// AddFreeStore makes record i a place a new handset can enrol; tpui is the
+// TPUI the handset gets (all zero: derived from the slot).
+func (x *Host) AddFreeStore(i int, tpui [3]byte) {
+	for k := range x.c.rec.tpui {
+		x.c.rec.tpui[k] = C.uint8_t(tpui[k])
+	}
 	C.cdect_host_free_store(x.c, C.unsigned(i))
 	x.raise()
 }
@@ -340,6 +347,9 @@ func cdectSave(h C.uintptr_t, i C.unsigned, r *C.struct_dect_hs_rec) {
 		RegPIN1:   uint(r.reg_pin1)}
 	for k := range rec.UAK {
 		rec.UAK[k] = byte(r.uak[k])
+	}
+	for k := range rec.TPUI {
+		rec.TPUI[k] = byte(r.tpui[k])
 	}
 	hostOf(h).env.Save(int(i), rec)
 	clear(rec.UAK[:])

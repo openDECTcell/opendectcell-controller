@@ -28,11 +28,13 @@ type fakeStack struct {
 	cfg     stack.Config
 	records map[int]stack.Record
 	free    []int
-	started bool
-	radio   bool
-	closed  bool
-	mails   []stack.Mail
-	ticks   int
+	// the TPUI each free record was given, in the order of free
+	freeTPUI [][3]byte
+	started  bool
+	radio    bool
+	closed   bool
+	mails    []stack.Mail
+	ticks    int
 	// the registration window (ADR 0005); free defaults to true
 	regPINs  []string
 	regOpen  bool
@@ -51,10 +53,11 @@ func (f *fakeStack) AddRecord(i int, r stack.Record) {
 	f.records[i] = r
 }
 
-func (f *fakeStack) AddFreeStore(i int) {
+func (f *fakeStack) AddFreeStore(i int, tpui [3]byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.free = append(f.free, i)
+	f.freeTPUI = append(f.freeTPUI, tpui)
 }
 
 func (f *fakeStack) Start() error {
@@ -122,6 +125,7 @@ func (f *fakeStack) Hello()                        {}
 func (f *fakeStack) Ctl(string, uint64, bool) bool { return false }
 func (f *fakeStack) Close()                        { f.mu.Lock(); f.closed = true; f.mu.Unlock() }
 func (f *fakeStack) get(fn func(f *fakeStack))     { f.mu.Lock(); defer f.mu.Unlock(); fn(f) }
+func (f *fakeStack) isClosed() bool                { f.mu.Lock(); defer f.mu.Unlock(); return f.closed }
 
 type fakeLink struct {
 	mu    sync.Mutex
@@ -169,6 +173,16 @@ type fakeRecords struct {
 	forgot    []uuid.UUID
 	seenOn    map[uuid.UUID]uuid.UUID // handset -> the cell it was last seen on
 	seenTimes []time.Time
+	// the pool: ReserveTPUI offers TPUIs when pool is set; place is what
+	// PlaceHandset returns, by handset; forgetPooled is Forget's answer
+	pool         bool
+	nextTPUI     uint8
+	reserved     [][3]byte
+	released     [][3]byte
+	place        map[uuid.UUID]Handset
+	placed       []uuid.UUID
+	forgetPooled bool
+	saved        []stack.Record
 }
 
 func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, []uuid.UUID, error) {
@@ -181,22 +195,55 @@ func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, [
 	return slices.Clone(r.hs), nil, nil
 }
 
-func (r *fakeRecords) SaveRecord(_ context.Context, _, id, owner uuid.UUID, _ stack.Record) (uuid.UUID, error) {
+func (r *fakeRecords) SaveRecord(_ context.Context, _, id, owner uuid.UUID, rec stack.Record) (Saved, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.saves = append(r.saves, id)
 	r.owners = append(r.owners, owner)
+	r.saved = append(r.saved, rec)
 	if id == uuid.Nil {
-		return r.newID, nil
+		_, pooled := poolTPUI(rec.TPUI)
+		return Saved{ID: r.newID, Enrolled: true, Pooled: pooled}, nil
 	}
-	return id, nil
+	return Saved{ID: id}, nil
 }
 
-func (r *fakeRecords) Forget(_ context.Context, _, id uuid.UUID) error {
+func (r *fakeRecords) Forget(_ context.Context, _, id uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.forgot = append(r.forgot, id)
-	return nil
+	return r.forgetPooled, nil
+}
+
+// PlaceHandset hands out what the test put in placeNext, once.
+func (r *fakeRecords) PlaceHandset(_ context.Context, _, id uuid.UUID) (Handset, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if h, ok := r.place[id]; ok {
+		delete(r.place, id)
+		r.placed = append(r.placed, id)
+		return h, true, nil
+	}
+	return Handset{}, false, nil
+}
+
+// ReserveTPUI offers {00, 11, 7}, {00, 11, 8}, ... when pool is set.
+func (r *fakeRecords) ReserveTPUI(context.Context) ([3]byte, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.pool {
+		return [3]byte{}, nil
+	}
+	r.nextTPUI++
+	t := [3]byte{0, 0x11, poolFirst + r.nextTPUI - 1}
+	r.reserved = append(r.reserved, t)
+	return t, nil
+}
+
+func (r *fakeRecords) ReleaseTPUI(t [3]byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.released = append(r.released, t)
 }
 
 func (r *fakeRecords) Rename(context.Context, uuid.UUID, string) error { return nil }
@@ -943,4 +990,109 @@ func TestHandsetSeenOnACell(t *testing.T) {
 		recs.get(func(r *fakeRecords) { n = len(r.seenTimes) })
 		return n == 2
 	})
+}
+
+// With the pool on, a cell's chip records come first, then the places a new
+// handset can enrol (each with a TPUI of the pool), then the host-only records.
+func TestPooledRecordsAndOffers(t *testing.T) {
+	host := handset(8, owner)
+	host.Rec.TPUI = [3]byte{0, 0x11, 9}
+	recs := &fakeRecords{hs: []Handset{host, handset(2, owner)}, pool: true}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.records) != 2 || f.records[0].Slot != 2 || f.records[6].Slot != 8 || f.records[6].TPUI != host.Rec.TPUI {
+			t.Errorf("records %+v: want the chip record at 0, the host-only one after the free stores", f.records)
+		}
+		if !slices.Equal(f.free, []int{1, 2, 3, 4, 5}) {
+			t.Errorf("free stores %v", f.free)
+		}
+		for k, tp := range f.freeTPUI {
+			if tp != ([3]byte{0, 0x11, byte(poolFirst + k)}) {
+				t.Errorf("free store %d offered %x", k, tp)
+			}
+		}
+	})
+	waitFor(t, "slots recorded", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.installed) })
+		return n == 1
+	})
+	recs.get(func(r *fakeRecords) {
+		if !slices.Equal(r.installed[len(r.installed)-1], []uint{2}) {
+			t.Errorf("installed %v: the host-only record is not a chip slot", r.installed)
+		}
+	})
+	g.core.CellGone(id)
+	waitFor(t, "the offers given back", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.released) })
+		return n == 5
+	})
+}
+
+// A pooled handset that enrols on one cell is taken into the other cell's
+// running stack at once, and the cell it enrolled on rebuilds, so its chip slot
+// is free again.
+func TestPooledEnrolmentReachesTheOtherCells(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 20 * time.Millisecond
+	defer func() { reloadDelay = old }()
+	newID, anna := uuid.New(), uuid.New()
+	other := handset(7, anna)
+	other.ID = newID
+	recs := &fakeRecords{newID: newID, pool: true, place: map[uuid.UUID]Handset{newID: other}}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	a, b := uuid.New(), uuid.New()
+	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "a's radio on", radioOnAt(g, 0))
+	g.core.CellUp(b, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "b's radio on", radioOnAt(g, 1))
+
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "the handset on b", func() bool {
+		n := 0
+		g.stack(1).get(func(f *fakeStack) { n = len(f.records) })
+		return n == 1
+	})
+	g.stack(1).get(func(f *fakeStack) {
+		if r, ok := f.records[6]; !ok || r.Slot != 7 {
+			t.Errorf("b's records %+v: want the new one at index 6, after the six free stores", f.records)
+		}
+	})
+	waitFor(t, "a rebuilt", func() bool { return g.nStacks() == 3 })
+	if g.stack(1).isClosed() {
+		t.Error("b's stack was rebuilt: the handset is added to it while it runs")
+	}
+}
+
+// A pooled handset that deregisters is gone from every cell: the others rebuild.
+func TestPooledForgetReloadsTheOtherCells(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 20 * time.Millisecond
+	defer func() { reloadDelay = old }()
+	h := handset(1, owner)
+	recs := &fakeRecords{hs: []Handset{h}, forgetPooled: true}
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) { env.Forget(0, "test") }
+	})
+	a, b := uuid.New(), uuid.New()
+	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "a's radio on", radioOnAt(g, 0))
+	g.core.CellUp(b, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "b's radio on", radioOnAt(g, 1))
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "b rebuilt", func() bool { return g.nStacks() == 3 })
+	if g.stack(0).isClosed() {
+		t.Error("a was rebuilt: its stack dropped the record itself")
+	}
 }

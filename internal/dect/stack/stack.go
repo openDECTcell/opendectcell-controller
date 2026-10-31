@@ -28,6 +28,10 @@ type Record struct {
 	PortID    []byte // MM <<PORTABLE-IDENTITY>> content
 	CCPortID  []byte // the identities an FP-originated {CC-SETUP} carries
 	CCFixedID []byte
+	// TPUI is the temporary identity the handset holds, {byte 0, 0x11,
+	// byte 2}; all zero lets the stack derive it from Slot (a legacy
+	// record). A pool handset's TPUI is the same on every cell.
+	TPUI [3]byte
 	// RegPIN1 is 1 + the index of the registration PIN the handset proved,
 	// for a record a registration created in this run; 0 otherwise.
 	RegPIN1 uint
@@ -111,8 +115,9 @@ type Config struct {
 type Stack interface {
 	// AddRecord loads record i, a handset this cell serves.
 	AddRecord(i int, r Record)
-	// AddFreeStore makes record i a place a new handset can enrol.
-	AddFreeStore(i int)
+	// AddFreeStore makes record i a place a new handset can enrol, with
+	// tpui as its TPUI (all zero: derived from the slot).
+	AddFreeStore(i int, tpui [3]byte)
 	// Start finishes the set-up once the records are in.
 	Start() error
 	// RadioUp: the cell's radio is on; the records go into the chip.

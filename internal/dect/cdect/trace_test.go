@@ -366,7 +366,7 @@ func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 	}
 	for i, r := range recs {
 		if r.free {
-			e.host.AddFreeStore(i)
+			e.host.AddFreeStore(i, [3]byte{})
 		} else {
 			e.host.AddRecord(i, r.r)
 		}
