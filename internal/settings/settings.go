@@ -26,6 +26,7 @@ const (
 	KeyLogging      = "logging"
 	KeyMap          = "map"
 	KeyRetention    = "retention"
+	KeySecurity     = "security"
 )
 
 // MaxLogoBytes is the largest logo the controller stores.
@@ -230,8 +231,16 @@ func (m Map) Validate() (origin string, err error) {
 	return u.Scheme + "://" + u.Host, nil
 }
 
-// Retention is how long detail is kept. Zero means for ever, the default: an
-// installation loses nothing until its admin says so.
+// Default retention for an installation whose admin never set it (maintainer,
+// 2026-11-01): call details 90 days, audit entries 365 days.
+const (
+	DefaultCallDetailDays = 90
+	DefaultAuditDays      = 365
+)
+
+// Retention is how long detail is kept. Zero means for ever, and is what an
+// admin gets by clearing a field; an installation that never saved the setting
+// has the defaults above.
 type Retention struct {
 	// CallDetailDays: after this many days a call's remote number and media
 	// quality are erased; the call itself (time, length, how it ended) stays.
@@ -243,6 +252,24 @@ type Retention struct {
 // Retention returns the retention settings.
 func (s *Store) Retention(ctx context.Context) (Retention, error) {
 	var r Retention
-	_, err := s.Get(ctx, KeyRetention, &r)
+	ok, err := s.Get(ctx, KeyRetention, &r)
+	if err == nil && !ok {
+		r = Retention{CallDetailDays: DefaultCallDetailDays, AuditDays: DefaultAuditDays}
+	}
 	return r, err
+}
+
+// Security holds the switches that make the controller stricter.
+type Security struct {
+	// RequireAdmin2FA: an admin with a local account who has no two-factor
+	// login can reach nothing but their account page until they set it up.
+	// On unless an admin switched it off (maintainer, 2026-11-01).
+	RequireAdmin2FA bool `json:"require_admin_2fa"`
+}
+
+// Security returns the security settings; unset means two-factor is required.
+func (s *Store) Security(ctx context.Context) (Security, error) {
+	sec := Security{RequireAdmin2FA: true}
+	_, err := s.Get(ctx, KeySecurity, &sec)
+	return sec, err
 }

@@ -96,6 +96,7 @@ commands:
   rotate-dek               re-encrypt all secrets under a new data key
   user create --username NAME --role admin|user [--display-name N] [--email E] [--may-add-cells]
   user set-password --username NAME
+  user reset-2fa --username NAME   turn a user's two-factor login off (lost app and recovery codes)
   version
   healthcheck [--url URL]  exit 0 if the controller answers /healthz (for container health checks)
   init-secrets --dir DIR   create a master key and database credentials in DIR if missing (compose bring-up)
@@ -498,7 +499,7 @@ func readPassword(stdin io.Reader, stderr io.Writer) (string, error) {
 
 func userCmd(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("user: want create or set-password")
+		return errors.New("user: want create, set-password or reset-2fa")
 	}
 	if err := ensureSchema(ctx, pool, false, slog.Default()); err != nil {
 		return err
@@ -518,6 +519,17 @@ func userCmd(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, args []
 	}
 	store := authStore(cfg, pool)
 	ctx = audit.WithActor(ctx, audit.Actor{Name: "cli"})
+	if args[0] == "reset-2fa" { // for an admin who lost the app and the recovery codes
+		u, err := store.UserByUsername(ctx, pool, *username)
+		if err != nil {
+			return fmt.Errorf("user %q: %w", *username, err)
+		}
+		if err := store.DisableTOTP(ctx, u.ID); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "two-factor login of %s is off; they set it up again at their next login\n", u.Username)
+		return nil
+	}
 	pw, err := readPassword(stdin, stderr)
 	if err != nil {
 		return err

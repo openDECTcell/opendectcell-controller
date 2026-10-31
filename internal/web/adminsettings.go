@@ -23,6 +23,7 @@ func (s *Server) settingsRoutes() {
 	s.mux.Handle("POST /admin/settings/registration", s.requireAdmin(s.settingsRegistration))
 	s.mux.Handle("POST /admin/settings/map", s.requireAdmin(s.settingsMap))
 	s.mux.Handle("POST /admin/settings/retention", s.requireAdmin(s.settingsRetention))
+	s.mux.Handle("POST /admin/settings/security", s.requireAdmin(s.settingsSecurity))
 }
 
 type settingsData struct {
@@ -37,6 +38,7 @@ type settingsData struct {
 	Map          settings.Map
 	MapChoice    string // none, osm or custom
 	Retention    settings.Retention
+	Security     settings.Security
 	SMTP         bool
 	SMTPHost     string
 }
@@ -73,6 +75,9 @@ func (s *Server) settingsView(r *http.Request) (settingsData, error) {
 		d.MapChoice = "custom"
 	}
 	if d.Retention, err = s.Settings.Retention(r.Context()); err != nil {
+		return d, err
+	}
+	if d.Security, err = s.Settings.Security(r.Context()); err != nil {
 		return d, err
 	}
 	d.SMTP, d.SMTPHost = s.mailOn(), s.SMTPHost
@@ -225,5 +230,17 @@ func (s *Server) settingsRetention(w http.ResponseWriter, r *http.Request, u *au
 	}
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyRetention,
 		Details: map[string]any{"call_detail_days": c, "audit_days": a}})
+	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
+}
+
+func (s *Server) settingsSecurity(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	sec := settings.Security{RequireAdmin2FA: r.PostFormValue("require_admin_2fa") == "on"}
+	if err := s.Settings.Put(r.Context(), settings.KeySecurity, sec); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeySecurity,
+		Details: map[string]any{"require_admin_2fa": sec.RequireAdmin2FA}})
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
 }

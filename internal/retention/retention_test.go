@@ -32,16 +32,32 @@ func TestRetention(t *testing.T) {
 	exec(`INSERT INTO audit_log (at, actor_name, action) VALUES ($1, 'x', 'old'), ($2, 'x', 'recent')`, now.AddDate(0, 0, -400), now.AddDate(0, 0, -10))
 	exec(`ALTER TABLE audit_log ENABLE TRIGGER audit_log_append_only`)
 
-	// defaults keep everything
+	// nothing saved: the defaults, 90 days and 365 days
 	if err := Apply(ctx, pool, st, now, log); err != nil {
 		t.Fatal(err)
 	}
-	var n int
-	pool.QueryRow(ctx, "SELECT count(*) FROM call_log WHERE remote_party <> ''").Scan(&n)
-	if n != 2 {
-		t.Fatalf("defaults erased calls: %d left", n)
+	var left int
+	pool.QueryRow(ctx, "SELECT count(*) FROM call_log WHERE remote_party <> ''").Scan(&left)
+	if left != 1 {
+		t.Fatalf("defaults: %d calls keep their number, want the recent one only", left)
 	}
-
+	pool.QueryRow(ctx, "SELECT count(*) FROM audit_log WHERE action = 'old'").Scan(&left)
+	if left != 0 {
+		t.Fatalf("defaults left the 400-day-old audit entry")
+	}
+	// an admin who clears both fields keeps everything for ever
+	exec(`INSERT INTO call_log (direction, remote_party, started_at) VALUES ('in', '+4930777777', $1)`, now.AddDate(0, 0, -500))
+	if err := st.Put(ctx, settings.KeyRetention, settings.Retention{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(ctx, pool, st, now, log); err != nil {
+		t.Fatal(err)
+	}
+	pool.QueryRow(ctx, "SELECT count(*) FROM call_log WHERE remote_party = '+4930777777'").Scan(&left)
+	if left != 1 {
+		t.Fatal("zero days erased a call")
+	}
+	exec(`UPDATE call_log SET remote_party = '+4930123456', quality = '{"mos":4.2}' WHERE started_at < $1`, now.AddDate(0, 0, -100))
 	if err := st.Put(ctx, settings.KeyRetention, settings.Retention{CallDetailDays: 30, AuditDays: 365}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +72,7 @@ func TestRetention(t *testing.T) {
 	}
 	var calls int
 	pool.QueryRow(ctx, "SELECT count(*) FROM call_log").Scan(&calls)
-	if calls != 2 {
+	if calls != 3 {
 		t.Errorf("the calls themselves must stay, %d left", calls)
 	}
 	var q string

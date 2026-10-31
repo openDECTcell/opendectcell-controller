@@ -66,6 +66,9 @@ func newEnvWith(t *testing.T, setup func(*Server)) *env {
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Version: "test",
 		Settings: &settings.Store{Pool: pool}, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logctl.New(slog.LevelInfo)}
 	e.app = s
+	if err := s.Settings.Put(ctx, settings.KeySecurity, settings.Security{RequireAdmin2FA: false}); err != nil {
+		t.Fatal(err)
+	}
 	e.srv = httptest.NewUnstartedServer(nil)
 	base, _ := url.Parse("http://" + e.srv.Listener.Addr().String())
 	s.BaseURL = base

@@ -21,7 +21,16 @@
 | 15 | Show stubs with a badge | as built (Calls is the only stub left) |
 | 16 | All of the above in their order | handsets page and public map, two-factor login, operator features: built |
 
-## New questions from the night's work (none blocks)
+## Answered later the same night (second round of the question tool)
+
+| Question | Answer | Done |
+|---|---|---|
+| 7520 as a cell | I create a throwaway admin | done; three defects found and fixed (see `opendectcell/docs/bench-2026-11-01.md`), the throwaway admin deleted again, the lab 7520 is now a cell of your controller |
+| Retention defaults | 90 days for call details, 365 for audit entries | the default of an installation that never saved the setting; clearing both fields keeps everything |
+| Two-factor for admins | enforce | on by default; switch in Settings; `opendectcell-controller user reset-2fa --username NAME` for a lost app |
+| Images | my leans | one release 25.12.6, images only on tags or manual runs, a deploy key for the PCM module repo (yours to create, see `opendectcell/docs/images-plan.md`); the image script works locally for the 7520 target, not flashed |
+
+## New questions from the night's work (none blocks) — the first four are answered above
 
 - **7520 as a cell.** It needs an enrollment string from your controller, or your OK for me to make a throwaway admin on it (the sandbox refused me to do that on my own). Then: install `opendectcell-cell`, enrol, restart, read the audit on 08.25 (the cold-chip question), leave cell mode again.
 - **Retention defaults** keep everything. Recommended values (90 days for call details, 365 for the audit log) are in the settings text. Make them the default for a fresh installation?

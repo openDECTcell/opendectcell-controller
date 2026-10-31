@@ -369,6 +369,10 @@ func (s *Server) requireAdmin(h func(http.ResponseWriter, *http.Request, *auth.U
 			s.notFound(w, r, u)
 			return
 		}
+		if s.adminNeeds2FA(r, u) {
+			http.Redirect(w, r, "/account/2fa?need=1", http.StatusSeeOther)
+			return
+		}
 		h(w, r, u)
 	})
 }

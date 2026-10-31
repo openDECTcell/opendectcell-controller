@@ -36,7 +36,11 @@ func (s *Server) twoFAPage(w http.ResponseWriter, r *http.Request, u *auth.User)
 		s.internalError(w, r, err)
 		return
 	}
-	s.render(w, http.StatusOK, "twofa.html", page{Title: "Two-factor login", User: u, Data: d, Notice: r.FormValue("done")})
+	p := page{Title: "Two-factor login", User: u, Data: d, Notice: r.FormValue("done")}
+	if r.FormValue("need") != "" && s.adminNeeds2FA(r, u) {
+		p.Error = "Administrators need two-factor login. Set it up here to reach the admin pages."
+	}
+	s.render(w, http.StatusOK, "twofa.html", p)
 }
 
 func (s *Server) twoFAStart(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -114,4 +118,20 @@ func (s *Server) twoFADisable(w http.ResponseWriter, r *http.Request, u *auth.Us
 		return
 	}
 	http.Redirect(w, r, "/account/2fa?done=Two-factor+login+is+off.", http.StatusSeeOther)
+}
+
+// adminNeeds2FA reports whether u is an admin with a local account who must
+// set up two-factor login before using the admin pages. Single sign-on admins
+// are the provider's business. On a failed lookup the answer is no: a database
+// hiccup must not lock the admins out.
+func (s *Server) adminNeeds2FA(r *http.Request, u *auth.User) bool {
+	if !u.IsAdmin() || u.AuthSource != "local" || s.Auth.Keyring == nil || s.Settings == nil {
+		return false
+	}
+	sec, err := s.Settings.Security(r.Context())
+	if err != nil || !sec.RequireAdmin2FA {
+		return false
+	}
+	on, err := s.Auth.HasTOTP(r.Context(), u.ID)
+	return err == nil && !on
 }

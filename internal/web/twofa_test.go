@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 )
 
 var (
@@ -124,5 +125,57 @@ func TestTwoFactorWrongCodesAreLimited(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Errorf("guessing codes is not limited: last status %d", last)
+	}
+}
+
+func TestAdminsNeedTwoFactorWhenRequired(t *testing.T) {
+	e := newEnv(t)
+	// the test environment turns the requirement off; this test turns it on
+	if err := e.app.Settings.Put(ctx, settings.KeySecurity, settings.Security{RequireAdmin2FA: true}); err != nil {
+		t.Fatal(err)
+	}
+	a, u := e.adminBrowser(t), e.userBrowser(t)
+	for _, p := range []string{"/admin", "/admin/users", "/admin/settings", "/admin/audit"} {
+		resp, _ := e.get(t, a, p)
+		if resp.StatusCode != http.StatusSeeOther || !strings.HasPrefix(resp.Header.Get("Location"), "/account/2fa") {
+			t.Errorf("%s for an admin without two-factor: %d %s", p, resp.StatusCode, resp.Header.Get("Location"))
+		}
+	}
+	// the way out stays open, and says why
+	resp, page := e.get(t, a, "/account/2fa?need=1")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(page, "Administrators need two-factor login") {
+		t.Fatalf("setup page: %d", resp.StatusCode)
+	}
+	for _, p := range []string{"/", "/account", "/handsets"} {
+		if resp, _ := e.get(t, a, p); resp.StatusCode != http.StatusOK {
+			t.Errorf("%s was shut for the admin too: %d", p, resp.StatusCode)
+		}
+	}
+	// users are not affected
+	if resp, _ := e.get(t, u, "/statistics"); resp.StatusCode != http.StatusOK {
+		t.Errorf("a user's page: %d", resp.StatusCode)
+	}
+	// set it up: the admin pages open
+	m := secretRE.FindStringSubmatch(readBody(e.post(t, a, "/account/2fa/start", nil)))
+	code, _ := auth.TOTPCode(m[1], time.Now())
+	if r := e.post(t, a, "/account/2fa/confirm", url.Values{"code": {code}}); r.StatusCode != http.StatusOK {
+		t.Fatalf("setup: %d", r.StatusCode)
+	}
+	if resp, _ := e.get(t, a, "/admin"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/admin after setup: %d", resp.StatusCode)
+	}
+	// switched off in the settings, the requirement is gone for the next admin
+	if err := e.app.Settings.Put(ctx, settings.KeySecurity, settings.Security{RequireAdmin2FA: false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.store.Pool.Exec(ctx, "DELETE FROM user_totp"); err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := e.get(t, a, "/admin"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/admin with the requirement off: %d", resp.StatusCode)
+	}
+	// and the switch itself is the admin's
+	if r := e.post(t, u, "/admin/settings/security", url.Values{"require_admin_2fa": {"on"}}); r.StatusCode != http.StatusNotFound {
+		t.Errorf("a user set the requirement: %d", r.StatusCode)
 	}
 }
