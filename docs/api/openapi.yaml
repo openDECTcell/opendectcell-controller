@@ -353,24 +353,24 @@ paths:
       operationId: openRegistrationWindow
       summary: Open a registration window and get its PIN
       description: |
-        Opens a window (default 120 s) on **one** cell, the one the user
-        stands at (`adr/0005-registration-flow.md`), and returns a one-time
-        8-digit PIN, **shown once**. At most one open window per cell
-        (`409 cell_busy`); the cell must be the caller's or accept foreign
-        handsets. *Proposed 2026-10-31, built in C3 step 4.* The handset
-        that registers within the window belongs to `owner_id`: the caller, or (admins only) another
-        user, such as an organisation account. At most one open window per
-        caller (`409 window_open`).
+        Issues a one-time PIN, **shown once**, valid 60 s, and opens
+        registration on every cell that can take a handset
+        (`adr/0005-registration-flow.md`; maintainer, the maintainers' notes). No cell
+        is picked: the handset registers at whichever open cell it reaches.
+        The handset that proves the PIN belongs to `owner_id`: the caller,
+        or (admins only) another user, such as an organisation account. At
+        most one live window per caller (`409 window_open`); 10 per caller
+        per hour (`429 rate_limited`); `503 busy` when 32 PINs are live or
+        quarantined network-wide.
       x-authz: user
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required: [cell_id]
               properties:
-                cell_id: { type: string, format: uuid }
+                digits: { type: integer, enum: [8, 6], default: 8, description: "6 for a handset that refuses 8" }
                 owner_id: { type: string, format: uuid, description: Admin only. Default the caller }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -384,9 +384,11 @@ paths:
                   - type: object
                     required: [pin]
                     properties:
-                      pin: { type: string, pattern: "^[0-9]{4,8}$", description: Shown once. Enter it on the handset }
+                      pin: { type: string, pattern: "^[0-9]{6,8}$", description: Shown once. Enter it on the handset }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { description: Too many windows this hour (`rate_limited`) }
+        "503": { description: Too many live PINs network-wide (`busy`) }
   /registration-windows/{windowId}:
     parameters: [{ name: windowId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:
@@ -964,14 +966,14 @@ components:
 
     RegistrationWindow:
       type: object
-      required: [id, owner_id, state, opened_at, expires_at, cell_id]
+      required: [id, owner_id, state, opened_at, expires_at]
       properties:
         id: { type: string, format: uuid }
         owner_id: { type: string, format: uuid }
         state: { type: string, enum: [open, completed, expired, cancelled] }
         opened_at: { type: string, format: date-time }
         expires_at: { type: string, format: date-time }
-        cell_id: { type: string, format: uuid }
+        cell_id: { type: string, format: uuid, nullable: true, description: "The cell the handset registered at; set when completed" }
         handset_id: { type: string, format: uuid, nullable: true, description: Set when completed }
 
     SipAccountInput:
@@ -1222,7 +1224,5 @@ components:
       type: object
       properties:
         slot_policy: { type: string, enum: [auto, manual], description: "cell-protocol.md §7.4" }
-        registration_window_seconds: { type: integer, minimum: 30, maximum: 600, default: 120 }
-        registration_pin_digits: { type: integer, minimum: 4, maximum: 8, default: 6 }
         default_max_calls: { type: integer, minimum: 0, maximum: 16, default: 1 }
         audit_retention_days: { type: integer, minimum: 30, nullable: true, description: "null = keep forever" }

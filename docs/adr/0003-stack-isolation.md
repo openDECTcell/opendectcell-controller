@@ -1,6 +1,6 @@
 # ADR 0003: One cell's stack must not take the controller down
 
-Status: **proposed** 2026-10-31, for the maintainer's review. Nothing is built yet (the maintainers' notes point 3: ADR first, build after the review).
+Status: **decided** 2026-10-31 (the maintainers' notes): out of process, as proposed, but **several worker processes over all hardware threads, each hosting many cells**, not one per cell (see "The decision" at the end; the table below is the original comparison). Not built yet.
 
 ## The problem
 
@@ -112,7 +112,35 @@ golden-trace replay and the core's tests run against the worker
 unchanged. Proposed order: after step 3 (a real 7412), before step 5
 (calls), so calls are built on the final process layout.
 
+## The decision (maintainer, 2026-10-31, the maintainers' notes)
+
+**B' with N workers, N from the hardware threads.** Crash isolation is the
+reason for processes; the thread count is the reason for several. The 10 ms
+tick and the 20 ms mail budget are time-critical, so the work is spread
+over every CPU thread, and libopendectcell has no global state, so one worker
+may host many cells.
+
+| | Value |
+|---|---|
+| Workers | `runtime.NumCPU()` at start (config `dect.workers` overrides; 0 = that) |
+| Assignment of a cell | **stable**: a hash of the cell id modulo N, so a cell lands on the same worker across restarts while N is unchanged |
+| A worker crashes | every cell it hosts loses its calls and is rebuilt in the restarted worker (a fresh session for each); the other workers carry on. Blast radius 1/N of the cells instead of one cell |
+| Inside a worker | one goroutine per cell as in today's `core`, the same `cellRun`; the protocol messages carry the cell id |
+| Keys | a worker holds the keys of its cells only |
+
+Changes against the proposal above: the protocol's messages gain the cell
+id (they were per-worker before); `INIT` becomes per cell; the supervisor
+is one per worker, not per cell. `WINDOW` carries the list of live
+registration PINs (ADR 0005), not one PIN and owner: the owner stays in the
+controller, which maps the proved PIN to a user when `SAVE` arrives.
+
+**Order:** the controller decides (§0i). Proposed: after step 4
+(registration, built now) and step 3 (a real 7412, at the bench), before
+step 5 (calls), so calls are built on the final process layout.
+
 ## Open
 
 - The ping interval and the backoff numbers are guesses; the bench will say.
-- Per-site grouping (B') if the process count ever matters.
+- Whether a cell should move to another worker when N changes (a restart
+  of the controller with more threads): it does, by the hash; its calls
+  went with the restart anyway.

@@ -56,12 +56,12 @@
 
 ## 5. Registration flow (user view)
 
-*Changed 2026-10-31 (maintainer, the maintainers' notes points 4-5; details in `adr/0004-shared-network.md` and `adr/0005-registration-flow.md`, proposed).* The controller is a **shared network**: a handset may attach to any user's cell that accepts foreign handsets, and a user needs no cell of their own. A handset emits nothing before its user starts "register", so the controller cannot choose the cell; the user does.
+*Changed 2026-10-31 (maintainer, the maintainers' notes point 4 and §0i; details in `adr/0004-shared-network.md` and `adr/0005-registration-flow.md`).* The controller is a **shared network**: a handset may attach to any user's cell that accepts foreign handsets, and a user needs no cell of their own. A handset emits nothing before its user starts "register", so the controller cannot choose the cell, and does not need to: the handset connects to whichever open base it reaches and only then asks for the PIN, and the base checks the reply against every live PIN.
 
-1. The user selects "Register handset" and **picks the cell they stand at**: their own cells, then the cells that accept foreign handsets.
-2. The controller opens a registration window **on that cell only** (default 120 s; one window per cell at a time) with a random **8-digit PIN**, bound to the user, single use, shown once.
-3. The user starts registration on the handset and enters the PIN; the handset finds the one cell advertising open registration.
-4. The controller stores the IPUI, keys and the model/capability info. **The handset belongs to the window's user**; an enrolment without a window is refused. The window closes.
+1. The user selects "Register handset". No cell to pick.
+2. The controller issues a random **8-digit PIN** (6 if the user asks), bound to the user, single use, valid **60 s**, shown once, and opens registration **on every cell that can take a handset**, with all live PINs. The cells stay open until 60 s after the latest opening.
+3. The user starts registration on the handset and enters the PIN; the handset registers at whichever open cell it reaches.
+4. The controller stores the IPUI, keys and the model/capability info. **The handset belongs to the user of the PIN it proved**; an enrolment that matches no live PIN is refused. The PIN is spent and leaves every cell.
 5. The user assigns line 1 and optionally line 2 (SIP accounts), chooses the default outgoing line, and enables optional features.
 
 Afterwards the handset's record is placed on other cells on demand or by prefetch (`cell-protocol.md` §7.4, ADR 0004).
