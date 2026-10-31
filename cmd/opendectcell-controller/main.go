@@ -48,6 +48,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
@@ -243,9 +244,11 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	base, _ := url.Parse(cfg.HTTP.BaseURL)
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
+	var windows *regwin.Registry
 	if dectStack != nil {
+		windows = regwin.New(log.With("component", "registration"), nil, nil)
 		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr}, New: dectStack,
-			Log: log.With("component", "dect")}
+			Reg: windows, Log: log.With("component", "dect")}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)
 		defer dect.Wait() // after stop: the stacks close, their records are written
@@ -274,6 +277,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
 		Cells: cells, CellLink: link,
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
+		Registrations: windows,
 	}
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,

@@ -47,11 +47,10 @@ type Core struct {
 	Records Records
 	New     stack.New
 	Log     *slog.Logger
-	// Window is the owner of the registration window open on cell, if
-	// any; a handset enrols only through one (the maintainers' notes point 2). It
-	// runs on the cell's goroutine inside a stack call: it must not block.
-	// nil: no window is ever open (they are C3 step 4).
-	Window func(cell uuid.UUID) (owner uuid.UUID, ok bool)
+	// Reg is the registration windows (adr/0005-registration-flow.md); a
+	// handset enrols only through one (the maintainers' notes point 2). nil: none is
+	// ever open.
+	Reg Registrations
 
 	// Tick, BringUp and Retry default to the constants above; tests
 	// shorten them.
@@ -62,6 +61,23 @@ type Core struct {
 	start time.Time
 	cells map[uuid.UUID]*cellRun
 	wg    sync.WaitGroup
+}
+
+// Registrations is what the core needs of the registration windows
+// (internal/dect/regwin). Its methods run on the cells' goroutines, some
+// inside a stack call: they must not block.
+type Registrations interface {
+	// PINs is every cell's list of live registration PINs by index ("" =
+	// unused; empty: registration closed on cell), when the cells' window
+	// closes, and a version that changes with either.
+	PINs(cell uuid.UUID) (ver uint64, pins []string, until time.Time)
+	// Claim binds an enrolment on cell to the window of the PIN it proved
+	// (pin1 = 1 + its index): the handset's owner, and the window.
+	Claim(cell uuid.UUID, pin1 uint) (owner, window uuid.UUID, ok bool)
+	// Enrolled: the window's handset is stored.
+	Enrolled(window, handset uuid.UUID)
+	// Failed: a registration attempt on cell was rejected.
+	Failed(cell uuid.UUID)
 }
 
 var (

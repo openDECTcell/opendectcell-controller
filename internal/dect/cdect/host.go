@@ -2,8 +2,18 @@
 
 package cdect
 
-// #include <stdlib.h>
-// #include "host.h"
+/*
+#include <stdlib.h>
+#include "host.h"
+
+// The registration window is the library's own call (dect_base.h); the
+// reason is for its log line.
+static inline void cdect_reg_window(struct cdect_host *c, int open, unsigned secs, uint64_t now)
+{
+	c->now = now;
+	dect_base_reg_window(&c->b, open, secs, now, "the controller");
+}
+*/
 import "C"
 
 import (
@@ -176,6 +186,34 @@ func (x *Host) RadioUp(up bool) {
 	x.c.radio_up = cbool(up)
 }
 
+// SetRegPINs sets the registration PINs by index, "" for an unused one
+// (openDECTcell API 139). A link already set up keeps the list it was given.
+func (x *Host) SetRegPINs(pins []string) {
+	n := min(len(pins), C.DECT_MM_REG_PINS_MAX)
+	for i := range x.c.reg_pin {
+		clear(x.c.reg_pin[i][:])
+		x.c.reg_pin_ptr[i] = &x.c.reg_pin[i][0]
+		if i < n && len(pins[i]) <= C.DECT_PIN_DIGITS_MAX {
+			for k := range len(pins[i]) {
+				x.c.reg_pin[i][k] = C.char(pins[i][k])
+			}
+		}
+	}
+	x.c.b.cfg.reg_pins = &x.c.reg_pin_ptr[0]
+	x.c.b.cfg.n_reg_pins = C.unsigned(n)
+}
+
+// RegWindow opens registration for secs (0: until closed), or closes it.
+func (x *Host) RegWindow(open bool, secs uint, now uint64) {
+	C.cdect_reg_window(x.c, cbool(open), C.unsigned(secs), C.uint64_t(now))
+	x.raise()
+}
+
+// RegState: registration is open; a free record can take a new handset.
+func (x *Host) RegState() (open, free bool) {
+	return x.c.b.reg_open != 0, C.dect_base_free_record(&x.c.b) >= 0
+}
+
 // Mail takes one mail from the chip (MAIL_UP); now is the controller's
 // monotonic clock in milliseconds.
 func (x *Host) Mail(m Mail, now uint64) {
@@ -287,7 +325,8 @@ func cdectSave(h C.uintptr_t, i C.unsigned, r *C.struct_dect_hs_rec) {
 	rec := Record{Slot: uint(r.slot),
 		PortID:    goBytes(&r.port_id[0], r.port_id_len),
 		CCPortID:  goBytes(&r.cc_port_id[0], r.cc_port_id_len),
-		CCFixedID: goBytes(&r.cc_fixed_id[0], r.cc_fixed_id_len)}
+		CCFixedID: goBytes(&r.cc_fixed_id[0], r.cc_fixed_id_len),
+		RegPIN1:   uint(r.reg_pin1)}
 	for k := range rec.UAK {
 		rec.UAK[k] = byte(r.uak[k])
 	}

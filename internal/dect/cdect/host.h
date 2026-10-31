@@ -82,6 +82,9 @@ struct cdect_host {
 	struct cdect_rec_in  rec;
 	char     line[DECT_CTL_LINE_MAX + 1];
 	char     pin[DECT_PIN_DIGITS_MAX + 1];
+	/* the registration PINs by index (API 139); b.cfg.reg_pins points here */
+	char        reg_pin[DECT_MM_REG_PINS_MAX][DECT_PIN_DIGITS_MAX + 1];
+	const char *reg_pin_ptr[DECT_MM_REG_PINS_MAX];
 	char     out[DECT_CTL_LINE_MAX + 1];	/* a mail's params or a line, to Go */
 };
 

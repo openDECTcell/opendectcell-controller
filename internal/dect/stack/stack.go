@@ -28,6 +28,9 @@ type Record struct {
 	PortID    []byte // MM <<PORTABLE-IDENTITY>> content
 	CCPortID  []byte // the identities an FP-originated {CC-SETUP} carries
 	CCFixedID []byte
+	// RegPIN1 is 1 + the index of the registration PIN the handset proved,
+	// for a record a registration created in this run; 0 otherwise.
+	RegPIN1 uint
 }
 
 // To says where a bridge line goes (docs/bridge-interface.md §2).
@@ -108,6 +111,13 @@ type Stack interface {
 	Start() error
 	// RadioUp: the cell's radio is on; the records go into the chip.
 	RadioUp(up bool)
+	// SetRegPINs sets the registration PINs by index, "" for an unused
+	// one; the next link set up uses them (adr/0005-registration-flow.md).
+	SetRegPINs(pins []string)
+	// RegWindow opens registration for secs (0: until closed), or closes it.
+	RegWindow(open bool, secs uint, now uint64)
+	// RegState: registration is open; a free record can take a new handset.
+	RegState() (open, free bool)
 	// Mail takes one mail from the chip (MAIL_UP).
 	Mail(m Mail, now uint64)
 	// Tick runs the stack's timers; call it at least every 100 ms.

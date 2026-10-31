@@ -387,8 +387,10 @@ paths:
                       pin: { type: string, pattern: "^[0-9]{6,8}$", description: Shown once. Enter it on the handset }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "429": { description: Too many windows this hour (`rate_limited`) }
-        "503": { description: Too many live PINs network-wide (`busy`) }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503":
+          description: Too many live PINs network-wide (`busy`)
+          content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
   /registration-windows/{windowId}:
     parameters: [{ name: windowId, in: path, required: true, schema: { type: string, format: uuid } }]
     get:

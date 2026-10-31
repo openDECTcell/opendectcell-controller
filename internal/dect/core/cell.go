@@ -45,6 +45,13 @@ type cellRun struct {
 
 	corr     uint16
 	corrSlot map[uint16]uint // slot writes in flight, by corr (§7.4)
+
+	// The registration window (ADR 0005): the radio is on, the PIN list's
+	// version the stack has, and the closing time it was opened with.
+	radioOn  bool
+	regSet   bool
+	regVer   uint64
+	regUntil time.Time
 }
 
 func (r *cellRun) run(ctx context.Context) {
@@ -88,7 +95,7 @@ func (r *cellRun) guard(fn func()) {
 	fn()
 	if r.refused {
 		r.refused = false
-		r.log.Error("enrolment without a registration window refused: DECT stack rebuilt")
+		r.log.Error("enrolment without a live registration PIN refused: DECT stack rebuilt")
 		r.drop()
 		r.resumed = false // the calls went with the stack
 		r.retryAt = time.Now()
@@ -148,14 +155,44 @@ func (r *cellRun) tick() {
 		if len(r.bring) == 0 {
 			r.st.RadioUp(true)
 			r.install = true
+			r.radioOn = true
 			r.log.Info("cell radio on")
 		}
 	}
+	r.registration(now)
 	r.st.Tick(r.core.now())
 	if r.install {
 		// dect_base's install() ran in that tick (host.c, cdect_host_tick)
 		r.install = false
 		r.gen.job(job{kind: jobInstalled, slots: slices.Clone(r.slots)})
+	}
+}
+
+// registration keeps the stack's PIN list and window in step with the
+// registry: open while any PIN is live, on a cell with a free record, until
+// 60 s after the latest opening (ADR 0005). The stack closes the window
+// itself after an enrolment; the next tick opens it again if a PIN is
+// still live.
+func (r *cellRun) registration(now time.Time) {
+	reg := r.core.Reg
+	if reg == nil || !r.radioOn || !r.linkUp {
+		return
+	}
+	ver, pins, until := reg.PINs(r.id)
+	if !r.regSet || ver != r.regVer {
+		r.st.SetRegPINs(pins)
+		r.regSet, r.regVer = true, ver
+	}
+	open, free := r.st.RegState()
+	want := len(pins) > 0 && free && until.After(now)
+	switch {
+	case want && (!open || !until.Equal(r.regUntil)):
+		secs := uint((until.Sub(now) + time.Second - 1) / time.Second)
+		r.st.RegWindow(true, secs, r.core.now())
+		r.regUntil = until
+	case !want && open:
+		r.st.RegWindow(false, 0, r.core.now())
+		r.regUntil = time.Time{}
 	}
 }
 
@@ -226,6 +263,7 @@ func (r *cellRun) drop() {
 	st, g := r.st, r.gen
 	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
+	r.radioOn, r.regSet, r.regUntil = false, false, time.Time{}
 	clear(r.corrSlot)
 	if g != nil {
 		g.stop()
@@ -272,13 +310,14 @@ const (
 )
 
 type job struct {
-	kind  jobKind
-	i     int
-	owner uuid.UUID // an enrolment's
-	rec   stack.Record
-	name  string
-	slot  uint
-	slots []uint
+	kind   jobKind
+	i      int
+	owner  uuid.UUID // an enrolment's
+	window uuid.UUID // the registration window it came through
+	rec    stack.Record
+	name   string
+	slot   uint
+	slots  []uint
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
@@ -333,6 +372,9 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 				log.Info("handset enrolled: record stored", "handset", hid, "slot", j.rec.Slot)
 			}
 			ids[j.i] = hid
+			if j.window != uuid.Nil && core.Reg != nil {
+				core.Reg.Enrolled(j.window, hid)
+			}
 		}
 	case jobForget:
 		if hid, ok := ids[j.i]; ok {
@@ -367,7 +409,15 @@ func (g *gen) Random(b []byte) {
 	}
 }
 
-func (g *gen) Log(line string) { g.r.log.Info(line) }
+func (g *gen) Log(line string) {
+	g.r.log.Info(line)
+	// The library has no callback for a failed registration; its log line
+	// is the signal (ADR 0005), less a model's own PIN 0000 try.
+	if reg := g.r.core.Reg; reg != nil && strings.Contains(line, "reg: registration rejected") &&
+		!strings.Contains(line, "(expected:") {
+		reg.Failed(g.r.id)
+	}
+}
 
 func (g *gen) Event(to stack.To, line string) {
 	// The bridge to the SIP side is step 5 of C3.
@@ -375,13 +425,15 @@ func (g *gen) Event(to stack.To, line string) {
 }
 
 func (g *gen) Save(i int, rec stack.Record) {
-	var owner uuid.UUID
+	var owner, window uuid.UUID
 	if _, ok := g.slotOf[i]; !ok {
-		// An enrolment: the open window's user owns the handset. Without
-		// a window it is refused (the maintainers' notes point 2).
+		// An enrolment: the user of the PIN it proved owns the handset.
+		// Without a live PIN it is refused (the maintainers' notes point 2). The
+		// record keeps its RegPIN1 for the run, so only this first save
+		// claims the PIN.
 		ok := false
-		if w := g.r.core.Window; w != nil {
-			owner, ok = w(g.r.id)
+		if reg := g.r.core.Reg; reg != nil && rec.RegPIN1 != 0 {
+			owner, window, ok = reg.Claim(g.r.id, rec.RegPIN1)
 		}
 		if !ok || owner == uuid.Nil {
 			clear(rec.UAK[:])
@@ -390,7 +442,7 @@ func (g *gen) Save(i int, rec stack.Record) {
 		}
 		g.place(i, rec.Slot, owner)
 	}
-	g.job(job{kind: jobSave, i: i, rec: rec, owner: owner})
+	g.job(job{kind: jobSave, i: i, rec: rec, owner: owner, window: window})
 }
 
 func (g *gen) Forget(i int, why string) {

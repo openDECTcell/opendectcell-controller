@@ -29,6 +29,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 )
 
@@ -55,6 +56,7 @@ type Server struct {
 	SIPAccounts    *sipaccount.Store // nil: no SIP pages
 	Contacts       *contacts.Store   // nil: no contact API
 	SIP            SIPStatus
+	Registrations  *regwin.Registry // nil: no registration API
 
 	tmpl *template.Template
 	mux  *http.ServeMux
@@ -128,6 +130,7 @@ func (s *Server) routes() {
 	s.userRoutes()
 	s.apiRoutes()
 	s.contactRoutes()
+	s.registrationRoutes()
 	s.contactPages()
 }
 

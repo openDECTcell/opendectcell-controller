@@ -64,6 +64,7 @@ type traceEnv struct {
 	sent   []Mail   // mails the host sent, not yet looked at
 	events []string // lines the host wrote, not yet read
 	out    []string // the current action's output
+	saves  []Record // the records the host saved
 }
 
 func (e *traceEnv) Send(m Mail) error {
@@ -92,7 +93,7 @@ func (e *traceEnv) Event(to To, line string) {
 	e.events = append(e.events, "ev "+apiRE.ReplaceAllString(line, " api=N"))
 }
 
-func (e *traceEnv) Save(int, Record)            {}
+func (e *traceEnv) Save(_ int, r Record)        { e.saves = append(e.saves, r) }
 func (e *traceEnv) Forget(int, string)          {}
 func (e *traceEnv) Named(int, string)           {}
 func (e *traceEnv) NameVisible(_, _ uint) bool  { return true }
@@ -289,12 +290,27 @@ func TestGoldenTraces(t *testing.T) {
 	}
 	for _, path := range files {
 		t.Run(strings.TrimSuffix(filepath.Base(path), ".trace"), func(t *testing.T) {
-			replay(t, path)
+			replay(t, path, nil)
 		})
 	}
 }
 
-func replay(t *testing.T, path string) {
+// register.trace with its PIN as the second of a list of registration
+// PINs and no base PIN (openDECTcell API 139, adr/0005-registration-flow.md):
+// the same air traffic, and the record names the PIN it proved.
+func TestRegisterWithPINList(t *testing.T) {
+	e := replay(t, filepath.Join(traceDir, "register.trace"), []string{"87654321", "12345678", ""})
+	if len(e.saves) == 0 {
+		t.Fatal("no record saved")
+	}
+	if got := e.saves[0].RegPIN1; got != 2 {
+		t.Errorf("reg_pin1 %d, want 2 (the second PIN)", got)
+	}
+}
+
+// replay runs a golden trace. With regPINs the base has no PIN of its own
+// and takes those as its registration PINs.
+func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 	setup, steps, err := readTrace(path)
 	if err != nil {
 		t.Fatal(err)
@@ -340,8 +356,14 @@ func replay(t *testing.T, path string) {
 			p.Close()
 		}
 	}()
+	if regPINs != nil {
+		cfg.PIN = ""
+	}
 	e.host = NewHost(e, cfg)
 	defer e.host.Close()
+	if regPINs != nil {
+		e.host.SetRegPINs(regPINs)
+	}
 	for i, r := range recs {
 		if r.free {
 			e.host.AddFreeStore(i)
@@ -417,6 +439,7 @@ func replay(t *testing.T, path string) {
 		compare(t, path, st, e.out)
 		e.out = nil
 	}
+	return e
 }
 
 func compare(t *testing.T, path string, st traceStep, got []string) {

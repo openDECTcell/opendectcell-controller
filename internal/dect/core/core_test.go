@@ -16,6 +16,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell/wire"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 )
 
@@ -32,6 +33,12 @@ type fakeStack struct {
 	closed  bool
 	mails   []stack.Mail
 	ticks   int
+	// the registration window (ADR 0005); free defaults to true
+	regPINs  []string
+	regOpen  bool
+	regSecs  uint
+	regOpens int
+	notFree  bool
 	// onMail runs on the cell's goroutine for each mail, with the env.
 	onMail func(env stack.Env, m stack.Mail)
 	onTick func(env stack.Env)
@@ -80,6 +87,27 @@ func (f *fakeStack) Tick(now uint64) {
 	if cb != nil && radio {
 		cb(f.env)
 	}
+}
+
+func (f *fakeStack) SetRegPINs(p []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.regPINs = slices.Clone(p)
+}
+
+func (f *fakeStack) RegWindow(open bool, secs uint, _ uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.regOpen, f.regSecs = open, secs
+	if open {
+		f.regOpens++
+	}
+}
+
+func (f *fakeStack) RegState() (bool, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.regOpen, !f.notFree
 }
 
 func (f *fakeStack) Hello()                        {}
@@ -408,13 +436,17 @@ func TestResumeKeepsTheStack(t *testing.T) {
 func TestEnrolmentSaves(t *testing.T) {
 	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
-			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}})
+			// the record keeps its RegPIN1 for the run
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 2})
 		}
 	})
+	g.core.Reg = reg
+	w0, _, _ := reg.Open(uuid.New(), uuid.New(), 8)
+	w1, _, _ := reg.Open(anna, anna, 8)
 	id := uuid.New()
-	g.core.Window = func(c uuid.UUID) (uuid.UUID, bool) { return anna, c == id }
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "radio on", radioOn(g))
 	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
@@ -429,8 +461,112 @@ func TestEnrolmentSaves(t *testing.T) {
 			t.Errorf("saves %v: the first creates the handset, the second updates it", r.saves)
 		}
 		if r.owners[0] != anna {
-			t.Errorf("enrolment owned by %v, want the window's user", r.owners[0])
+			t.Errorf("enrolment owned by %v, want the PIN's user", r.owners[0])
 		}
+	})
+	waitFor(t, "the window bound", func() bool {
+		w, _ := reg.Get(w1.ID)
+		return w.State == regwin.Completed && w.Cell == id && w.Handset == newID
+	})
+	if w, _ := reg.Get(w0.ID); w.State != regwin.Open {
+		t.Errorf("the other user's window %s", w.State)
+	}
+	if g.nStacks() != 1 {
+		t.Error("the stack was rebuilt: a later save of the record claimed again")
+	}
+}
+
+// The window follows the live PINs: open with them on a cell that can take
+// a handset, closed when none is live, never on a full cell.
+func TestRegistrationWindow(t *testing.T) {
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	full := false
+	g := newRig(t, &fakeRecords{}, func(f *fakeStack) { f.notFree = full })
+	g.core.Reg = reg
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) {
+		if f.regOpen || len(f.regPINs) != 0 {
+			t.Errorf("open with no PIN: %v %q", f.regOpen, f.regPINs)
+		}
+	})
+	w, pin, _ := reg.Open(uuid.New(), uuid.New(), 8)
+	waitFor(t, "open", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) {
+			ok = f.regOpen && slices.Equal(f.regPINs, []string{pin}) && f.regSecs > 55 && f.regSecs <= 60
+		})
+		return ok
+	})
+	// the stack closes its window after an enrolment; a live PIN reopens it
+	g.stack(0).get(func(f *fakeStack) { f.regOpen = false })
+	waitFor(t, "reopened", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) {
+			if f.regOpen {
+				n = f.regOpens
+			}
+		})
+		return n == 2
+	})
+	reg.Cancel(w.ID)
+	waitFor(t, "closed", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = !f.regOpen && len(f.regPINs) == 0 })
+		return ok
+	})
+
+	full = true
+	id2 := uuid.New()
+	g.core.CellUp(id2, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOnAt(g, 1))
+	reg.Open(uuid.New(), uuid.New(), 8)
+	waitFor(t, "the first cell open", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = f.regOpen })
+		return ok
+	})
+	time.Sleep(20 * time.Millisecond)
+	g.stack(1).get(func(f *fakeStack) {
+		if f.regOpen {
+			t.Error("a cell without a free record opened")
+		}
+	})
+}
+
+// The library's "registration rejected" line counts towards the lockout.
+func TestRegistrationFailures(t *testing.T) {
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, &fakeRecords{}, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim == 1 {
+				env.Log("reg: registration rejected (expected: this model tries PIN 0000 by itself first, profile reg.tries_0000_first)")
+			} else {
+				env.Log("reg: registration rejected")
+			}
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(uuid.New(), uuid.New(), 8)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	for range regwin.FailLimit {
+		g.core.MailUp(id, wire.MailUpMsg{Prim: 1})
+	}
+	waitFor(t, "open", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = f.regOpen && len(f.mails) == regwin.FailLimit })
+		return ok
+	})
+	for range regwin.FailLimit {
+		g.core.MailUp(id, wire.MailUpMsg{Prim: 2})
+	}
+	waitFor(t, "locked out", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = !f.regOpen && len(f.regPINs) == 0 })
+		return ok
 	})
 }
 
