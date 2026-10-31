@@ -1,17 +1,27 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Multi-stage build: a static binary on a distroless, non-root base.
-# The controller does not link libopendectcell yet (C3), so the build is
-# CGO_ENABLED=0; when it does, this becomes a static cgo build.
+# By default the build is CGO_ENABLED=0 and the binary has no DECT core.
+# --build-arg LIBOPENDECTCELL=1 (needs the openDECTcell submodule checked out) links
+# libopendectcell with cgo, statically, and turns the DECT core on (C3).
 
 FROM golang:1.27.3-bookworm AS build
 ARG VERSION=dev
+ARG LIBOPENDECTCELL=0
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-      -o /out/opendectcell-controller ./cmd/opendectcell-controller \
+COPY third_party ./third_party
+RUN if [ "$LIBOPENDECTCELL" = 1 ]; then \
+      test -f third_party/opendectcell/src/libopendectcell/dect_base.c || { echo "LIBOPENDECTCELL=1 needs the opendectcell submodule"; exit 1; }; \
+      CGO_ENABLED=1 go build -trimpath -tags libopendectcell,netgo,osusergo \
+        -ldflags "-s -w -linkmode external -extldflags -static -X main.version=${VERSION}" \
+        -o /out/opendectcell-controller ./cmd/opendectcell-controller; \
+    else \
+      CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+        -o /out/opendectcell-controller ./cmd/opendectcell-controller; \
+    fi \
  && mkdir -p /out/secrets /out/tmp
 
 FROM gcr.io/distroless/static-debian12:nonroot

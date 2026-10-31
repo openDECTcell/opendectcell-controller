@@ -47,6 +47,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
+	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
@@ -242,6 +243,17 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	base, _ := url.Parse(cfg.HTTP.BaseURL)
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
+	if dectStack != nil {
+		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr}, New: dectStack,
+			Log: log.With("component", "dect")}
+		dctx, stop := context.WithCancel(ctx)
+		dect.Start(dctx)
+		defer dect.Wait() // after stop: the stacks close, their records are written
+		defer stop()
+		link.Mails = dect
+	} else {
+		log.Warn("built without libopendectcell (-tags libopendectcell): the DECT core is off, cell mails are dropped")
+	}
 	cln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Cells.Listen)
 	if err != nil {
 		return fmt.Errorf("cell control port: %w", err)

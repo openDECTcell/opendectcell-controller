@@ -1,5 +1,11 @@
 .git
 .github
-third_party
+# Only libopendectcell's sources from the openDECTcell submodule (LIBOPENDECTCELL=1).
+third_party/*
+!third_party/opendectcell
+third_party/opendectcell/*
+!third_party/opendectcell/src
+third_party/opendectcell/src/*
+!third_party/opendectcell/src/libopendectcell
 docs
 *.md

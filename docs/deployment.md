@@ -10,6 +10,19 @@ docker compose exec controller opendectcell-controller user create --username ad
 
 Then open <http://localhost:8080>.
 
+**The DECT core needs libopendectcell.** The default image is built without it
+(`CGO_ENABLED=0`): cells connect and are managed, but their mails are
+dropped. With the openDECTcell submodule checked out, build the image with it:
+
+```sh
+git submodule update --init
+docker compose build --build-arg LIBOPENDECTCELL=1
+```
+
+That links libopendectcell statically with cgo (`-tags libopendectcell`); the log says
+`built without libopendectcell` when it is missing. Not yet tried in Docker
+(2026-10-31): the same static link was checked with zig cc against musl.
+
 | Service | Does |
 |---|---|
 | `init` | One-shot: `init-secrets` creates `master_key`, `db_password` and `database_url` in the `secrets` volume if they are missing. It never overwrites |
