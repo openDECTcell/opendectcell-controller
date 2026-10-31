@@ -744,6 +744,78 @@ void cdect_host_mail(struct cdect_host *c, uint64_t now)
 	}
 }
 
+/*
+ * With defer_unknown the library holds a {LOCATE-REQUEST}, or a {CC-SETUP} of a
+ * handset that moved within the location area and did not locate, from an
+ * identity no record of this cell holds. The host is asked once per identity
+ * (dect-stubd's fetch_tick, without its simulation) and answers with
+ * cdect_host_resume() within the handset's patience (about 15 s, API 18/19).
+ */
+static void fetch_poll(struct cdect_host *c)
+{
+	struct dect_base_link *ml = &c->b.main_link;
+	const uint8_t *id;
+	size_t len;
+
+	if (!c->b.cfg.defer_unknown || !ml->active ||
+	    !(dect_mm_locate_pending(&ml->link.mm, &id, &len) ||
+	      dect_link_setup_pending(&ml->link, &id, &len))) {
+		c->fetch_len = 0;
+		return;
+	}
+	if (len == c->fetch_len && !memcmp(id, c->fetch_id, len))
+		return;
+	if (len > sizeof(c->fetch_id))
+		return;
+	memcpy(c->fetch_id, id, len);
+	c->fetch_len = len;
+	cdectFetch(c->h, (uint8_t *)c->fetch_id, len);
+}
+
+void cdect_host_resume(struct cdect_host *c, uint64_t now)
+{
+	struct dect_base_link *ml = &c->b.main_link;
+	const uint8_t *id;
+	size_t len;
+	unsigned i;
+	int setup;
+
+	c->now = now;
+	if (!ml->active)
+		return;	/* the handset stopped waiting: the record stays for its next attempt */
+	if (dect_mm_locate_pending(&ml->link.mm, &id, &len))
+		setup = 0;
+	else if (dect_link_setup_pending(&ml->link, &id, &len))
+		setup = 1;
+	else
+		return;
+	if (len != c->fetch_len || memcmp(id, c->fetch_id, len))
+		return;	/* another request is waiting: fetch_poll asks about it */
+	for (i = 0; i < c->b.n_hs; i++) {
+		const struct dect_hs_rec *r = i == c->b.cur ? &c->b.rec : &c->b.hs[i];
+		unsigned sl = dect_base_slot(&c->b, i);
+		uint8_t tp[3];
+
+		if (!c->b.loaded[i] || r->port_id_len != len || memcmp(r->port_id, id, len))
+			continue;
+		memcpy(tp, r->tpui, sizeof(tp));
+		(void)dect_mm_hold(&ml->link.mm, r->port_id, r->port_id_len, (uint8_t)sl,
+				   (tp[0] | tp[1] | tp[2]) ? tp : NULL, (int)i);
+		break;
+	}
+	if (setup)
+		(void)dect_link_setup_resume(&ml->link, now);
+	else
+		(void)dect_mm_locate_resume(&ml->link.mm);
+	c->fetch_len = 0;
+	dect_link_drain(&ml->link, now);
+}
+
+int cdect_host_drop(struct cdect_host *c, unsigned i)
+{
+	return dect_base_record_drop(&c->b, i);
+}
+
 void cdect_host_tick(struct cdect_host *c, uint64_t now)
 {
 	c->now = now;
@@ -751,6 +823,7 @@ void cdect_host_tick(struct cdect_host *c, uint64_t now)
 		dect_base_reg_window(&c->b, 0, 0, now, "window elapsed");
 	connect_fallback(c, now);
 	dect_base_tick(&c->b, now, c->radio_up);
+	fetch_poll(c);
 	/* the records into the chip once its radio is up (cell-protocol.md §7.4) */
 	if (c->radio_up && !c->sub_restored && (any_uak(c) || !c->no_dummy)) {
 		install(c);

@@ -98,9 +98,9 @@ In order; 1 and 2 are the preconditions, 3 to 5 are what the user feels.
 | Point | State |
 |---|---|
 | 1 Shared identity | Built end to end and **verified on the lab 7520 on 2026-11-01**: the controller assigned RPN 1 and a class B RFPI, the cell patched tag 1 and reloaded its chip (08.25 boots with a class B RFPI), the chip read it back, and the revert brought the factory RFPI back (`../opendectcell/docs/bench-2026-11-01.md`). Not tried: a handset on a class B base, the 7412 (its packages predate the identity messages), two cells with one identity. |
-| 2 Record on every cell | Built. A handset that enrols gets a TPUI from the pool `{00, 11, N}` (N from 7) and every cell holds it under a record number from 7 to 16 (libopendectcell API 144), host-only: no chip slot, no key in the chip, admitted keyless (`more-than-six.md` §6). **Because every cell holds every pooled handset, the table of one cell is the limit of the whole installation: record numbers 7 to 32 (API 145), so 26 pooled handsets in total, not the 249 the TPUI form would allow (and that form was benched up to N = 0x43 only).** More handsets need a working set per cell instead of all of them everywhere (§4.2). The cell a handset enrolled on rebuilds its stack 3 s later, so the handset leaves the chip slot it enrolled in; the other cells take it into the running stack without a restart. A handset that deregisters anywhere is dropped from every cell (the others rebuild). Config switch `cells.handset_pool` (default on). Handsets enrolled earlier stay chip-slot handsets of their home cells; there is no migration. |
+| 2 A record on every cell | Built as a **working set** (§4.2), after the maintainer's decision of 2026-11-01: a cell's table holds up to 32 records (libopendectcell API 145), the chip's six slots among them; every handset of the controller can connect to every cell, but a cell holds in RAM only those that are around. A handset gets into a cell's table from the database when it first talks to the cell (a locate, or a call setup, from an identity the table does not hold is held by the stack, API 18/19, the controller looks it up and answers) or when a call is offered to it there. It is told to register again every `LocateValidity` (admin setting, default 10 min, API 20); a cell drops it `ExpireAfter` (default 60 s) after that validity ran out without a contact, or `MovedAfter` (default 180 s) after it was heard on another cell; a full table drops the handset heard least recently; a drop waits until the base is quiet (`dect_base_record_drop`, API 146). A new handset gets a TPUI from a pool `{00, 11, N}` (N from 7, 249 in all, benched up to N = 0x43), the same on every cell; its enrolment record sits in a chip slot of the cell it enrolled on until that cell rebuilds its stack, 3 s later. Handsets enrolled before this stay chip-slot handsets of their home cells and can be heard on other cells too (a table entry with a TPUI derived from its record number there: it is paged only after it located on that cell). Config switch `cells.handset_pool` (default on) only decides whether a new handset gets a pool TPUI. |
 | 3 Where it is | Built: `last_seen_cell_id` / `last_seen_at` are written from the stack's per-record contact time (at most one write per 30 s per handset and cell), and every change of cell is a row in `handset_move`. |
-| 4 Routing | Built as an API without a caller: `core.Ring(handset, call)` offers the call on the cell the handset was last heard on, after 3 s on every other cell that holds it, and the first answer takes the call; the other legs get `remote-released`. Busy legs do not hold the next wave back. It is tested against fake stacks that speak the bridge verbs; there is no SIP side to call it yet, and nobody has paged a handset by pool TPUI on air. Withdrawing a pending page on the other cells is Q7 and is not done: the extra legs are released with `remote-released`; whether the stack then stops its page was not checked. |
+| 4 Routing | Built as an API without a caller: `core.Ring(handset, call)` offers the call on the cell the handset was last heard on (taking it into that cell's table first if it is not in it), after 3 s on every other cell that is up, and the first answer takes the call; the other legs get `remote-released`. Busy legs do not hold the next wave back. It is tested against fake stacks that speak the bridge verbs; there is no SIP side to call it yet, and nobody has paged a handset by pool TPUI on air. Withdrawing a pending page on the other cells is Q7 and is not done: the extra legs are released with `remote-released`; whether the stack then stops its page was not checked. |
 | 5 UI | Handset page: "every cell" or "home cell only", the last ten cell changes. Statistics: cell changes in 24 h and 7 days. Cell changes are location data: retention erases them with the call details. |
 
 What is not built: the controller does not choose the location area size (class A or B, LAL 31 + j) for any cell; the
@@ -108,27 +108,33 @@ maintainer sets the identity per cell on the cells page. IPUI O for class B cros
 option). Records numbered 8 or more have no names-list entry and no call-list terminal id (the library keeps eight and
 seven, `api-versions.md` #144); a pooled handset beyond the first eight records of a cell is a plain phone there.
 
-### 4.2 Beyond 26 handsets: a working set per cell (proposal, not built)
+### 4.2 The working set (built, 2026-11-01; not yet seen on air)
 
 The controller keeps every record in the database and every cell's stack lives in the controller, so a cell
-does not need all handsets, only the ones that can be on it. Proposed: a cell's table is a cache.
+does not need all handsets, only the ones that can be on it. Its table (32 records, six of them chip slots,
+the others host-only, libopendectcell API 145) is a cache:
 
-- **In:** a handset enters a cell's table when it is heard there (a locate or an access request that the stack
-  could answer), when the router is about to page it there (`addHandset` already adds a record to a running
-  stack), and at enrolment on the cell it enrolled on.
-- **Out:** a record that has not been heard on that cell for a few multiples of the re-location interval is
-  dropped. The interval is the lever of API 20: `locate_validity` puts <<DURATION>> into {LOCATE-ACCEPT}, the
-  handset locates again after N x 40.96 s (N up to 255, about 2.9 h). The AS690H was measured to renew at
-  41.5 s with N = 1 (`multicell-experiments.md` M6a); the A540 and C430A are not measured. The controller
-  does not set it today (`stack.Config` has no field for it). A handset that stops renewing is off or gone, so
-  "not heard for 2 x validity" is also presence.
-- **Needs:** (1) a library call to remove a record from a running stack (today only a rebuild does it);
-  (2) a hook for a locate from an IPUI the cell does not hold, so the controller can look the record up and
-  admit it instead of rejecting it (a handset told "IPUI unknown" may take it as losing its registration; API 19
-  holds a {CC-SETUP} from an unknown identity, the same idea for the locate); (3) TPUIs that are unique per
-  cell, not per installation, or a wider TPUI form (bench).
-- **Cost of a re-location interval:** a link setup per handset per interval, which is battery. 30 minutes to
-  2 hours is plausible; that is a number for the bench.
+- **In:** on a locate or a call setup from an identity the table does not hold, the stack holds the request
+  (`defer_unknown`) and asks the controller (`Env.Fetch`); the controller looks the IPUI up
+  (`Store.PlaceByIPUI`: the handset gets the lowest free record number above the chip's slots), adds the record
+  to the running stack, holds it on the live link and lets the stack answer (`Stack.Resume`). The handset's
+  patience is about 15 s; a lookup takes milliseconds. A stranger is answered at once ("IPUI unknown"). A call
+  offered to a handset (`core.Ring`) takes it into the table of the cell it is offered on the same way.
+- **Out:** the sweep runs once a second on each cell. A handset leaves when it has not been heard for
+  `LocateValidity + ExpireAfter`, when it was last heard on another cell more than `MovedAfter` ago, or at once
+  (as soon as the stack is quiet) when its key or registration changed on another cell. A full table makes room by
+  dropping the handset heard least recently. `Store.Unplace` frees its record number. A table starts empty
+  above the chip's slots, also after a controller restart: handsets come back when they are heard.
+- **Settings** (Settings page, in seconds): the validity (rounded to 40.96 s, at most 10445, 0: handsets are not
+  asked to register again), the grace after it (60) and the moved delay (180). The stacks pick a change up within
+  10 s, the validity for the links set up from then on.
+- **What it needs of the handsets:** that they honour <<DURATION>> in {LOCATE-ACCEPT} (the AS690H was measured to,
+  M6a; the A540 and C430A not), and that a handset that moved to a cell of the same location area and has not
+  located sends a {CC-SETUP} the stack can hold (API 19, seen on the A540). **Both are untested on the
+  controller's stack on air**: bench B1/B2 below, with the 7412 on the identity packages.
+- **Limits:** 26 handsets heard at once on a cell; 249 TPUIs in the pool (so the pool, not the table, limits the
+  number of handsets that were enrolled with a pool TPUI; handsets enrolled earlier have no TPUI of their own).
+  A call-in to a handset on a busy cell whose table is full of handsets in calls fails (busy), as does a fetch.
 
 ## 5. What can be tried now, with what we have
 

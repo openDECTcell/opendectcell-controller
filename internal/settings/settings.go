@@ -27,6 +27,7 @@ const (
 	KeyMap          = "map"
 	KeyRetention    = "retention"
 	KeySecurity     = "security"
+	KeyRoaming      = "roaming"
 )
 
 // MaxLogoBytes is the largest logo the controller stores.
@@ -272,4 +273,33 @@ func (s *Store) Security(ctx context.Context) (Security, error) {
 	sec := Security{RequireAdmin2FA: true}
 	_, err := s.Get(ctx, KeySecurity, &sec)
 	return sec, err
+}
+
+// Roaming's defaults, in seconds (maintainer, 2026-11-01).
+const (
+	DefaultLocateValiditySec = 600 // handsets register again every 10 minutes
+	DefaultExpireAfterSec    = 60  // a handset that did not is dropped from a cell's table within a minute after
+	DefaultMovedAfterSec     = 180 // one heard on another cell, three minutes after that
+)
+
+// MaxLocateValiditySec is 255 units of 40.96 s, the most a LOCATE-ACCEPT can say.
+const MaxLocateValiditySec = 10445
+
+// Roaming sets how long a handset stays in a cell's table (docs/roaming.md §4.2).
+type Roaming struct {
+	// LocateValiditySec: handsets are asked to register again this often
+	// (rounded to 40.96 s). 0: they are not asked to.
+	LocateValiditySec int `json:"locate_validity_sec"`
+	// ExpireAfterSec: how long past that a cell keeps a handset it did not hear.
+	ExpireAfterSec int `json:"expire_after_sec"`
+	// MovedAfterSec: how long after a handset was heard on another cell this
+	// cell drops it.
+	MovedAfterSec int `json:"moved_after_sec"`
+}
+
+// Roaming returns the roaming settings; unset means the defaults.
+func (s *Store) Roaming(ctx context.Context) (Roaming, error) {
+	r := Roaming{DefaultLocateValiditySec, DefaultExpireAfterSec, DefaultMovedAfterSec}
+	_, err := s.Get(ctx, KeyRoaming, &r)
+	return r, err
 }

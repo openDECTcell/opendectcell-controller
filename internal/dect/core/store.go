@@ -39,10 +39,17 @@ type Records interface {
 	// handset that just enrolled on cell through owner's registration
 	// window; its id is returned. owner is ignored for a known id.
 	SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r stack.Record) (Saved, error)
-	// PlaceHandset puts a pooled handset on cell too, at the lowest free
-	// record number above the chip's slots. ok is false for a handset that is
-	// not pooled, already placed on cell, or finds no number free.
+	// PlaceHandset puts a handset into cell's table for as long as it is
+	// heard there: the lowest free record number above the chip's slots (a
+	// handset already placed there comes back as it is). ok is false for a
+	// handset that does not exist; ErrCellFull when no number is free.
+	// PlaceByIPUI is the same for the handset with that IPUI.
 	PlaceHandset(ctx context.Context, cell, id uuid.UUID) (h Handset, ok bool, err error)
+	PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (h Handset, ok bool, err error)
+	// Unplace: the handset left cell's table; its record number is free.
+	Unplace(ctx context.Context, cell, id uuid.UUID) error
+	// HandsetKnown: there is such a handset.
+	HandsetKnown(ctx context.Context, id uuid.UUID) (bool, error)
 	// ReserveTPUI takes a TPUI from the pool for an enrolment a cell may
 	// take; all zero when the pool is off. ReleaseTPUI gives it back unused.
 	ReserveTPUI(ctx context.Context) ([3]byte, error)
@@ -116,7 +123,7 @@ func poolTPUI(t [3]byte) (int32, bool) {
 func tpuiBytes(v int32) [3]byte { return [3]byte{byte(v >> 16), byte(v >> 8), byte(v)} }
 
 // ErrPoolFull: every TPUI of the pool is held (249 handsets).
-var ErrPoolFull = errors.New("core: the TPUI pool is full (249 pooled handsets)")
+var ErrPoolFull = errors.New("core: the TPUI pool is full (249 handsets)")
 
 func (s *Store) ReserveTPUI(ctx context.Context) ([3]byte, error) {
 	if s.NoPool {
@@ -206,40 +213,17 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 				return err
 			}
 		}
-		// A pooled handset is held by every cell, host-only: one that sits
-		// in a chip slot here (it enrolled in this run) gives the slot up,
-		// and every one without a place gets the lowest number above the
-		// chip's slots.
+		// Above the chip's slots the table is a working set that a stack starts
+		// without: whoever was in it before has to be heard (or called) to come
+		// back (Fetch, Ring). A pooled handset that sits in a chip slot here (it
+		// enrolled in this run) gives the slot up the same way.
 		if _, err := tx.Exec(ctx, `UPDATE cell_slot cs SET handset_id = NULL, state = 'empty', written_at = now()
-			FROM handset h WHERE cs.cell_id = $1 AND cs.handset_id = h.id AND h.pooled AND cs.slot <= $2`,
+			WHERE cs.cell_id = $1 AND cs.handset_id IS NOT NULL AND (cs.slot > $2 OR EXISTS
+				(SELECT 1 FROM handset h WHERE h.id = cs.handset_id AND h.pooled))`,
 			cell, int16(maxSlot)); err != nil {
 			return err
 		}
-		if used, err = usedSlots(ctx, tx, cell); err != nil {
-			return err
-		}
-		rows, err = tx.Query(ctx, `SELECT h.id FROM handset h WHERE h.pooled AND NOT EXISTS
-				(SELECT 1 FROM cell_slot cs WHERE cs.cell_id = $1 AND cs.handset_id = h.id)
-			ORDER BY h.registered_at, h.id`, cell)
-		if err != nil {
-			return err
-		}
-		pooled, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
-		if err != nil {
-			return err
-		}
-		for _, id := range pooled {
-			slot := freeHostSlot(used)
-			if slot == 0 {
-				unplaced = append(unplaced, id)
-				continue
-			}
-			used[slot] = true
-			if err := putSlot(ctx, tx, cell, slot, id, true); err != nil {
-				return err
-			}
-		}
-		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxRecord))
+		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxSlot))
 		return err
 	})
 	if err != nil {
@@ -251,36 +235,57 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 	return hs, unplaced, nil
 }
 
-// PlaceHandset is CellRecords for one pooled handset that a cell already
-// running has not got.
+// ErrCellFull: every record number above the chip's slots holds a handset.
+var ErrCellFull = errors.New("core: the cell's table is full")
+
 func (s *Store) PlaceHandset(ctx context.Context, cell, id uuid.UUID) (Handset, bool, error) {
+	return s.place(ctx, cell, func(tx pgx.Tx) (uuid.UUID, error) {
+		var got uuid.UUID
+		err := tx.QueryRow(ctx, "SELECT id FROM handset WHERE id = $1", id).Scan(&got)
+		return got, err
+	})
+}
+
+func (s *Store) PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (Handset, bool, error) {
+	return s.place(ctx, cell, func(tx pgx.Tx) (uuid.UUID, error) {
+		var got uuid.UUID
+		err := tx.QueryRow(ctx, "SELECT id FROM handset WHERE ipui = $1", ipui).Scan(&got)
+		return got, err
+	})
+}
+
+// place finds the handset, gives it a record number on cell if it has none
+// there, and reads its record.
+func (s *Store) place(ctx context.Context, cell uuid.UUID, find func(pgx.Tx) (uuid.UUID, error)) (Handset, bool, error) {
 	var out []Handset
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		out = nil
 		if err := lockCell(ctx, tx, cell); err != nil {
 			return err
 		}
-		var pooled, here bool
-		if err := tx.QueryRow(ctx, `SELECT h.pooled, EXISTS (SELECT 1 FROM cell_slot cs WHERE cs.cell_id = $1 AND cs.handset_id = h.id)
-			FROM handset h WHERE h.id = $2`, cell, id).Scan(&pooled, &here); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil
-			}
-			return err
-		}
-		if !pooled || here {
+		id, err := find(tx)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
-		used, err := usedSlots(ctx, tx, cell)
 		if err != nil {
 			return err
 		}
-		slot := freeHostSlot(used)
-		if slot == 0 {
-			return nil
-		}
-		if err := putSlot(ctx, tx, cell, slot, id, true); err != nil {
+		var here bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM cell_slot WHERE cell_id = $1 AND handset_id = $2)", cell, id).Scan(&here); err != nil {
 			return err
+		}
+		if !here {
+			used, err := usedSlots(ctx, tx, cell)
+			if err != nil {
+				return err
+			}
+			slot := freeHostSlot(used)
+			if slot == 0 {
+				return ErrCellFull
+			}
+			if err := putSlot(ctx, tx, cell, slot, id, true); err != nil {
+				return err
+			}
 		}
 		out, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.handset_id = $2`, cell, id)
 		return err
@@ -292,6 +297,18 @@ func (s *Store) PlaceHandset(ctx context.Context, cell, id uuid.UUID) (Handset, 
 		return Handset{}, false, err
 	}
 	return out[0], true, nil
+}
+
+func (s *Store) Unplace(ctx context.Context, cell, id uuid.UUID) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
+		WHERE cell_id = $1 AND handset_id = $2 AND slot > $3`, cell, id, int16(maxSlot))
+	return err
+}
+
+func (s *Store) HandsetKnown(ctx context.Context, id uuid.UUID) (bool, error) {
+	var ok bool
+	err := s.Pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM handset WHERE id = $1)", id).Scan(&ok)
+	return ok, err
 }
 
 func lockCell(ctx context.Context, tx pgx.Tx, cell uuid.UUID) error {

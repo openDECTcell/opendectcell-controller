@@ -130,6 +130,8 @@ func NewHost(env Env, cfg Config) *Host {
 		b.cfg.ipuio = C.uint32_t(*cfg.IPUIO)
 	}
 	b.cfg.park_pli = C.uint(cfg.ParkPLI)
+	b.cfg.defer_unknown = cbool(cfg.DeferUnknown)
+	b.cfg.locate_validity = C.unsigned(cfg.LocateValidity)
 	b.chip.uak_table = C.uint32_t(cfg.UAKTable)
 	b.chip.check_delay_ms = C.uint32_t(cfg.CheckDelayMs)
 	x.c.no_dummy = cbool(cfg.NoDummyKey)
@@ -178,6 +180,28 @@ func (x *Host) AddFreeStore(i int, tpui [3]byte) {
 	}
 	C.cdect_host_free_store(x.c, C.unsigned(i))
 	x.raise()
+}
+
+// Resume answers the held request the Fetch callback was asked about: the
+// record is in the table (AddRecord) or there is none (the handset is told
+// its IPUI is unknown).
+func (x *Host) Resume(now uint64) {
+	C.cdect_host_resume(x.c, C.uint64_t(now))
+	x.raise()
+}
+
+// Drop takes record i out of the table. False: not now (the base is not
+// quiet) or there is no such record.
+func (x *Host) Drop(i int) bool {
+	ok := C.cdect_host_drop(x.c, C.unsigned(i)) == 0
+	x.raise()
+	return ok
+}
+
+// SetLocateValidity changes how long a location registration holds, in units
+// of 40.96 s, for the links set up from now on; 0: no limit.
+func (x *Host) SetLocateValidity(units uint) {
+	x.c.b.cfg.locate_validity = C.unsigned(units)
 }
 
 // Start finishes the set-up once the records are in.
@@ -353,6 +377,12 @@ func cdectSave(h C.uintptr_t, i C.unsigned, r *C.struct_dect_hs_rec) {
 	}
 	hostOf(h).env.Save(int(i), rec)
 	clear(rec.UAK[:])
+}
+
+//export cdectFetch
+func cdectFetch(h C.uintptr_t, id *C.uint8_t, n C.size_t) {
+	defer catch(h, "fetch")
+	hostOf(h).env.Fetch(goBytes(id, n))
 }
 
 //export cdectForget

@@ -266,7 +266,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	var windows *regwin.Registry
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
-		dect := &dectcore.Core{Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
+		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)
@@ -644,4 +644,16 @@ func initSecrets(args []string, out io.Writer) error {
 		return u.String(), nil
 	})
 	return err
+}
+
+// roamingFrom gives the DECT core the admin's roaming settings.
+func roamingFrom(st *settings.Store) func(context.Context) (dectcore.Roaming, error) {
+	return func(ctx context.Context) (dectcore.Roaming, error) {
+		r, err := st.Roaming(ctx)
+		if err != nil {
+			return dectcore.Roaming{}, err
+		}
+		sec := func(n int) time.Duration { return time.Duration(n) * time.Second }
+		return dectcore.Roaming{LocateValidity: sec(r.LocateValiditySec), ExpireAfter: sec(r.ExpireAfterSec), MovedAfter: sec(r.MovedAfterSec)}, nil
+	}
 }

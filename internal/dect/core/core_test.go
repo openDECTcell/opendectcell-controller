@@ -48,6 +48,12 @@ type fakeStack struct {
 	// the bridge commands the core sent, and what to do about each
 	ctls  []ctlLine
 	onCtl func(env stack.Env, line string)
+	// the working set: answers to a Fetch, records dropped, a busy stack that
+	// refuses a drop, the validities set later
+	resumes  int
+	dropped  []int
+	busy     bool
+	validity []uint
 }
 
 type ctlLine struct {
@@ -129,6 +135,30 @@ func (f *fakeStack) RegState() (bool, bool) {
 	return f.regOpen, !f.notFree
 }
 
+// Resume, Drop and SetLocateValidity are noted. A drop is refused while busy is set.
+func (f *fakeStack) Resume(uint64) {
+	f.mu.Lock()
+	f.resumes++
+	f.mu.Unlock()
+}
+
+func (f *fakeStack) Drop(i int) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.busy {
+		return false
+	}
+	delete(f.records, i)
+	f.dropped = append(f.dropped, i)
+	return true
+}
+
+func (f *fakeStack) SetLocateValidity(u uint) {
+	f.mu.Lock()
+	f.validity = append(f.validity, u)
+	f.mu.Unlock()
+}
+
 func (f *fakeStack) Hello() {}
 
 // Ctl records the command; "bridge" says the client became the bridge, as the
@@ -201,17 +231,25 @@ type fakeRecords struct {
 	released     [][3]byte
 	place        map[uuid.UUID]Handset
 	placed       []uuid.UUID
+	unplaced     []uuid.UUID
+	unplaceHook  func()
+	full         bool // PlaceHandset says the cell is full
+	known        map[uuid.UUID]bool
+	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
 	saved        []stack.Record
 	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
 }
 
-func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, []uuid.UUID, error) {
+func (r *fakeRecords) CellRecords(_ context.Context, cell uuid.UUID, _ int) ([]Handset, []uuid.UUID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.fail > 0 {
 		r.fail--
 		return nil, nil, errors.New("database down")
+	}
+	if hs, ok := r.hsOn[cell]; ok {
+		return slices.Clone(hs), nil, nil
 	}
 	return slices.Clone(r.hs), nil, nil
 }
@@ -236,16 +274,58 @@ func (r *fakeRecords) Forget(_ context.Context, _, id uuid.UUID) (bool, error) {
 	return r.forgetPooled, nil
 }
 
-// PlaceHandset hands out what the test put in placeNext, once.
-func (r *fakeRecords) PlaceHandset(_ context.Context, _, id uuid.UUID) (Handset, bool, error) {
+// PlaceHandset and PlaceByIPUI hand out what the test put in place (by handset),
+// for as long as the handset is placed; a full cell says so.
+func (r *fakeRecords) PlaceHandset(_ context.Context, cell, id uuid.UUID) (Handset, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if h, ok := r.place[id]; ok {
-		delete(r.place, id)
-		r.placed = append(r.placed, id)
-		return h, true, nil
+	if r.full {
+		return Handset{}, false, ErrCellFull
 	}
-	return Handset{}, false, nil
+	h, ok := r.place[id]
+	if ok {
+		r.placed = append(r.placed, id)
+	}
+	return h, ok, nil
+}
+
+func (r *fakeRecords) PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (Handset, bool, error) {
+	r.mu.Lock()
+	var id uuid.UUID
+	for k, h := range r.place {
+		if string(h.Rec.PortID) == string(ipui) {
+			id = k
+		}
+	}
+	r.mu.Unlock()
+	if id == uuid.Nil {
+		return Handset{}, false, nil
+	}
+	return r.PlaceHandset(ctx, cell, id)
+}
+
+func (r *fakeRecords) Unplace(_ context.Context, _, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.unplaced = append(r.unplaced, id)
+	if r.unplaceHook != nil {
+		r.unplaceHook()
+	}
+	return nil
+}
+
+func (r *fakeRecords) HandsetKnown(_ context.Context, id uuid.UUID) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.place[id]; ok {
+		return true, nil
+	}
+	for _, h := range r.hs {
+		if h.ID == id {
+			return true, nil
+		}
+	}
+	return r.known[id], nil
 }
 
 // ReserveTPUI offers {00, 11, 7}, {00, 11, 8}, ... when pool is set.
@@ -1020,18 +1100,17 @@ func TestHandsetSeenOnACell(t *testing.T) {
 }
 
 // With the pool on, a cell's chip records come first, then the places a new
-// handset can enrol (each with a TPUI of the pool), then the host-only records.
+// handset can enrol (each with a TPUI of the pool). The table above the chip's
+// slots starts empty.
 func TestPooledRecordsAndOffers(t *testing.T) {
-	host := handset(8, owner)
-	host.Rec.TPUI = [3]byte{0, 0x11, 9}
-	recs := &fakeRecords{hs: []Handset{host, handset(2, owner)}, pool: true}
+	recs := &fakeRecords{hs: []Handset{handset(2, owner)}, pool: true}
 	g := newRig(t, recs, nil)
 	id := uuid.New()
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
 	waitFor(t, "radio on", radioOn(g))
 	g.stack(0).get(func(f *fakeStack) {
-		if len(f.records) != 2 || f.records[0].Slot != 2 || f.records[6].Slot != 8 || f.records[6].TPUI != host.Rec.TPUI {
-			t.Errorf("records %+v: want the chip record at 0, the host-only one after the free stores", f.records)
+		if len(f.records) != 1 || f.records[0].Slot != 2 {
+			t.Errorf("records %+v: want the chip record only", f.records)
 		}
 		if !slices.Equal(f.free, []int{1, 2, 3, 4, 5}) {
 			t.Errorf("free stores %v", f.free)
@@ -1041,6 +1120,9 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 				t.Errorf("free store %d offered %x", k, tp)
 			}
 		}
+		if !f.cfg.DeferUnknown || f.cfg.LocateValidity != 15 {
+			t.Errorf("config %+v: unknown handsets are held for a fetch, validity 10 min is 15 units", f.cfg)
+		}
 	})
 	waitFor(t, "slots recorded", func() bool {
 		n := 0
@@ -1049,7 +1131,7 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 	})
 	recs.get(func(r *fakeRecords) {
 		if !slices.Equal(r.installed[len(r.installed)-1], []uint{2}) {
-			t.Errorf("installed %v: the host-only record is not a chip slot", r.installed)
+			t.Errorf("installed %v", r.installed)
 		}
 	})
 	g.core.CellGone(id)
@@ -1060,17 +1142,15 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 	})
 }
 
-// A pooled handset that enrols on one cell is taken into the other cell's
-// running stack at once, and the cell it enrolled on rebuilds, so its chip slot
-// is free again.
-func TestPooledEnrolmentReachesTheOtherCells(t *testing.T) {
+// A pooled handset that enrols on one cell: that cell rebuilds its stack so the
+// handset leaves the chip slot it enrolled in; other cells do nothing, the handset
+// comes to them when it is heard there.
+func TestPooledEnrolmentRebuildsOnlyTheCell(t *testing.T) {
 	old := reloadDelay
 	reloadDelay = 20 * time.Millisecond
 	defer func() { reloadDelay = old }()
 	newID, anna := uuid.New(), uuid.New()
-	other := handset(7, anna)
-	other.ID = newID
-	recs := &fakeRecords{newID: newID, pool: true, place: map[uuid.UUID]Handset{newID: other}}
+	recs := &fakeRecords{newID: newID, pool: true}
 	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
@@ -1086,40 +1166,298 @@ func TestPooledEnrolmentReachesTheOtherCells(t *testing.T) {
 	waitFor(t, "b's radio on", radioOnAt(g, 1))
 
 	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
-	waitFor(t, "the handset on b", func() bool {
-		n := 0
-		g.stack(1).get(func(f *fakeStack) { n = len(f.records) })
-		return n == 1
-	})
-	g.stack(1).get(func(f *fakeStack) {
-		if r, ok := f.records[6]; !ok || r.Slot != 7 {
-			t.Errorf("b's records %+v: want the new one at index 6, after the six free stores", f.records)
-		}
-	})
 	waitFor(t, "a rebuilt", func() bool { return g.nStacks() == 3 })
-	if g.stack(1).isClosed() {
-		t.Error("b's stack was rebuilt: the handset is added to it while it runs")
+	time.Sleep(60 * time.Millisecond)
+	if g.stack(1).isClosed() || g.nStacks() != 3 {
+		t.Errorf("b was rebuilt (%d stacks)", g.nStacks())
 	}
 }
 
-// A pooled handset that deregisters is gone from every cell: the others rebuild.
-func TestPooledForgetReloadsTheOtherCells(t *testing.T) {
-	old := reloadDelay
-	reloadDelay = 20 * time.Millisecond
-	defer func() { reloadDelay = old }()
-	h := handset(1, owner)
-	recs := &fakeRecords{hs: []Handset{h}, forgetPooled: true}
+// fetchRig is a cell with one handset that the store knows but the cell does not
+// hold, asking about it.
+func fetchRig(t *testing.T) (*rig, *fakeRecords, Handset, uuid.UUID) {
+	t.Helper()
+	h := handset(7, owner)
+	h.Rec.TPUI = [3]byte{0, 0x11, 9}
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: h}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	return g, recs, h, id
+}
+
+func resumes(g *rig) int {
+	n := 0
+	g.stack(0).get(func(f *fakeStack) { n = f.resumes })
+	return n
+}
+
+// A locate from a handset the cell does not hold: the store has it, the record
+// goes into the table above the chip's slots and the stack answers its held request.
+func TestFetchAdmitsAHandsetTheStoreKnows(t *testing.T) {
+	g, recs, h, id := fetchRig(t)
+	_ = id
+	g.stack(0).env.Fetch(h.Rec.PortID)
+	waitFor(t, "the stack resumed", func() bool { return resumes(g) == 1 })
+	g.stack(0).get(func(f *fakeStack) {
+		r, ok := f.records[6] // after the six chip-or-free indices
+		if !ok || r.Slot != 7 || r.TPUI != h.Rec.TPUI {
+			t.Errorf("records %+v: the fetched handset should be at index 6", f.records)
+		}
+	})
+	if len(recs.unplaced) != 0 {
+		t.Errorf("unplaced %v", recs.unplaced)
+	}
+	// asked again (a retransmitted request): nothing is added twice
+	g.stack(0).env.Fetch(h.Rec.PortID)
+	waitFor(t, "the stack resumed again", func() bool { return resumes(g) == 2 })
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.records) != 1 {
+			t.Errorf("records %+v", f.records)
+		}
+	})
+}
+
+// A handset nobody knows is answered at once, so the stack can turn it away.
+func TestFetchOfAStrangerIsAnswered(t *testing.T) {
+	g, _, _, _ := fetchRig(t)
+	g.stack(0).env.Fetch([]byte{0x80, 0xee})
+	waitFor(t, "the stack resumed", func() bool { return resumes(g) == 1 })
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.records) != 0 {
+			t.Errorf("records %+v", f.records)
+		}
+	})
+}
+
+// The working set expires: not heard for the validity and the grace, it goes, and
+// its record number is free in the store. One that is heard stays.
+func TestWorkingSetExpiry(t *testing.T) {
+	h1, h2 := handset(7, owner), handset(8, owner)
+	h2.Rec.PortID = []byte{0x80, 0x08}
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h1.ID: h1, h2.ID: h2}}
+	g := newRig(t, recs, func(f *fakeStack) { f.seen = map[int]uint64{} })
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: 400 * time.Millisecond, ExpireAfter: 400 * time.Millisecond, MovedAfter: time.Hour}, nil
+	}
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).env.Fetch(h1.Rec.PortID)
+	g.stack(0).env.Fetch(h2.Rec.PortID)
+	waitFor(t, "both in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
+		return n == 2
+	})
+	// h2 is heard now and then, h1 never
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(30 * time.Millisecond):
+				g.stack(0).get(func(f *fakeStack) {
+					for i, r := range f.records {
+						if r.Slot == 8 {
+							f.seen[i] = g.core.now()
+						}
+					}
+				})
+			}
+		}
+	}()
+	waitFor(t, "h1 dropped", func() bool {
+		var d []int
+		g.stack(0).get(func(f *fakeStack) { d = slices.Clone(f.dropped) })
+		return len(d) >= 1
+	})
+	waitFor(t, "its number freed in the store", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.unplaced) })
+		return n >= 1
+	})
+	recs.get(func(r *fakeRecords) {
+		if !slices.Equal(r.unplaced, []uuid.UUID{h1.ID}) {
+			t.Errorf("unplaced %v, want h1 only", r.unplaced)
+		}
+	})
+	time.Sleep(1500 * time.Millisecond) // well past the expiry of a handset nobody heard
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.dropped) != 1 || len(f.records) != 1 {
+			t.Errorf("dropped %v, records %+v: the handset that was heard stays", f.dropped, f.records)
+		}
+	})
+}
+
+// A handset heard on another cell leaves this one MovedAfter later, not before.
+func TestWorkingSetMoved(t *testing.T) {
+	h := handset(7, owner)
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: h}}
+	g := newRig(t, recs, nil)
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: time.Hour, ExpireAfter: time.Hour, MovedAfter: 150 * time.Millisecond}, nil
+	}
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).env.Fetch(h.Rec.PortID)
+	waitFor(t, "in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
+		return n == 1
+	})
+	g.core.noteHeard(h.ID, uuid.New(), time.Now())
+	time.Sleep(80 * time.Millisecond)
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.dropped) != 0 {
+			t.Error("dropped before MovedAfter")
+		}
+	})
+	waitFor(t, "dropped after MovedAfter", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.dropped) })
+		return n == 1
+	})
+}
+
+// A busy stack refuses the drop: it is tried again until it is quiet.
+func TestWorkingSetDropWaitsForAQuietStack(t *testing.T) {
+	h := handset(7, owner)
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: h}}
+	g := newRig(t, recs, nil)
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: 20 * time.Millisecond, ExpireAfter: 20 * time.Millisecond}, nil
+	}
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) { f.busy = true })
+	g.stack(0).env.Fetch(h.Rec.PortID)
+	time.Sleep(1500 * time.Millisecond) // past the expiry and a sweep
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.dropped) != 0 {
+			t.Fatal("dropped while busy")
+		}
+		f.busy = false
+	})
+	waitFor(t, "dropped once quiet", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.dropped) })
+		return n == 1
+	})
+}
+
+// A full table makes room by dropping the handset heard least recently.
+func TestFullTableDropsTheStalest(t *testing.T) {
+	var all []Handset
+	place := map[uuid.UUID]Handset{}
+	for k := range maxRecord - maxSlot {
+		h := handset(uint(maxSlot+1+k), owner)
+		h.Rec.PortID = []byte{0x80, byte(0x40 + k)}
+		all = append(all, h)
+		place[h.ID] = h
+	}
+	extra := handset(maxRecord, owner)
+	extra.Rec.PortID = []byte{0x80, 0xfe}
+	place[extra.ID] = extra
+	recs := &fakeRecords{place: place}
+	g := newRig(t, recs, nil)
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: time.Hour, ExpireAfter: time.Hour, MovedAfter: time.Hour}, nil
+	}
+	id := uuid.New()
+	// no free stores: six chip-or-free indices come first, so give the cell six real chip records
+	for k := range maxSlot {
+		recs.hs = append(recs.hs, handset(uint(k+1), owner))
+	}
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	for _, h := range all {
+		g.stack(0).env.Fetch(h.Rec.PortID)
+		time.Sleep(3 * time.Millisecond) // a different time of arrival for each
+	}
+	waitFor(t, "table full", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
+		return n == maxRecord
+	})
+	g.stack(0).env.Fetch(extra.Rec.PortID)
+	waitFor(t, "the stalest dropped, the new one in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.dropped) })
+		return n == 1
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		if f.dropped[0] != maxSlot { // the first one fetched, index 6
+			t.Errorf("dropped index %d, want %d (the first fetched)", f.dropped[0], maxSlot)
+		}
+	})
+}
+
+// A pooled handset that deregisters (or enrols again with a new key) on one cell is dropped
+// from the other cells' tables.
+func TestPooledForgetEvictsFromTheOtherCells(t *testing.T) {
+	h := handset(1, owner) // on cell a it is a chip record
+	hb := h
+	hb.Rec.Slot = 7 // on cell b it comes into the table above the chip's slots
+	a, b := uuid.New(), uuid.New()
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: hb}, forgetPooled: true,
+		hsOn: map[uuid.UUID][]Handset{a: {h}}}
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) { env.Forget(0, "test") }
 	})
-	a, b := uuid.New(), uuid.New()
 	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "a's radio on", radioOnAt(g, 0))
 	g.core.CellUp(b, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "b's radio on", radioOnAt(g, 1))
-	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
-	waitFor(t, "b rebuilt", func() bool { return g.nStacks() == 3 })
+	g.stack(1).env.Fetch(h.Rec.PortID)
+	waitFor(t, "h in b's table", func() bool {
+		k := 0
+		g.stack(1).get(func(f *fakeStack) { k = len(f.records) })
+		return k == 1
+	})
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203}) // h deregisters on a
+	waitFor(t, "h dropped from b", func() bool {
+		var d []int
+		g.stack(1).get(func(f *fakeStack) { d = slices.Clone(f.dropped) })
+		return slices.Equal(d, []int{6})
+	})
 	if g.stack(0).isClosed() {
-		t.Error("a was rebuilt: its stack dropped the record itself")
+		t.Error("a was rebuilt")
+	}
+}
+
+// The admin's validity reaches the stacks that run: a new value is set on the stack
+// within a moment, without a rebuild.
+func TestRoamingChangeReachesTheStack(t *testing.T) {
+	old := roamingEvery
+	roamingEvery = 10 * time.Millisecond
+	defer func() { roamingEvery = old }()
+	var mu sync.Mutex
+	v := 10 * time.Minute
+	recs := &fakeRecords{}
+	g := newRig(t, recs, nil)
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return Roaming{LocateValidity: v, ExpireAfter: time.Minute, MovedAfter: time.Minute}, nil
+	}
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	mu.Lock()
+	v = time.Hour
+	mu.Unlock()
+	waitFor(t, "the new validity on the stack", func() bool {
+		var got []uint
+		g.stack(0).get(func(f *fakeStack) { got = slices.Clone(f.validity) })
+		return slices.Equal(got, []uint{88})
+	})
+	if g.nStacks() != 1 {
+		t.Error("the stack was rebuilt")
 	}
 }

@@ -239,3 +239,39 @@ func TestIdentityPages(t *testing.T) {
 		t.Errorf("a user took a donor: %d", r.StatusCode)
 	}
 }
+
+func TestRoamingSettings(t *testing.T) {
+	e := newEnv(t)
+	a := e.adminBrowser(t)
+	// the defaults are shown before anything is saved: 10 minutes, 60 s, 180 s
+	_, body := e.get(t, a, "/admin/settings")
+	for _, want := range []string{`name="locate_validity_sec" inputmode="numeric" value="600"`, `name="expire_after_sec" inputmode="numeric" value="60"`, `name="moved_after_sec" inputmode="numeric" value="180"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("default not shown: %s", want)
+		}
+	}
+	good := url.Values{"locate_validity_sec": {"1200"}, "expire_after_sec": {"90"}, "moved_after_sec": {"240"}}
+	if r := e.post(t, a, "/admin/settings/roaming", good); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("save: %d", r.StatusCode)
+	}
+	if _, body := e.get(t, a, "/admin/settings"); !strings.Contains(body, `value="1200"`) || !strings.Contains(body, `value="90"`) || !strings.Contains(body, `value="240"`) {
+		t.Error("saved roaming not shown")
+	}
+	for _, bad := range []url.Values{
+		{"locate_validity_sec": {"20"}, "expire_after_sec": {"60"}, "moved_after_sec": {"180"}},    // under one unit
+		{"locate_validity_sec": {"20000"}, "expire_after_sec": {"60"}, "moved_after_sec": {"180"}}, // over 255 units
+		{"locate_validity_sec": {"600"}, "expire_after_sec": {"0"}, "moved_after_sec": {"180"}},
+		{"locate_validity_sec": {"600"}, "expire_after_sec": {"60"}, "moved_after_sec": {"x"}},
+	} {
+		if r := e.post(t, a, "/admin/settings/roaming", bad); r.StatusCode != http.StatusBadRequest {
+			t.Errorf("%v accepted: %d", bad, r.StatusCode)
+		}
+	}
+	// 0 turns the renewal off
+	if r := e.post(t, a, "/admin/settings/roaming", url.Values{"locate_validity_sec": {"0"}, "expire_after_sec": {"60"}, "moved_after_sec": {"180"}}); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("0 refused: %d", r.StatusCode)
+	}
+	if r := e.post(t, e.userBrowser(t), "/admin/settings/roaming", good); r.StatusCode != http.StatusNotFound {
+		t.Errorf("a user set roaming: %d", r.StatusCode)
+	}
+}

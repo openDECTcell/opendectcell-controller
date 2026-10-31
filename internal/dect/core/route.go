@@ -13,11 +13,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// Routing a call to a handset (docs/roaming.md §4, point 4). A handset is
-// held by every cell (pooled) or by its home cells, and may be on any of them.
-// The cell it was last heard on is paged alone first; when nothing answers
-// within PageDelay (<LCE.03>) every other cell that holds it is paged too, and
-// the first to answer takes the call: the legs on the other cells are released.
+// Routing a call to a handset (docs/roaming.md §4, point 4). A handset may be
+// on any cell that is up. The cell it was last heard on is paged alone first;
+// when nothing answers within PageDelay (<LCE.03>) every other cell is paged
+// too, and the first to answer takes the call: the legs on the other cells are
+// released. A cell that does not hold the handset in its table takes it in from
+// the database when its leg is offered (roaming.go, ensure).
 //
 // There is no SIP side yet: this is the interface it will use. Ring starts an
 // offer, the events come back on the returned Offer, Cancel is the caller
@@ -27,10 +28,10 @@ import (
 
 // Errors of Ring.
 var (
-	// ErrNoCell: no cell that holds the handset has its radio on.
-	ErrNoCell = errors.New("core: no cell that holds the handset is up")
-	// ErrNoHandset: no cell holds the handset at all.
-	ErrNoHandset = errors.New("core: the handset is not held by any cell")
+	// ErrNoCell: no cell has its radio on.
+	ErrNoCell = errors.New("core: no cell is up")
+	// ErrNoHandset: there is no such handset.
+	ErrNoHandset = errors.New("core: no such handset")
 )
 
 // Call is what the SIP side asks for.
@@ -84,7 +85,6 @@ func (o *Offer) Cancel() { o.core.calls.finish(o.core, o.rt, CallReleased, "norm
 // leg is the call on one cell.
 type leg struct {
 	cell uuid.UUID
-	slot uint
 	call string // the stack's number for it, once it answered call-in
 	// asked: its call-in is sent; failed: the stack said busy or error;
 	// dead: the leg is over (or, with no call number yet, to be released
@@ -129,44 +129,38 @@ func (c *Core) pageDelay() time.Duration {
 	return DefaultPageDelay
 }
 
-// held is a handset's place on a cell.
-type held struct {
-	cell uuid.UUID
-	slot uint
-}
-
-// holders lists the cells that hold the handset and have their radio on.
-func (c *Core) holders(hid uuid.UUID) (up []held, known bool) {
+// readyCells lists the cells that have their radio on.
+func (c *Core) readyCells() []uuid.UUID {
 	c.mu.Lock()
 	runs := make([]*cellRun, 0, len(c.cells))
 	for _, r := range c.cells {
 		runs = append(runs, r)
 	}
 	c.mu.Unlock()
+	var up []uuid.UUID
 	for _, r := range runs {
 		r.pub.Lock()
-		slot, ok := r.held[hid]
 		ready := r.ready
 		r.pub.Unlock()
-		if ok {
-			known = true
-			if ready {
-				up = append(up, held{r.id, slot})
-			}
+		if ready {
+			up = append(up, r.id)
 		}
 	}
-	return up, known
+	return up
 }
 
 // Ring offers a call to a handset where it is.
 func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, error) {
-	cells, known := c.holders(hid)
-	switch {
-	case len(cells) > 0:
-	case known:
-		return nil, ErrNoCell
-	default:
+	known, err := c.Records.HandsetKnown(ctx, hid)
+	if err != nil {
+		return nil, err
+	}
+	if !known {
 		return nil, ErrNoHandset
+	}
+	cells := c.readyCells()
+	if len(cells) == 0 {
+		return nil, ErrNoCell
 	}
 	last, err := c.Records.LastSeenCell(ctx, hid)
 	if err != nil {
@@ -194,10 +188,10 @@ func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, erro
 	c.calls.live[call.SIP] = rt
 	// wave one: the last cell alone, or every cell if it is not among them
 	var first []*leg
-	for _, h := range cells {
-		l := &leg{cell: h.cell, slot: h.slot}
-		rt.legs[h.cell] = l
-		if h.cell == last {
+	for _, id := range cells {
+		l := &leg{cell: id}
+		rt.legs[id] = l
+		if id == last {
 			first = []*leg{l}
 		}
 	}
@@ -229,7 +223,7 @@ func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, erro
 // events come back through bridgeLine.
 func (c *Core) offerLeg(rt *route, l *leg) {
 	var b strings.Builder
-	fmt.Fprintf(&b, "call-in line=%d hs=%d number=%s", rt.call.Line, l.slot, rt.call.Number)
+	fmt.Fprintf(&b, "call-in line=%d hs={hs} number=%s", rt.call.Line, rt.call.Number)
 	if rt.call.Name != "" {
 		fmt.Fprintf(&b, " name=%q", rt.call.Name)
 	}
@@ -237,7 +231,7 @@ func (c *Core) offerLeg(rt *route, l *leg) {
 		b.WriteString(" codec=nb")
 	}
 	fmt.Fprintf(&b, " sip=%s", rt.call.SIP)
-	c.post(l.cell, event{kind: evCtl, line: b.String(), sip: rt.call.SIP})
+	c.post(l.cell, event{kind: evCtl, line: b.String(), sip: rt.call.SIP, hid: rt.hid})
 }
 
 // nextWave pages the cells not paged yet, if the call is still unanswered.

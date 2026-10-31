@@ -1,0 +1,278 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package core
+
+import (
+	"context"
+	"math"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// A cell's table above the chip's slots is a working set (docs/roaming.md
+// §4.2). A handset gets into it when it is heard on the cell or called there,
+// from the database; the cell asks the handset to register again every
+// LocateValidity; it leaves when it has not been heard for that and
+// ExpireAfter, or when it was heard on another cell and MovedAfter has passed.
+// What is in a table costs RAM, what is in the database costs nothing: a
+// handset that left is fetched again the next time it talks to the cell.
+
+// Roaming is the admin's setting of the working sets.
+type Roaming struct {
+	// LocateValidity is how long a location registration holds: the handset
+	// registers again after it. 0: it is not asked to.
+	LocateValidity time.Duration
+	// ExpireAfter is how long past the validity a handset that has not been
+	// heard stays in a cell's table.
+	ExpireAfter time.Duration
+	// MovedAfter is how long after the handset was heard on another cell it
+	// leaves this cell's table.
+	MovedAfter time.Duration
+}
+
+// DefaultRoaming is what an installation without settings runs with.
+func DefaultRoaming() Roaming {
+	return Roaming{LocateValidity: 10 * time.Minute, ExpireAfter: 60 * time.Second, MovedAfter: 180 * time.Second}
+}
+
+// locateUnit is the unit of <<DURATION>> in a LOCATE-ACCEPT (EN 300 175-5 §7.7.13:
+// 2^8 multiframes of 160 ms).
+const locateUnit = 40960 * time.Millisecond
+
+// Units is LocateValidity in the unit the stack takes: 1 to 255, 0 for none.
+func (r Roaming) Units() uint {
+	if r.LocateValidity <= 0 {
+		return 0
+	}
+	return uint(min(255, max(1, math.Round(float64(r.LocateValidity)/float64(locateUnit)))))
+}
+
+// roamingEvery (a variable for the tests) is how often the settings are read.
+var roamingEvery = 10 * time.Second
+
+func (c *Core) roaming() Roaming {
+	c.rmMu.Lock()
+	defer c.rmMu.Unlock()
+	if c.Roaming == nil {
+		return DefaultRoaming()
+	}
+	if !c.rmAt.IsZero() && time.Since(c.rmAt) < roamingEvery {
+		return c.rm
+	}
+	ctx, cancel := context.WithTimeout(c.ctx, storeTimeout)
+	defer cancel()
+	rm, err := c.Roaming(ctx)
+	if err != nil {
+		c.Log.Warn("the roaming settings could not be read: the last ones stay", "err", err)
+		if c.rmAt.IsZero() {
+			c.rm = DefaultRoaming()
+		}
+		c.rmAt = time.Now()
+		return c.rm
+	}
+	c.rm, c.rmAt = rm, time.Now()
+	return rm
+}
+
+// transRec is a handset in a cell's working set.
+type transRec struct {
+	idx         int
+	slot        uint
+	added       time.Time // placed, or called for
+	heard       time.Time // the last contact the stack reported
+	evict, busy bool      // to go: its key changed, or the stack was not quiet at the last try
+}
+
+// index allocation: the lowest free one, else the next.
+func (r *cellRun) allocIdx() (int, bool) {
+	if n := len(r.freeIdx); n > 0 {
+		i := r.freeIdx[n-1]
+		r.freeIdx = r.freeIdx[:n-1]
+		return i, true
+	}
+	if r.next < maxRecord {
+		i := r.next
+		r.next++
+		return i, true
+	}
+	return 0, false
+}
+
+// admit puts a handset the store placed here into the running stack. False:
+// no index is free and nothing can be dropped to make one.
+func (r *cellRun) admit(h Handset, now time.Time) bool {
+	if _, ok := r.idxOf[h.ID]; ok {
+		if t := r.trans[h.ID]; t != nil {
+			t.added = now // wanted again
+		}
+		return true
+	}
+	if h.Rec.Slot <= maxSlot {
+		return false // a chip record is loaded with the stack, not added to it
+	}
+	i, ok := r.allocIdx()
+	if !ok && r.evictOldest() {
+		i, ok = r.allocIdx()
+	}
+	if !ok {
+		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+		_ = r.core.Records.Unplace(ctx, r.id, h.ID)
+		cancel()
+		return false
+	}
+	r.st.AddRecord(i, h.Rec)
+	r.gen.place(i, h.Rec.Slot, h.Owner)
+	r.gen.job(job{kind: jobTrack, i: i, hid: h.ID})
+	r.idxOf[h.ID], r.hidOf[i] = i, h.ID
+	r.trans[h.ID] = &transRec{idx: i, slot: h.Rec.Slot, added: now}
+	r.log.Info("a handset is in this cell's table", "handset", h.ID, "record", h.Rec.Slot, "held", len(r.trans))
+	return true
+}
+
+// dropTransient takes a working-set handset out of the stack. False: the
+// stack is not quiet (a link or call is up), try again.
+func (r *cellRun) dropTransient(hid uuid.UUID, why string) bool {
+	t := r.trans[hid]
+	if t == nil {
+		return true
+	}
+	if !r.st.Drop(t.idx) {
+		t.busy = true
+		return false
+	}
+	delete(r.trans, hid)
+	delete(r.idxOf, hid)
+	delete(r.hidOf, t.idx)
+	r.freeIdx = append(r.freeIdx, t.idx)
+	delete(r.seenMs, t.idx)
+	delete(r.seenAt, t.idx)
+	r.gen.unplace(t.idx)
+	r.gen.job(job{kind: jobUntrack, i: t.idx, hid: hid})
+	r.log.Info("a handset left this cell's table", "handset", hid, "why", why, "held", len(r.trans))
+	return true
+}
+
+// evictOldest makes room: the handset heard least recently goes.
+func (r *cellRun) evictOldest() bool {
+	var oldest uuid.UUID
+	var at time.Time
+	for hid, t := range r.trans {
+		last := t.added
+		if t.heard.After(last) {
+			last = t.heard
+		}
+		if oldest == uuid.Nil || last.Before(at) {
+			oldest, at = hid, last
+		}
+	}
+	return oldest != uuid.Nil && r.dropTransient(oldest, "the table is full")
+}
+
+// fetched is the store's answer to a Fetch: the handset joins the table, and
+// the stack answers its held request either way.
+func (r *cellRun) fetched(ev event) {
+	defer clear(ev.h.Rec.UAK[:])
+	if r.st == nil || r.gen == nil {
+		return
+	}
+	h, ok := ev.h, ev.ok
+	if ev.err != nil {
+		r.log.Error("the store could not look a handset up", "err", ev.err)
+		ok = false
+	}
+	if ev.full {
+		if !r.evictOldest() {
+			r.log.Warn("the cell's table is full and every handset in it is busy: a handset is turned away")
+		} else {
+			ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+			var err error
+			h, ok, err = r.core.Records.PlaceByIPUI(ctx, r.id, ev.ipui)
+			cancel()
+			defer clear(h.Rec.UAK[:])
+			if err != nil {
+				r.log.Error("the store could not look a handset up", "err", err)
+				ok = false
+			}
+		}
+	}
+	if ok && !r.admit(h, time.Now()) {
+		ok = false
+	}
+	if !ok {
+		r.log.Debug("a handset this cell does not hold is told its identity is unknown")
+	}
+	r.st.Resume(r.core.now())
+}
+
+// evict marks a handset to leave the table (its key or registration changed);
+// the next sweep takes it out, repeatedly until the stack is quiet.
+func (r *cellRun) evict(hid uuid.UUID) {
+	if t := r.trans[hid]; t != nil {
+		t.evict = true
+	}
+}
+
+// ensure makes sure the handset is in the table, for a call, and says its
+// record number. False: the store does not know it, or no room.
+func (r *cellRun) ensure(hid uuid.UUID) (uint, bool) {
+	now := time.Now()
+	if idx, ok := r.idxOf[hid]; ok {
+		if t := r.trans[hid]; t != nil {
+			t.added = now // a call is being offered: keep it
+		}
+		slot, ok := r.gen.slotOf[idx]
+		return slot, ok
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	h, ok, err := r.core.Records.PlaceHandset(ctx, r.id, hid)
+	cancel()
+	defer clear(h.Rec.UAK[:])
+	if err != nil && r.evictOldest() {
+		ctx, cancel = context.WithTimeout(r.core.ctx, storeTimeout)
+		h, ok, err = r.core.Records.PlaceHandset(ctx, r.id, hid)
+		cancel()
+		defer clear(h.Rec.UAK[:])
+	}
+	if err != nil || !ok || !r.admit(h, now) {
+		return 0, false
+	}
+	return h.Rec.Slot, true
+}
+
+// sweep is the working set's expiry, once a second: a handset that has not
+// been heard for the validity and the grace after it leaves, one that was
+// heard on another cell leaves MovedAfter after that, one marked for
+// eviction leaves as soon as the stack is quiet.
+func (r *cellRun) sweep(now time.Time) {
+	rm := r.core.roaming()
+	if u := rm.Units(); u != r.units {
+		r.st.SetLocateValidity(u)
+		r.units = u
+	}
+	for hid, t := range r.trans {
+		last := t.added
+		if t.heard.After(last) {
+			last = t.heard
+		}
+		why := ""
+		switch o, moved := r.core.lastHeard(hid); {
+		case t.evict:
+			why = "its registration changed"
+		case now.Sub(last) > rm.LocateValidity+rm.ExpireAfter:
+			why = "not heard"
+		case moved && o.cell != r.id && o.at.After(last) && now.Sub(o.at) >= rm.MovedAfter:
+			why = "heard on another cell"
+		}
+		if why != "" {
+			r.dropTransient(hid, why)
+		}
+	}
+}
+
+// withSlot puts the handset's record number on this cell into a command.
+func withSlot(line string, slot uint) string {
+	return strings.ReplaceAll(line, "{hs}", strconv.FormatUint(uint64(slot), 10))
+}

@@ -233,11 +233,11 @@ func TestRingErrors(t *testing.T) {
 	if _, err := rr.core.Ring(context.Background(), uuid.New(), Call{}); !errors.Is(err, ErrNoHandset) {
 		t.Errorf("unknown handset: %v", err)
 	}
-	// a cell that is gone holds nothing
+	// no cell up
 	rr.core.CellGone(rr.a)
 	rr.core.CellGone(rr.b)
-	waitFor(t, "both gone", func() bool { _, known := rr.core.holders(rr.h.ID); return !known })
-	if _, err := rr.core.Ring(context.Background(), rr.h.ID, Call{}); !errors.Is(err, ErrNoHandset) {
+	waitFor(t, "both gone", func() bool { return len(rr.core.readyCells()) == 0 })
+	if _, err := rr.core.Ring(context.Background(), rr.h.ID, Call{}); !errors.Is(err, ErrNoCell) {
 		t.Errorf("no cell: %v", err)
 	}
 }
@@ -252,5 +252,50 @@ func TestParseBridgeLine(t *testing.T) {
 	}
 	if n := cleanName("a\"b\\c\nd" + strings.Repeat("x", 40)); strings.ContainsAny(n, "\"\\\n") || len(n) != 32 {
 		t.Errorf("name %q", n)
+	}
+}
+
+// A cell that does not hold the handset takes it into its table when its leg is
+// offered, and the call-in names the number it got there.
+func TestRingPlacesTheHandsetOnTheCell(t *testing.T) {
+	h := handset(9, owner)
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: h}}
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onCtl = func(env stack.Env, line string) {
+			if strings.HasPrefix(line, "call-in ") {
+				env.Event(stack.ToAsker, "call-in-ok call=7 sip="+line[strings.Index(line, "sip=")+4:])
+			}
+		}
+	})
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	if _, err := g.core.Ring(context.Background(), h.ID, Call{SIP: "p1", Number: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the call-in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.ctls) })
+		return n >= 2
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		if f.ctls[1].line != "call-in line=1 hs=9 number=1 sip=p1" {
+			t.Errorf("call-in %q", f.ctls[1].line)
+		}
+		if r, ok := f.records[6]; !ok || r.Slot != 9 {
+			t.Errorf("records %+v: the handset should have been added at index 6", f.records)
+		}
+	})
+	// a full cell with nothing to drop: the leg fails and the offer ends busy
+	recs.get(func(r *fakeRecords) { r.full = true })
+	g.stack(0).get(func(f *fakeStack) { f.busy = true })
+	h2 := handset(10, owner)
+	recs.get(func(r *fakeRecords) { r.place[h2.ID] = h2 })
+	o, err := g.core.Ring(context.Background(), h2.ID, Call{SIP: "p2", Number: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev, _ := nextEvent(t, o); ev.Kind != CallBusy {
+		t.Errorf("event %+v, want busy: the handset could not be placed", ev)
 	}
 }

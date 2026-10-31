@@ -114,17 +114,17 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 
 ## Roaming (added after "implement 1 to 5")
 
-17. **Pooling is on by default** for handsets that enrol from now on (`cells.handset_pool`). It has run in the
-    library's tests and the controller's, not on air. Leave on, or default off until bench B1 passes?
-18. **Handsets enrolled before stay on their home cells**, in chip slots, with the old TPUI. There is no migration
-    (a handset takes a new TPUI only at its next locate, and its key would have to leave the chip). Re-enrolling a
-    handset through a window makes it pooled (same IPUI, same owner). Want a button for it?
-19. **Limits of the pool (corrected 2026-11-01 after your question).** Every cell holds every pooled handset, so
-    one cell's table limits the whole installation: record numbers 7 to 32 (API 145, 32 as you asked), that is 26
-    pooled handsets in total. I had written "249 in the installation and ten per cell"; 249 is only the TPUI range,
-    and that was benched up to N = 0x43. For hundreds or thousands of handsets the table must be a working set per
-    cell (`roaming.md` §4.2: records come in when a handset is heard or paged on the cell and go out when it has
-    not re-located for a while; the controller would set the re-location interval, API 20). Build that?
+17. **Pool TPUIs are on by default** for handsets that enrol from now on (`cells.handset_pool`). The pool form
+    `{00, 11, N}` was benched up to N = 0x43; 249 TPUIs in all. Leave on, or default off until bench B1 passes?
+18. **Handsets enrolled before** keep their chip slots on their home cells and have no TPUI of their own: heard on
+    another cell they are in that cell's table with a TPUI derived from the record number there, so a call to
+    them works only after they located on that cell. Re-enrolling a handset through a window makes it pooled.
+    Want a button for it?
+19. **Working set instead of "every handset on every cell"** (your decision, built): 32 records per cell, handsets
+    come in when they talk to the cell and leave by the three timers (Settings page: 600 s validity, 60 s, 180 s).
+    My additions: a full table drops the handset heard least recently; a drop waits for a quiet base; a handset
+    whose key or registration changed on one cell is dropped from the others as soon as they are quiet; the
+    table starts empty above the chip's slots after a restart.
 20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it** (radio stays on; a call in progress on
     that cell would end). Fine while there is no call path; once there is, the rebuild should wait for an idle cell.
 21. **Records numbered 8 or more have no entry in the handsets' Internal Names list and no call list** (library
@@ -132,6 +132,8 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 22. **Location history**: every change of cell is a row (handset, from, to, time), shown on the handset page and
     counted in the statistics, and erased with the call details after the retention period (90 days by default).
     OK as location data, or shorter?
+23. **The validity is a trade against battery**: every renewal is a short radio link per handset. 10 minutes is
+    your number; a handset that does not honour it simply stays 11 minutes in a table and is dropped after.
 
 ## Not decided by me, only noticed
 

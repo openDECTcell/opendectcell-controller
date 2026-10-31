@@ -54,17 +54,18 @@ var apiRE = regexp.MustCompile(` api=\d+`)
 
 // traceEnv stands in for the chip, the handsets and the bridge's client.
 type traceEnv struct {
-	t      *testing.T
-	host   *Host
-	now    uint64
-	wall   int64
-	rnd    int
-	bridge bool
-	pps    map[uint8]*PP
-	sent   []Mail   // mails the host sent, not yet looked at
-	events []string // lines the host wrote, not yet read
-	out    []string // the current action's output
-	saves  []Record // the records the host saved
+	t       *testing.T
+	host    *Host
+	now     uint64
+	wall    int64
+	rnd     int
+	bridge  bool
+	pps     map[uint8]*PP
+	sent    []Mail   // mails the host sent, not yet looked at
+	events  []string // lines the host wrote, not yet read
+	out     []string // the current action's output
+	saves   []Record // the records the host saved
+	fetched [][]byte // the identities the stack asked the host about
 }
 
 func (e *traceEnv) Send(m Mail) error {
@@ -74,6 +75,9 @@ func (e *traceEnv) Send(m Mail) error {
 }
 
 func (e *traceEnv) Room() bool { return true }
+
+// Fetch notes the identity the stack asked about (the tests answer it themselves).
+func (e *traceEnv) Fetch(ipui []byte) { e.fetched = append(e.fetched, append([]byte(nil), ipui...)) }
 
 // Random is test_stubd.c's random file: byte i is (i * 37 + 11) & 0xFF.
 func (e *traceEnv) Random(b []byte) {

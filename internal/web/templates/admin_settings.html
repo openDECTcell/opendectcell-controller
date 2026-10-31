@@ -95,6 +95,25 @@
 
   <div class="col-lg-6">
     <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "antenna-bars-5"}} Roaming</h3></div>
+      <form method="post" action="/admin/settings/roaming">
+        <div class="card-body">
+          <p class="text-secondary">Every handset can connect to every cell. A cell holds a handset in memory only while it is around: it is taken from the database when it first talks to the cell, and dropped when it stops renewing.</p>
+          <div class="mb-3"><label class="form-label" for="locate_validity_sec">Handsets register again every (seconds)</label>
+            <input class="form-control" id="locate_validity_sec" name="locate_validity_sec" inputmode="numeric" value="{{.Roaming.LocateValiditySec}}">
+            <div class="form-hint">Rounded to 40.96 s; at most 10445; 0 does not ask them to. Each renewal costs the handset a short radio link, so battery.</div></div>
+          <div class="mb-3"><label class="form-label" for="expire_after_sec">Drop a handset that did not, after another (seconds)</label>
+            <input class="form-control" id="expire_after_sec" name="expire_after_sec" inputmode="numeric" value="{{.Roaming.ExpireAfterSec}}"></div>
+          <div class="mb-0"><label class="form-label" for="moved_after_sec">Drop a handset that was heard on another cell, after (seconds)</label>
+            <input class="form-control" id="moved_after_sec" name="moved_after_sec" inputmode="numeric" value="{{.Roaming.MovedAfterSec}}"></div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
       <div class="card-header"><h3 class="card-title">{{icon "mail"}} E-mail</h3></div>
       <div class="card-body">
         {{if .SMTP}}<p>Mail goes out through <code>{{.SMTPHost}}</code>. Users who ask for it get a message when the log level changes.</p>

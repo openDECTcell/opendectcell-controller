@@ -232,8 +232,9 @@ func TestStoreSeen(t *testing.T) {
 	}
 }
 
-// A pooled handset is held by every cell, host-only, under its pool TPUI; a
-// handset of the chip kind keeps its slot and its own kind of TPUI.
+// A pooled handset sits in no table at first: the stack that enrolled it gives its chip
+// slot up when it is rebuilt, and a cell takes it into its working set, above the chip's
+// slots and under its pool TPUI, when it is heard or called there.
 func TestStorePooledHandset(t *testing.T) {
 	s, ctx := newStore(t)
 	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
@@ -272,56 +273,65 @@ func TestStorePooledHandset(t *testing.T) {
 		t.Error("the TPUI is still on offer after it was given away")
 	}
 
-	// Loaded on a: the chip handset in its slot, the pooled one moved out of the
-	// chip to the first record number above it. On b, which never saw either of
-	// them as home, only the pooled one, the same way.
+	// The stack starts with the chip handset only: the pooled one left its chip slot.
 	hs, unplaced, err := s.CellRecords(ctx, a, 6)
-	if err != nil || len(hs) != 2 || len(unplaced) != 0 {
-		t.Fatalf("a: %v %v %v", hs, unplaced, err)
+	if err != nil || len(hs) != 1 || len(unplaced) != 0 || hs[0].ID != chip || hs[0].Rec.Slot != 1 || hs[0].Rec.TPUI != ([3]byte{}) {
+		t.Fatalf("a: %+v %v %v", hs, unplaced, err)
 	}
-	if hs[0].ID != chip || hs[0].Rec.Slot != 1 || hs[0].Rec.TPUI != ([3]byte{}) {
-		t.Errorf("a's chip handset: %+v", hs[0])
+	if hs, _, _ = s.CellRecords(ctx, b, 6); len(hs) != 0 {
+		t.Fatalf("b holds %+v at start", hs)
 	}
-	if hs[1].ID != saved.ID || hs[1].Rec.Slot != poolFirst || hs[1].Rec.TPUI != tp || hs[1].Rec.UAK != r.UAK {
-		t.Errorf("a's pooled handset: %+v", hs[1])
-	}
-	hs, _, err = s.CellRecords(ctx, b, 6)
-	if err != nil || len(hs) != 1 || hs[0].ID != saved.ID || hs[0].Rec.Slot != poolFirst || hs[0].Rec.TPUI != tp {
-		t.Fatalf("b: %+v, %v", hs, err)
+
+	// Heard on b: by its IPUI. It gets the first number above the chip's, its key and its pool TPUI.
+	h, ok, err := s.PlaceByIPUI(ctx, b, r.PortID)
+	if err != nil || !ok || h.ID != saved.ID || h.Rec.Slot != poolFirst || h.Rec.TPUI != tp || h.Rec.UAK != r.UAK {
+		t.Fatalf("place by IPUI: %+v %v %v", h, ok, err)
 	}
 	var state string
 	if err := s.Pool.QueryRow(ctx, "SELECT state FROM cell_slot WHERE cell_id = $1 AND handset_id = $2", b, saved.ID).Scan(&state); err != nil || state != "empty" {
-		t.Errorf("a host-only record is %q in the chip's table (%v), want empty", state, err)
+		t.Errorf("a record above the chip's slots is %q in the chip's table (%v), want empty", state, err)
+	}
+	// Asked again it is the same place; a stranger is not placed.
+	if again, ok, _ := s.PlaceHandset(ctx, b, saved.ID); !ok || again.Rec.Slot != h.Rec.Slot {
+		t.Errorf("placed twice: %+v %v", again, ok)
+	}
+	if _, ok, err := s.PlaceByIPUI(ctx, b, []byte{0x99}); ok || err != nil {
+		t.Errorf("a stranger: %v %v", ok, err)
+	}
+	if known, _ := s.HandsetKnown(ctx, saved.ID); !known {
+		t.Error("the handset is not known")
+	}
+	if known, _ := s.HandsetKnown(ctx, uuid.New()); known {
+		t.Error("a stranger is known")
+	}
+	// A chip handset can be heard on another cell too: it is placed above the chip's slots there.
+	if c, ok, err := s.PlaceHandset(ctx, b, chip); err != nil || !ok || c.Rec.Slot != poolFirst+1 || c.Rec.TPUI != ([3]byte{}) {
+		t.Errorf("a chip handset on b: %+v %v %v", c, ok, err)
 	}
 
-	// A cell that appears later gets it by PlaceHandset; a second time, or a
-	// chip handset, is not placed.
-	c := s.newCell(t, ctx, "c")
-	h, ok, err := s.PlaceHandset(ctx, c, saved.ID)
-	if err != nil || !ok || h.Rec.Slot != poolFirst || h.Rec.TPUI != tp {
-		t.Fatalf("place: %+v %v %v", h, ok, err)
+	// Leaves the table: the number is free for the next one.
+	if err := s.Unplace(ctx, b, saved.ID); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok, _ := s.PlaceHandset(ctx, c, saved.ID); ok {
-		t.Error("placed twice")
+	if hs, _, _ = s.CellRecords(ctx, b, 6); len(hs) != 0 {
+		t.Errorf("b starts with %+v: the working set is not kept across a start", hs)
 	}
-	if _, ok, _ := s.PlaceHandset(ctx, c, chip); ok {
-		t.Error("a chip handset was placed on a cell that is not its home")
+	if h, ok, _ := s.PlaceHandset(ctx, b, saved.ID); !ok || h.Rec.Slot != poolFirst {
+		t.Errorf("the freed number was not reused: %+v", h)
 	}
 
 	// It deregistered on b: gone from every cell, the row stays.
+	if _, ok, _ := s.PlaceHandset(ctx, a, saved.ID); !ok {
+		t.Fatal("not placed on a")
+	}
 	pooled, err := s.Forget(ctx, b, saved.ID)
 	if err != nil || !pooled {
 		t.Fatalf("forget: %v %v", pooled, err)
 	}
-	for _, cell := range []uuid.UUID{a, b, c} {
-		hs, _, _ := s.CellRecords(ctx, cell, 6)
-		for _, h := range hs {
-			if h.ID == saved.ID {
-				t.Errorf("cell %v still holds the deregistered handset", cell)
-			}
-		}
-	}
 	var n int
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM cell_slot WHERE handset_id = $1", saved.ID).Scan(&n); err != nil || n != 0 {
+		t.Errorf("the deregistered handset still sits in %d tables (%v)", n, err)
+	}
 	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM handset WHERE id = $1", saved.ID).Scan(&n); err != nil || n != 1 {
 		t.Errorf("the handset's row: %d, %v", n, err)
 	}
@@ -357,12 +367,13 @@ func TestStoreTPUIPool(t *testing.T) {
 	}
 }
 
-// A cell holds the record numbers above the chip's slots, 7 to 32: 26 pooled
-// handsets. The 27th is not placed and says so.
-func TestStorePooledCellFull(t *testing.T) {
+// A cell's table above the chip's slots holds the record numbers 7 to 32: 26 handsets at a
+// time. The 27th finds no place until one leaves.
+func TestStoreTableFull(t *testing.T) {
 	s, ctx := newStore(t)
 	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
 	anna := s.newUser(t, ctx, "anna")
+	var ids []uuid.UUID
 	for i := range maxRecord - maxSlot + 1 {
 		tp, err := s.ReserveTPUI(ctx)
 		if err != nil {
@@ -370,15 +381,25 @@ func TestStorePooledCellFull(t *testing.T) {
 		}
 		r := rec(1, byte(i+1))
 		r.TPUI = tp
-		if _, err := s.SaveRecord(ctx, a, uuid.Nil, anna, r); err != nil {
+		sv, err := s.SaveRecord(ctx, a, uuid.Nil, anna, r)
+		if err != nil {
 			t.Fatal(err)
 		}
+		ids = append(ids, sv.ID)
 	}
-	hs, unplaced, err := s.CellRecords(ctx, b, 6)
-	if err != nil || len(hs) != maxRecord-maxSlot || len(unplaced) != 1 {
-		t.Fatalf("cell b: %d placed, %d unplaced, %v", len(hs), len(unplaced), err)
+	for i, id := range ids[:len(ids)-1] {
+		h, ok, err := s.PlaceHandset(ctx, b, id)
+		if err != nil || !ok || h.Rec.Slot != uint(maxSlot+1+i) {
+			t.Fatalf("handset %d: %+v %v %v", i, h, ok, err)
+		}
 	}
-	if hs[len(hs)-1].Rec.Slot != maxRecord {
-		t.Errorf("the last record number is %d, want %d", hs[len(hs)-1].Rec.Slot, maxRecord)
+	if _, _, err := s.PlaceHandset(ctx, b, ids[len(ids)-1]); !errors.Is(err, ErrCellFull) {
+		t.Fatalf("the 27th: %v, want ErrCellFull", err)
+	}
+	if err := s.Unplace(ctx, b, ids[3]); err != nil {
+		t.Fatal(err)
+	}
+	if h, ok, err := s.PlaceHandset(ctx, b, ids[len(ids)-1]); err != nil || !ok || h.Rec.Slot != uint(maxSlot+1+3) {
+		t.Fatalf("after a number was freed: %+v %v %v", h, ok, err)
 	}
 }

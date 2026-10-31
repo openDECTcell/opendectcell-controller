@@ -24,6 +24,7 @@ func (s *Server) settingsRoutes() {
 	s.mux.Handle("POST /admin/settings/map", s.requireAdmin(s.settingsMap))
 	s.mux.Handle("POST /admin/settings/retention", s.requireAdmin(s.settingsRetention))
 	s.mux.Handle("POST /admin/settings/security", s.requireAdmin(s.settingsSecurity))
+	s.mux.Handle("POST /admin/settings/roaming", s.requireAdmin(s.settingsRoaming))
 }
 
 type settingsData struct {
@@ -39,6 +40,7 @@ type settingsData struct {
 	MapChoice    string // none, osm or custom
 	Retention    settings.Retention
 	Security     settings.Security
+	Roaming      settings.Roaming
 	SMTP         bool
 	SMTPHost     string
 }
@@ -78,6 +80,9 @@ func (s *Server) settingsView(r *http.Request) (settingsData, error) {
 		return d, err
 	}
 	if d.Security, err = s.Settings.Security(r.Context()); err != nil {
+		return d, err
+	}
+	if d.Roaming, err = s.Settings.Roaming(r.Context()); err != nil {
 		return d, err
 	}
 	d.SMTP, d.SMTPHost = s.mailOn(), s.SMTPHost
@@ -243,4 +248,30 @@ func (s *Server) settingsSecurity(w http.ResponseWriter, r *http.Request, u *aut
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeySecurity,
 		Details: map[string]any{"require_admin_2fa": sec.RequireAdmin2FA}})
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
+}
+
+// settingsRoaming: how long handsets stay in a cell's table. Seconds, because
+// the stack's own unit (40.96 s) is no one's idea of a time; the validity is
+// rounded to it.
+func (s *Server) settingsRoaming(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	num := func(name string, lo, hi int, zeroOK bool) (int, bool) {
+		n, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue(name)))
+		return n, err == nil && ((zeroOK && n == 0) || (n >= lo && n <= hi))
+	}
+	v, ok1 := num("locate_validity_sec", 41, settings.MaxLocateValiditySec, true)
+	e, ok2 := num("expire_after_sec", 5, 86400, false)
+	m, ok3 := num("moved_after_sec", 5, 86400, false)
+	if !ok1 || !ok2 || !ok3 {
+		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: "Give the validity as 41 to 10445 seconds (or 0 to not ask handsets to register again), and the other two as 5 to 86400 seconds."})
+		return
+	}
+	ro := settings.Roaming{LocateValiditySec: v, ExpireAfterSec: e, MovedAfterSec: m}
+	if err := s.Settings.Put(r.Context(), settings.KeyRoaming, ro); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyRoaming,
+		Details: map[string]any{"locate_validity_sec": v, "expire_after_sec": e, "moved_after_sec": m}})
+	http.Redirect(w, r, "/admin/settings?done=Saved.+Cells+pick+it+up+within+10+seconds.", http.StatusSeeOther)
 }

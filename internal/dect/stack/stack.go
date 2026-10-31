@@ -64,6 +64,11 @@ type Env interface {
 	Event(to To, line string)
 	// Save stores record i, which changed.
 	Save(i int, r Record)
+	// Fetch: a handset this cell holds no record of asked to locate or call
+	// (Config.DeferUnknown); ipui is its identity. The host answers, from
+	// anywhere, with Stack.AddRecord (if it knows the handset) and
+	// Stack.Resume, within about 15 s.
+	Fetch(ipui []byte)
 	// Forget: record i is deregistered.
 	Forget(i int, why string)
 	// Named: record i was renamed to name.
@@ -98,6 +103,12 @@ type Config struct {
 	DialWaitMs   uint // 0: 3000
 	TimeEveryMin uint
 	IPUIO        *uint32
+	// DeferUnknown holds a locate or call from a handset the cell holds no
+	// record of until the host has answered Env.Fetch.
+	DeferUnknown bool
+	// LocateValidity is the location registration's validity in units of
+	// 40.96 s (the handset registers again after it); 0: none.
+	LocateValidity uint
 	// ParkPLI is the PARK length handsets are given (class B: 19, ARC and
 	// EIC); 0 is the class's whole ARI.
 	ParkPLI uint
@@ -141,6 +152,15 @@ type Stack interface {
 	// Ctl runs one bridge-interface line; it reports whether the client
 	// has just become the bridge.
 	Ctl(line string, now uint64, isBridge bool) bool
+	// Resume answers the request Env.Fetch reported: the record is in the
+	// table, or there is none and the handset is told its IPUI is unknown.
+	Resume(now uint64)
+	// Drop takes record i out of the table. False: the stack is not idle,
+	// try again later.
+	Drop(i int) bool
+	// SetLocateValidity sets the location validity in units of 40.96 s for
+	// the links from now on; 0: none.
+	SetLocateValidity(units uint)
 	// Close wipes and frees the stack.
 	Close()
 }

@@ -13,6 +13,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -78,6 +79,17 @@ type Core struct {
 
 	calls routes
 
+	// Roaming gives the admin's roaming settings; nil: the defaults. Read at
+	// most every roamingEvery.
+	Roaming func(ctx context.Context) (Roaming, error)
+	rmAt    time.Time
+	rm      Roaming
+	rmMu    sync.Mutex
+
+	fetchSem chan struct{}
+	heardMu  sync.Mutex
+	heardOn  map[uuid.UUID]heard
+
 	mu    sync.Mutex
 	ctx   context.Context
 	start time.Time
@@ -122,6 +134,7 @@ func (c *Core) Start(ctx context.Context) {
 	}
 	c.ctx, c.start = ctx, time.Now()
 	c.cells = map[uuid.UUID]*cellRun{}
+	c.fetchSem = make(chan struct{}, fetchLimit)
 }
 
 // Wait returns once ctx has ended and every stack is closed and its
@@ -177,13 +190,14 @@ const (
 	evMail
 	evReject
 	evRadio
-	evAdd    // a pooled handset enrolled elsewhere: this cell holds it too
-	evReload // rebuild the stack soon, from the records
-	evCtl    // a bridge command for the stack (route.go)
+	evFetched // the answer to a Fetch: the handset's record, or none
+	evEvict   // take this handset out of the cell's table (its key or registration changed)
+	evReload  // rebuild the stack soon, from the records
+	evCtl     // a bridge command for the stack (route.go)
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "add", "reload", "ctl"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "ctl"}[k]
 }
 
 type event struct {
@@ -193,9 +207,15 @@ type event struct {
 	reject wire.MailRejectMsg
 	radio  uint8 // evRadio: the cell's radio and chip state
 	chip   uint8
-	hid    uuid.UUID // evAdd: the handset
-	line   string    // evCtl: the command
+	hid    uuid.UUID // evEvict, evCtl: the handset
+	line   string    // evCtl: the command; {hs} is the handset's record number on the cell
 	sip    string    // evCtl: the call it belongs to
+	// evFetched: the identity asked about, what the store said
+	ipui []byte
+	h    Handset
+	ok   bool
+	full bool
+	err  error
 }
 
 // cellIDs are the cells that have a goroutine now.
@@ -209,29 +229,82 @@ func (c *Core) cellIDs() []uuid.UUID {
 	return ids
 }
 
-// enrolled: a pooled handset enrolled on origin. Every other cell takes it
-// into its running stack; origin holds it in a chip slot until it reloads, so
-// it reloads. A handset that enrolled again may have another TPUI on the
-// cells that already hold it: they all reload.
+// enrolled: a pooled handset enrolled on origin, where it sits in a chip slot
+// until the stack is rebuilt, so origin rebuilds. A handset that enrolled
+// again has a new key and TPUI: the cells that hold it as a roamer drop it.
 func (c *Core) enrolled(origin, hid uuid.UUID, again bool) {
-	for _, id := range c.cellIDs() {
-		switch {
-		case id == origin || again:
-			c.post(id, event{kind: evReload})
-		default:
-			c.post(id, event{kind: evAdd, hid: hid})
-		}
+	c.post(origin, event{kind: evReload})
+	if again {
+		c.evictElsewhere(origin, hid)
 	}
 }
 
 // forgotten: a pooled handset deregistered on origin, which is now without it;
-// the other cells reload so none keeps admitting it.
-func (c *Core) forgotten(origin uuid.UUID) {
+// the other cells drop it too.
+func (c *Core) forgotten(origin, hid uuid.UUID) { c.evictElsewhere(origin, hid) }
+
+func (c *Core) evictElsewhere(origin, hid uuid.UUID) {
 	for _, id := range c.cellIDs() {
 		if id != origin {
-			c.post(id, event{kind: evReload})
+			c.post(id, event{kind: evEvict, hid: hid})
 		}
 	}
+}
+
+// fetchLimit bounds the lookups running at once; a cell asks one at a time.
+const (
+	fetchLimit   = 8
+	fetchTimeout = 5 * time.Second
+)
+
+// fetch looks the handset with this identity up for a cell that holds no record
+// of it (Env.Fetch) and posts the answer. The store is asked off the cell's
+// goroutine; the handset waits about 15 s (openDECTcell notes, API 18).
+func (c *Core) fetch(cell uuid.UUID, ipui []byte) {
+	ip := append([]byte(nil), ipui...)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		select {
+		case c.fetchSem <- struct{}{}:
+			defer func() { <-c.fetchSem }()
+		case <-c.ctx.Done():
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.ctx, fetchTimeout)
+		defer cancel()
+		h, ok, err := c.Records.PlaceByIPUI(ctx, cell, ip)
+		ev := event{kind: evFetched, ipui: ip, h: h, ok: ok, err: err}
+		if errors.Is(err, ErrCellFull) {
+			ev.full, ev.err = true, nil
+		}
+		c.post(cell, ev)
+	}()
+}
+
+// heard says where a handset was last heard, from the cells' own sightings
+// (not the database's, which is written at most every 30 s).
+type heard struct {
+	cell uuid.UUID
+	at   time.Time
+}
+
+func (c *Core) noteHeard(hid, cell uuid.UUID, at time.Time) {
+	c.heardMu.Lock()
+	defer c.heardMu.Unlock()
+	if c.heardOn == nil {
+		c.heardOn = map[uuid.UUID]heard{}
+	}
+	if old, ok := c.heardOn[hid]; !ok || at.After(old.at) {
+		c.heardOn[hid] = heard{cell, at}
+	}
+}
+
+func (c *Core) lastHeard(hid uuid.UUID) (heard, bool) {
+	c.heardMu.Lock()
+	defer c.heardMu.Unlock()
+	h, ok := c.heardOn[hid]
+	return h, ok
 }
 
 // MailUp takes a mail from the cell (§7). The parameters are copied: the

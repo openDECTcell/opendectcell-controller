@@ -79,6 +79,9 @@ struct cdect_host {
 	int      sub_restored;		/* the records went into the chip */
 	int      no_dummy;		/* trace replays: no dummy key in an empty table */
 	int      started;		/* cdect_host_start has run: a new record is a runtime add */
+	/* the identity of a held LOCATE or CC-SETUP the host was asked about (defer_unknown) */
+	uint8_t  fetch_id[DECT_MM_PORTID_MAX];
+	size_t   fetch_len;
 
 	/* Go stages here. */
 	struct dect_mail     in;
@@ -102,6 +105,13 @@ int cdect_host_start(struct cdect_host *c);
 
 /* The mail in c->in, from the chip (MAIL_UP). */
 void cdect_host_mail(struct cdect_host *c, uint64_t now);
+/*
+ * The host has answered cdectFetch(): the record is in the table (cdect_host_record) or
+ * there is none. Hold it on the live link and answer the held request.
+ */
+void cdect_host_resume(struct cdect_host *c, uint64_t now);
+/* Take record i out of the table; 0, or -1 when the base is not quiet or i is no record. */
+int cdect_host_drop(struct cdect_host *c, unsigned i);
 /* One loop pass: the host's steps and dect_base_tick(). */
 void cdect_host_tick(struct cdect_host *c, uint64_t now);
 /* When record i last had C-plane traffic, on the stack's clock; 0: never. */
