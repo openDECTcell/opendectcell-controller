@@ -1,5 +1,39 @@
 # Decisions and questions for the maintainer, 2026-11-01
 
+## Answered 2026-11-01 (question tool) and what was done
+
+| # | Answer | Done |
+|---|---|---|
+| 1 | Reload the chip at every cell start | as built; on the 7412 the stale keys are gone after a restart |
+| 2 | Mask = slot 1 for the dummy key | as built (`00 01` seen on air) |
+| 3 | Bench check alone on the 7412 first | done, pass on 06.88; the 7520 as a cell is waiting for an enrollment string (see below) |
+| 4 | E-mail verification mandatory once SMTP exists | built, with resend and password reset |
+| 5 | Sign-up password 12 characters or more | all local passwords now need 12 |
+| 6 | OIDC only, no SCIM | nothing to do |
+| 7 | Exact position by default | migration default `exact` |
+| 8 | Add talk time to the shared statistics | in the public view |
+| 9 | Duplicate station names allowed | migration 0006 drops the unique index |
+| 10 | Admin picks the tile source | as built; plus a switch to make the map public |
+| 11 | Default expiry of loud log levels 24 hours | first option in the form |
+| 12 | Last three digits of a number at the calls level | as built |
+| 13 | Opted-in users plus all admins get the log notice | built |
+| 14 | German after the handsets page | handsets page is built; German is next |
+| 15 | Show stubs with a badge | as built (Calls is the only stub left) |
+| 16 | All of the above in their order | handsets page and public map, two-factor login, operator features: built |
+
+## New questions from the night's work (none blocks)
+
+- **7520 as a cell.** It needs an enrollment string from your controller, or your OK for me to make a throwaway admin on it (the sandbox refused me to do that on my own). Then: install `opendectcell-cell`, enrol, restart, read the audit on 08.25 (the cold-chip question), leave cell mode again.
+- **Retention defaults** keep everything. Recommended values (90 days for call details, 365 for the audit log) are in the settings text. Make them the default for a fresh installation?
+- **Images** (`opendectcell/docs/images-plan.md`): I1 one OpenWrt release for both boxes? I2 the PCM module's repository for CI? I3 what goes in the default image? I5 images only on tags and manual runs?
+- **Two-factor for admins:** a notice on the dashboard today. Enforce it (an admin without it cannot use admin pages), or leave it a recommendation?
+- **Public map:** off until an admin ticks a box; the JSON feed answers `Access-Control-Allow-Origin: *` when public. Fine?
+- **The CI-minutes rule I added:** docs-only pushes skip CI. Say if you want them to run.
+
+---
+
+## Original questions (kept for the record)
+
 Collected while working alone overnight. **Nothing here blocks**; each item says
 what I did meanwhile and what changes if you answer differently. Answer in bulk
 whenever it suits; short answers ("1 b, 4 yes") are enough.
