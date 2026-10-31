@@ -852,6 +852,9 @@ func (s *Server) attach(ss *session, h wire.HelloMsg) (resumed bool, token [16]b
 	st.Online, st.Since, st.RemoteAddr, st.SWVersion = true, time.Now(), ss.addr.String(), h.SWVersion
 	st.RadioState = h.RadioState
 	st.ChipEpoch = h.ChipEpoch
+	if h.HasRFPI { // a cell that sends no STATUS after its HELLO still shows what its chip broadcasts
+		st.RFPI, st.HasRFPI = h.RFPI, true
+	}
 	st.AudioDown, st.AudioUp = h.AudioFormats, h.AudioFormatsUp
 	if st.AudioUp == nil {
 		st.AudioUp = h.AudioFormats // tag 16 absent: the same list

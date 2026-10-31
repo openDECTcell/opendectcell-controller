@@ -507,3 +507,27 @@ func TestForeignCertificateRejected(t *testing.T) {
 		t.Fatal("certificate from another CA accepted")
 	}
 }
+
+// The RFPI in HELLO shows in the cell's live status at once: a cell that sends
+// no STATUS after its HELLO still has its identity on the cells page.
+func TestHelloRFPIShowsInTheStatus(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, false)
+	rfpi := [5]byte{0x03, 0x69, 0x0e, 0x24, 0xb8}
+	cn, err := c.Connect(e.ctx, celltest.Options{RFPI: &rfpi})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	for end := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if s := e.srv.CellStatus(c.ID); s.HasRFPI {
+			if s.RFPI != rfpi {
+				t.Fatalf("status RFPI %x, want %x", s.RFPI, rfpi)
+			}
+			return
+		}
+		if time.Now().After(end) {
+			t.Fatal("the HELLO's RFPI never reached the live status")
+		}
+	}
+}

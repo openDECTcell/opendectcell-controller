@@ -161,9 +161,10 @@ func (c *Cell) Renew(conn *Conn) error {
 type Options struct {
 	ResumeToken []byte
 	ChipEpoch   uint32
-	Major       uint8 // default wire.ProtoMajor
-	NoAutoEcho  bool  // don't answer the controller's heartbeats
-	NoHello     bool  // connect but send nothing
+	Major       uint8    // default wire.ProtoMajor
+	NoAutoEcho  bool     // don't answer the controller's heartbeats
+	NoHello     bool     // connect but send nothing
+	RFPI        *[5]byte // the identity the chip broadcasts, in HELLO tag 17
 }
 
 // Conn is an established link.
@@ -193,6 +194,9 @@ func (c *Cell) Connect(ctx context.Context, o Options) (*Conn, error) {
 	h := wire.HelloMsg{Major: major, SWVersion: "celltest 1", BootID: c.BootID, ChipEpoch: o.ChipEpoch,
 		Capabilities: wire.CapMail | wire.CapStats | wire.CapFlow | wire.CapResume, CapSubRecords: 6,
 		CapRadioContexts: 6, CapAudioNB: 4, CapAudioWB: 4, ResumeToken: o.ResumeToken, RadioState: 1}
+	if o.RFPI != nil {
+		h.RFPI, h.HasRFPI = *o.RFPI, true
+	}
 	if err := cn.Send(wire.Frame{Type: wire.Hello, Corr: 1, Body: h.Encode()}); err != nil {
 		conn.Close()
 		return nil, err
