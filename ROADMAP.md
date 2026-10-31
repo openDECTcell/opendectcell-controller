@@ -75,7 +75,7 @@ measured so far and what is still unknown.
 - [ ] Load test at the design target (10 cells / 50 handsets)
 
 ## C9: Multi-cell
-- [ ] Idle roaming across cells with a shared registration database
+- [ ] Idle roaming across cells with a shared registration database. Investigation, preconditions and work list: `docs/roaming.md` (2026-11-01): handsets choose their cell themselves; the controller's job is shared identity, records on every cell, tracking and routing
 - [ ] System identity (ARI/RPN) assignment, based on the openDECTcell M11 research
 - [ ] Research: seamless handover (depends on inter-cell sync)
 
