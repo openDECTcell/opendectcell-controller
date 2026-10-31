@@ -10,12 +10,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/media"
 )
 
@@ -54,6 +56,15 @@ func (c Call) Duration() time.Duration {
 // Store reads and writes call_log.
 type Store struct {
 	Pool *pgxpool.Pool
+	// Log, if set, gets one line per call event at the calls level
+	// (logctl.LevelCalls), with the remote party masked.
+	Log *slog.Logger
+}
+
+func (s *Store) note(ctx context.Context, msg string, args ...any) {
+	if s.Log != nil {
+		s.Log.Log(ctx, logctl.LevelCalls, msg, args...)
+	}
 }
 
 // Start records a new call. The owner is the handset owner at this moment, a
@@ -67,12 +78,19 @@ func (s *Store) Start(ctx context.Context, c Call) (int64, error) {
 		VALUES ($1, coalesce($2, (SELECT owner_user_id FROM handset WHERE id = $1)), $3, $4, $5, $6, $7, coalesce($8::uuid[], '{}'))
 		RETURNING id`,
 		c.HandsetID, c.OwnerID, c.Line, c.SIPAccountID, c.Direction, c.RemoteParty, c.StartedAt, c.CellIDs).Scan(&id)
+	if err == nil {
+		s.note(ctx, "call started", "call", id, "direction", c.Direction, "remote", logctl.MaskNumber(c.RemoteParty), "line", c.Line, "cells", c.CellIDs)
+	}
 	return id, err
 }
 
 // Answered records when the call was answered.
 func (s *Store) Answered(ctx context.Context, id int64, at time.Time) error {
-	return s.exec(ctx, "UPDATE call_log SET answered_at = $2 WHERE id = $1 AND answered_at IS NULL", id, at)
+	err := s.exec(ctx, "UPDATE call_log SET answered_at = $2 WHERE id = $1 AND answered_at IS NULL", id, at)
+	if err == nil {
+		s.note(ctx, "call answered", "call", id)
+	}
+	return err
 }
 
 // End is how a call finished.
@@ -95,8 +113,12 @@ func (s *Store) Ended(ctx context.Context, id int64, e End) error {
 			return err
 		}
 	}
-	return s.exec(ctx, `UPDATE call_log SET ended_at = $2, end_reason = $3, sip_codec = nullif($4, ''), cell_codec = nullif($5, ''),
+	err := s.exec(ctx, `UPDATE call_log SET ended_at = $2, end_reason = $3, sip_codec = nullif($4, ''), cell_codec = nullif($5, ''),
 		sip_tls = $6, srtp = $7, quality = $8 WHERE id = $1`, id, e.At, e.Reason, e.SIPCodec, e.CellCodec, e.SIPTLS, e.SRTP, q)
+	if err == nil {
+		s.note(ctx, "call ended", "call", id, "reason", e.Reason, "sip_codec", e.SIPCodec, "cell_codec", e.CellCodec, "srtp", e.SRTP != nil && *e.SRTP)
+	}
+	return err
 }
 
 func (s *Store) exec(ctx context.Context, sql string, args ...any) error {

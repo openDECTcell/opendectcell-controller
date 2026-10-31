@@ -33,7 +33,7 @@ var levelHelp = map[string]string{
 	"warn":  "errors and things that look wrong",
 	"info":  "normal operation: starts, links up and down, registrations",
 	"debug": "details for a developer: protocol steps; may contain addresses",
-	"calls": "every single call: who, which line and cell, codec, quality; phone numbers are masked except the last three digits",
+	"calls": "one line per call event (started, answered, ended): line, cells, codecs, how it ended; phone numbers are masked except the last three digits. Written by the call log, so calls that are not in the call log yet are not covered",
 }
 
 type loggingData struct {

@@ -6,7 +6,7 @@
 .brand-logo { height: 2rem; width: auto; max-width: 8rem; object-fit: contain; }
 .brand-logo-lg { height: 3.5rem; max-width: 12rem; }
 .brand-mark svg { width: 1.6rem; height: 1.6rem; }
-.brand-name { font-weight: 600; font-size: 1.05rem; line-height: 1.2; }
+.brand-name { font-weight: 600; font-size: 1.05rem; line-height: 1.2; flex: 1; text-align: left; }
 .settings-logo { max-height: 4rem; max-width: 100%; background: repeating-conic-gradient(var(--tblr-border-color) 0 25%, transparent 0 50%) 50% / 12px 12px; border-radius: 4px; }
 
 .navbar-vertical .nav-heading { padding: 1rem .75rem .35rem; font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--tblr-secondary-color, #9aa5b0); }

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -244,4 +245,24 @@ func (h *handler) WithAttrs(as []slog.Attr) slog.Handler {
 
 func (h *handler) WithGroup(name string) slog.Handler {
 	return &handler{c: h.c, inner: h.inner.WithGroup(name), lv: h.lv}
+}
+
+// MaskNumber hides a phone number for the calls level: only the last three
+// digits stay, so a log line can be matched to a call without being a list of
+// who phoned whom. A SIP address keeps its host and masks the user part.
+func MaskNumber(s string) string {
+	user, host, hasHost := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(s, "sip:"), "sips:"), "@")
+	if !hasHost {
+		user, host = s, ""
+	}
+	r := []rune(user)
+	if len(r) > 3 {
+		for i := 0; i < len(r)-3; i++ {
+			r[i] = '*'
+		}
+	}
+	if hasHost {
+		return string(r) + "@" + host
+	}
+	return string(r)
 }
