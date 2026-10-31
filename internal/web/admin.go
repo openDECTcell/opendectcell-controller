@@ -82,7 +82,7 @@ type systemData struct {
 
 func (s *Server) adminSystem(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	d := systemData{Version: s.Version, Go: runtime.Version(), Now: time.Now(), Local: s.LocalLogin, OIDC: s.OIDC != nil,
-		Mail: s.Mailer.Enabled(), MailHost: s.SMTPHost, Cells: s.Cells != nil, SIP: s.SIPAccounts != nil}
+		Mail: s.mailOn(), MailHost: s.SMTPHost, Cells: s.Cells != nil, SIP: s.SIPAccounts != nil}
 	if !s.StartedAt.IsZero() {
 		d.Up = time.Since(s.StartedAt).Truncate(time.Second).String()
 	}

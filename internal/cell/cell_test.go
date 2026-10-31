@@ -248,9 +248,10 @@ func TestHandshakeApproveAndHeartbeat(t *testing.T) {
 	}
 	// Mails from an active cell with no sink are counted and dropped.
 	cn.Send(wire.Frame{Type: wire.MailUp, Body: make([]byte, 9)})
-	time.Sleep(100 * time.Millisecond)
-	if e.srv.CellStatus(c.ID).MailsDrop != 1 {
-		t.Error("mail from an active cell not counted")
+	for end := time.Now().Add(3 * time.Second); e.srv.CellStatus(c.ID).MailsDrop != 1; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("mail from an active cell not counted")
+		}
 	}
 }
 

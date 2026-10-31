@@ -1,0 +1,13 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "forgot.html"}}{{template "head" .}}
+<div class="card card-md"><div class="card-body">
+  <h2 class="h2 text-center mb-3">Forgot your password</h2>
+  <p class="text-secondary">Give the e-mail address of your account. If it has one, we send a link to choose a new password.</p>
+  <form method="post" action="/forgot">
+    <div class="mb-3"><label class="form-label" for="email">E-mail address</label>
+      <input class="form-control" id="email" name="email" type="email" autocomplete="email" required autofocus></div>
+    <button type="submit" class="btn btn-primary w-100">Send the link</button>
+  </form>
+</div></div>
+<div class="text-center text-secondary mt-3"><a href="/login">Back to the login</a></div>
+{{template "foot" .}}{{end}}

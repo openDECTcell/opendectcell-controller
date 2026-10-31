@@ -5,7 +5,9 @@
   <div class="card-body">
     {{if .Done}}
     <h2 class="h2 text-center mb-3">Thank you</h2>
-    <p>Your account was created. An administrator has to approve it before you can log in.</p>
+    {{if .Verify}}<p>We sent a link to <strong>{{.Email}}</strong>. Open it within 24 hours to confirm the address{{if .Pending}}; an administrator then approves the account before you can log in{{end}}.</p>
+    <form method="post" action="/register/resend" class="mb-3"><input type="hidden" name="email" value="{{.Email}}"><button type="submit" class="btn btn-outline-secondary w-100">Send the link again</button></form>
+    {{else}}<p>Your account was created. An administrator has to approve it before you can log in.</p>{{end}}
     <a class="btn btn-primary w-100" href="/login">Back to the login</a>
     {{else}}
     <h2 class="h2 text-center mb-4">Create an account</h2>
@@ -17,6 +19,7 @@
       <div class="mb-3"><label class="form-label" for="password">Password</label>
         <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="12" required>
         <div class="form-hint">At least 12 characters.</div></div>
+      {{if .Verify}}<p class="text-secondary small">We send a link to confirm the address before the account opens.</p>{{end}}
       {{if .Approval}}<p class="text-secondary small">An administrator approves new accounts before they can log in.</p>{{end}}
       <div class="form-footer"><button type="submit" class="btn btn-primary w-100">Register</button></div>
     </form>

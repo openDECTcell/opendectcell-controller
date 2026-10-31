@@ -31,7 +31,6 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
-	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
@@ -42,6 +41,15 @@ var templateFS embed.FS
 
 //go:embed static
 var staticFS embed.FS
+
+// Mailer sends the controller's mail; *mailer.Mailer is the real one.
+type Mailer interface {
+	Enabled() bool
+	Send(ctx context.Context, to []string, subject, body string) error
+}
+
+// mailOn reports whether mail can be sent.
+func (s *Server) mailOn() bool { return s.Mailer != nil && s.Mailer.Enabled() }
 
 // Server is the web UI.
 type Server struct {
@@ -64,7 +72,7 @@ type Server struct {
 	Settings       *settings.Store  // nil: the default instance name, no settings pages
 	Stats          *stats.Store     // nil: no statistics pages
 	LogCtl         *logctl.Controller
-	Mailer         *mailer.Mailer // nil or without a host: no mail
+	Mailer         Mailer // nil: no mail
 	SMTPHost       string
 	StartedAt      time.Time
 
@@ -131,6 +139,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /login", s.loginPost)
 	s.mux.HandleFunc("GET /register", s.registerPage)
 	s.mux.HandleFunc("POST /register", s.registerPost)
+	s.mux.HandleFunc("GET /register/verify", s.verifyPage)
+	s.mux.HandleFunc("POST /register/verify", s.verifyPost)
+	s.mux.HandleFunc("POST /register/resend", s.resendPost)
+	s.mux.HandleFunc("GET /forgot", s.forgotPage)
+	s.mux.HandleFunc("POST /forgot", s.forgotPost)
+	s.mux.HandleFunc("GET /reset", s.resetPage)
+	s.mux.HandleFunc("POST /reset", s.resetPost)
 	s.mux.HandleFunc("POST /logout", s.logout)
 	s.mux.HandleFunc("GET /auth/oidc/start", s.oidcStart)
 	s.mux.HandleFunc("GET /auth/oidc/callback", s.oidcCallback)

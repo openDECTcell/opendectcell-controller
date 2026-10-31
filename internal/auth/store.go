@@ -49,6 +49,9 @@ type User struct {
 	// PendingApproval: signed up by themselves, waiting for an admin
 	// (disabled until then).
 	PendingApproval bool
+	// EmailVerified is false for a sign-up that has not followed the link
+	// in its e-mail yet (disabled until it does).
+	EmailVerified bool
 }
 
 // IsAdmin reports whether u has the admin role.
@@ -100,12 +103,12 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
-const userCols = `id, username, display_name, coalesce(email, ''), role, may_add_cells, auth_source, disabled, created_at, last_login_at, pending_approval`
+const userCols = `id, username, display_name, coalesce(email, ''), role, may_add_cells, auth_source, disabled, created_at, last_login_at, pending_approval, email_verified`
 
 func scanUser(r pgx.Row) (*User, error) {
 	var u User
 	var role string
-	err := r.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt, &u.PendingApproval)
+	err := r.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt, &u.PendingApproval, &u.EmailVerified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -183,6 +186,9 @@ func (s *Store) CreateLocalUser(ctx context.Context, n NewLocalUser) (*User, err
 	return u, nil
 }
 
+// VerifyTTL is how long the link in a verification mail works.
+const VerifyTTL = 24 * time.Hour
+
 // ErrRegisterRate is returned when one client address signs up too often.
 var ErrRegisterRate = errors.New("auth: too many sign-ups from this address; try again later")
 
@@ -191,6 +197,9 @@ type SelfRegistration struct {
 	Username, Email, Password string
 	// Pending creates the account disabled until an admin approves it.
 	Pending bool
+	// Unverified creates it disabled until the address is verified; the
+	// caller then sends the link (NewEmailToken).
+	Unverified bool
 }
 
 // ValidEmail accepts a plain address, without a display name or comments.
@@ -232,8 +241,8 @@ func (s *Store) RegisterSelf(ctx context.Context, n SelfRegistration, addr strin
 	}
 	var u *User
 	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		u, err = scanUser(tx.QueryRow(ctx, `INSERT INTO app_user (username, email, role, auth_source, password_hash, disabled, pending_approval)
-			VALUES ($1, $2, 'user', 'local', $3, $4, $4) RETURNING `+userCols, n.Username, n.Email, hash, n.Pending))
+		u, err = scanUser(tx.QueryRow(ctx, `INSERT INTO app_user (username, email, role, auth_source, password_hash, disabled, pending_approval, email_verified)
+			VALUES ($1, $2, 'user', 'local', $3, $4 OR $5, $4, NOT $5) RETURNING `+userCols, n.Username, n.Email, hash, n.Pending, n.Unverified))
 		if isUniqueViolation(err) {
 			return ErrUsernameTaken
 		}
@@ -241,7 +250,7 @@ func (s *Store) RegisterSelf(ctx context.Context, n SelfRegistration, addr strin
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.register", ObjectType: "user", ObjectID: u.ID.String(),
-			Details: map[string]any{"username": u.Username, "pending": n.Pending}})
+			Details: map[string]any{"username": u.Username, "pending": n.Pending, "unverified": n.Unverified}})
 	})
 	if err != nil {
 		return nil, err
@@ -485,12 +494,12 @@ func (s *Store) LookupSession(ctx context.Context, tok string) (*Session, error)
 	var sess Session
 	var lastSeen, expires time.Time
 	row := s.Pool.QueryRow(ctx, `SELECT s.auth_method, s.created_at, s.last_seen_at, s.expires_at,
-			u.id, u.username, u.display_name, coalesce(u.email, ''), u.role, u.may_add_cells, u.auth_source, u.disabled, u.created_at, u.last_login_at
+			u.id, u.username, u.display_name, coalesce(u.email, ''), u.role, u.may_add_cells, u.auth_source, u.disabled, u.created_at, u.last_login_at, u.pending_approval, u.email_verified
 		FROM session s JOIN app_user u ON u.id = s.user_id WHERE s.token_hash = $1`, h)
 	var u User
 	var role string
 	err := row.Scan(&sess.Method, &sess.CreatedAt, &lastSeen, &expires,
-		&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt)
+		&u.ID, &u.Username, &u.DisplayName, &u.Email, &role, &u.MayAddCells, &u.AuthSource, &u.Disabled, &u.CreatedAt, &u.LastLoginAt, &u.PendingApproval, &u.EmailVerified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoSession
 	}
@@ -527,7 +536,14 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.Pool.Exec(ctx, "DELETE FROM login_failure WHERE at <= $1", now.Add(-s.window())); err != nil {
 		return err
 	}
-	_, err = s.Pool.Exec(ctx, "DELETE FROM oidc_login WHERE expires_at <= $1", now)
+	if _, err := s.Pool.Exec(ctx, "DELETE FROM oidc_login WHERE expires_at <= $1", now); err != nil {
+		return err
+	}
+	if _, err := s.Pool.Exec(ctx, "DELETE FROM email_token WHERE expires_at <= $1", now.Add(-24*time.Hour)); err != nil {
+		return err
+	}
+	// A sign-up that never followed its link is not kept (data minimisation).
+	_, err = s.Pool.Exec(ctx, "DELETE FROM app_user WHERE NOT email_verified AND created_at <= $1", now.Add(-VerifyTTL-24*time.Hour))
 	return err
 }
 

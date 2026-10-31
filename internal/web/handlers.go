@@ -76,6 +76,7 @@ type loginData struct {
 	OIDC       bool
 	OIDCName   string
 	Register   bool // self-registration is on
+	Forgot     bool // reset by e-mail is possible
 }
 
 func (s *Server) loginData(r *http.Request) loginData {
@@ -85,6 +86,7 @@ func (s *Server) loginData(r *http.Request) loginData {
 		OIDC:       s.OIDC != nil,
 		OIDCName:   s.OIDCName,
 		Register:   s.registrationOpen(r.Context()),
+		Forgot:     s.LocalLogin && s.mailOn(),
 	}
 }
 

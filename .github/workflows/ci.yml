@@ -3,7 +3,14 @@ name: CI
 
 on:
   push:
+    # a docs-only push has nothing to build (saves CI minutes)
+    paths-ignore: ["**.md", "docs/**"]
   pull_request:
+
+# a newer push to the same branch makes the older run pointless
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -81,7 +88,7 @@ jobs:
       - name: Licence headers
         run: |
           missing=$(git ls-files '*.go' '*.sql' '*.c' '*.h' '*.html' '*.css' '*.yml' '*.yaml' Dockerfile \
-            | grep -v '^third_party/' | xargs grep -L 'SPDX-License-Identifier: AGPL-3.0-or-later' || true)
+            | grep -v '^third_party/\|/static/vendor/' | xargs grep -L 'SPDX-License-Identifier: AGPL-3.0-or-later' || true)
           if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi
       - name: Test
         run: |

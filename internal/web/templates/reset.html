@@ -1,0 +1,13 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "reset.html"}}{{template "head" .}}
+<div class="card card-md"><div class="card-body">
+  <h2 class="h2 text-center mb-3">Choose a new password</h2>
+  <form method="post" action="/reset">
+    <input type="hidden" name="token" value="{{.Data}}">
+    <div class="mb-3"><label class="form-label" for="password">New password</label>
+      <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="12" required autofocus>
+      <div class="form-hint">At least 12 characters. All your sessions end.</div></div>
+    <button type="submit" class="btn btn-primary w-100">Change the password</button>
+  </form>
+</div></div>
+{{template "foot" .}}{{end}}

@@ -4,6 +4,7 @@ package logctl
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -93,7 +94,7 @@ func TestApplySkipsExpiredAndUnknown(t *testing.T) {
 	if got["sip"] != "error" || got["web"] != "debug" || got["dect"] != "error" || got["core"] != "error" {
 		t.Errorf("levels %v", got)
 	}
-	if err := c.Set("nope", "info", 0); err != ErrUnknownComponent {
+	if err := c.Set("nope", "info", 0); !errors.Is(err, ErrUnknownComponent) {
 		t.Errorf("unknown component: %v", err)
 	}
 	if err := c.Set("web", "loud", 0); err == nil {

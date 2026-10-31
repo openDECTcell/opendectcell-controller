@@ -1,0 +1,8 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "verify.html"}}{{template "head" .}}
+<div class="card card-md"><div class="card-body">
+  <h2 class="h2 text-center mb-3">Confirm your address</h2>
+  <p>Press the button to confirm that this address is yours.</p>
+  <form method="post" action="/register/verify"><input type="hidden" name="token" value="{{.Data}}"><button type="submit" class="btn btn-primary w-100">Confirm</button></form>
+</div></div>
+{{template "foot" .}}{{end}}

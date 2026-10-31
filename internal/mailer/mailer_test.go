@@ -3,6 +3,7 @@
 package mailer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestSendDisabled(t *testing.T) {
 	if m.Enabled() {
 		t.Fatal("nil mailer enabled")
 	}
-	if err := (&Mailer{}).Send(nil, []string{"a@b.c"}, "s", "b"); err != ErrDisabled { //nolint:staticcheck // nil context: never used when disabled
+	if err := (&Mailer{}).Send(nil, []string{"a@b.c"}, "s", "b"); !errors.Is(err, ErrDisabled) { //nolint:staticcheck // nil context: never used when disabled
 		t.Fatalf("got %v", err)
 	}
 }

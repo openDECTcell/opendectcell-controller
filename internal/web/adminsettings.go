@@ -69,7 +69,7 @@ func (s *Server) settingsView(r *http.Request) (settingsData, error) {
 	default:
 		d.MapChoice = "custom"
 	}
-	d.SMTP, d.SMTPHost = s.Mailer.Enabled(), s.SMTPHost
+	d.SMTP, d.SMTPHost = s.mailOn(), s.SMTPHost
 	return d, nil
 }
 
@@ -89,7 +89,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request, u *auth.Us
 
 func (s *Server) settingsGeneral(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	r.Body = http.MaxBytesReader(w, r.Body, settings.MaxLogoBytes+(64<<10))
-	if err := r.ParseMultipartForm(settings.MaxLogoBytes + (64 << 10)); err != nil {
+	if err := r.ParseMultipartForm(settings.MaxLogoBytes + (64 << 10)); err != nil { //nolint:gosec // G120: the body is capped by the MaxBytesReader above
 		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: "The form was too large or malformed. A logo may be at most 256 KiB."})
 		return
 	}

@@ -50,7 +50,7 @@ type loggingData struct {
 
 func (s *Server) loggingView(r *http.Request, u *auth.User) (loggingData, error) {
 	d := loggingData{Rows: s.LogCtl.Effective(), Default: s.LogCtl.State().Default, Levels: logctl.Names, Help: levelHelp,
-		Admin: u.IsAdmin(), HasEmail: u.Email != "", MailOK: s.Mailer.Enabled()}
+		Admin: u.IsAdmin(), HasEmail: u.Email != "", MailOK: s.mailOn()}
 	err := s.Pool.QueryRow(r.Context(), "SELECT notify_log_changes FROM app_user WHERE id = $1", u.ID).Scan(&d.Notify)
 	if err == nil && u.IsAdmin() {
 		err = s.Pool.QueryRow(r.Context(), "SELECT count(*) FROM app_user WHERE (notify_log_changes OR role = 'admin') AND NOT disabled AND coalesce(email, '') <> ''").Scan(&d.Subscribers)
@@ -169,7 +169,7 @@ func (s *Server) logChanged(ctx context.Context, who string, before logctl.State
 		return
 	}
 	_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "log.level", ObjectType: "setting", ObjectID: settings.KeyLogging, Details: map[string]any{"changes": diff}})
-	go s.notifyLogChange(who, diff)
+	go s.notifyLogChange(who, diff) //nolint:gosec // G118: the mail outlives the request on purpose
 }
 
 func logDiff(a, b logctl.State) string {
@@ -200,7 +200,7 @@ func logDiff(a, b logctl.State) string {
 // notifyLogChange mails the users who opted in. It runs outside the request,
 // so a slow mail server does not hold up the admin's page.
 func (s *Server) notifyLogChange(who, diff string) {
-	if !s.Mailer.Enabled() {
+	if !s.mailOn() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
