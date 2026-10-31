@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
-	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 )
@@ -32,8 +31,7 @@ func sipFormValues(label, pw string) url.Values {
 func TestSIPAccountPages(t *testing.T) {
 	var store *sipaccount.Store
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)

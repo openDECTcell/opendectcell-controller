@@ -24,6 +24,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
+	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 )
 
 // Role is a user's role.
@@ -91,6 +92,8 @@ type Store struct {
 	RateLimit     int           // failures allowed per key per RateWindow
 	RateWindow    time.Duration // default 15 min
 	Now           func() time.Time
+	// Keyring protects two-factor secrets; without it two-factor login is off.
+	Keyring *secret.Keyring
 
 	dummyOnce sync.Once
 	dummyHash string
@@ -325,20 +328,32 @@ func (s *Store) recordFailure(ctx context.Context, keys []string) error {
 // and per client address, takes the same time for unknown users, and records
 // success and failure in the audit log (without the password).
 func (s *Store) LoginLocal(ctx context.Context, username, password, addr string) (*User, error) {
+	u, err := s.CheckPassword1(ctx, username, password, addr)
+	if err != nil {
+		return nil, err
+	}
+	return s.loggedIn(ctx, u, "local")
+}
+
+// CheckPassword1 is the first factor of a local login: the same checks as
+// LoginLocal (rate limit, equal work for unknown names, audit of failures)
+// without recording the login, so a second factor can still follow. It
+// returns the user's id.
+func (s *Store) CheckPassword1(ctx context.Context, username, password, addr string) (uuid.UUID, error) {
 	keys := rateKeys(username, addr)
 	if lim, err := s.limited(ctx, keys); err != nil {
-		return nil, err
+		return uuid.Nil, err
 	} else if lim {
 		// Best effort: the outcome of a login must not depend on the audit write.
 		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": username}})
-		return nil, ErrRateLimited
+		return uuid.Nil, ErrRateLimited
 	}
-	fail := func() (*User, error) {
+	fail := func() (uuid.UUID, error) {
 		if err := s.recordFailure(ctx, keys); err != nil {
-			return nil, err
+			return uuid.Nil, err
 		}
 		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": username}})
-		return nil, ErrBadLogin
+		return uuid.Nil, ErrBadLogin
 	}
 	if len(password) > MaxPasswordLen {
 		return fail()
@@ -354,11 +369,11 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 		return fail()
 	}
 	if err != nil {
-		return nil, err
+		return uuid.Nil, err
 	}
 	ok, err := VerifyPassword(*hash, password)
 	if err != nil {
-		return nil, err
+		return uuid.Nil, err
 	}
 	if !ok || disabled {
 		return fail()
@@ -369,7 +384,7 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 			_, _ = s.Pool.Exec(ctx, "UPDATE app_user SET password_hash = $2 WHERE id = $1", id, h)
 		}
 	}
-	return s.loggedIn(ctx, id, "local")
+	return id, nil
 }
 
 // CheckPassword re-verifies a logged-in local user's password, e.g. before

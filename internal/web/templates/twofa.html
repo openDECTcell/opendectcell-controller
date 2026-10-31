@@ -1,0 +1,41 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "twofa.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "shield-lock"}} Two-factor login</h3></div>
+      <div class="card-body">
+        {{if not .Available}}
+          <p class="mb-0">Two-factor login is not available for this account: it signs in through single sign-on, where the second factor is managed.</p>
+        {{else if .Codes}}
+          <div class="alert alert-warning">These recovery codes are shown <strong>once</strong>. Each works one time if you lose the app. Keep them somewhere safe.</div>
+          <div class="row mb-3">{{range .Codes}}<div class="col-6"><code class="secret">{{.}}</code></div>{{end}}</div>
+          <a class="btn btn-primary" href="/account">Done</a>
+        {{else if .Secret}}
+          <ol>
+            <li>Open an authenticator app (any that supports time-based codes).</li>
+            <li>Add an account with this key: <code class="secret">{{.Secret}}</code> or open <a href="{{.URI}}">this link</a> on the phone.</li>
+            <li>Enter the 6-digit code it shows.</li>
+          </ol>
+          <form method="post" action="/account/2fa/confirm" class="d-flex gap-2">
+            <input class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required>
+            <button type="submit" class="btn btn-primary">Turn on</button>
+          </form>
+        {{else if .On}}
+          <p>Two-factor login is <span class="badge bg-success-lt">on</span>. You have {{.Left}} unused recovery {{if eq .Left 1}}code{{else}}codes{{end}}.</p>
+          <form method="post" action="/account/2fa/disable" class="d-flex gap-2 align-items-end">
+            <div class="flex-fill"><label class="form-label" for="pw">Your password, to turn it off</label>
+              <input class="form-control" id="pw" name="password" type="password" autocomplete="current-password" required></div>
+            <button type="submit" class="btn btn-outline-danger">Turn off</button>
+          </form>
+        {{else}}
+          <p>A second step at login: besides your password, a code from an app on your phone. Strongly recommended for administrators.</p>
+          <form method="post" action="/account/2fa/start"><button type="submit" class="btn btn-primary">Set up</button></form>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

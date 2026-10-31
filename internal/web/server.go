@@ -155,6 +155,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /forgot", s.forgotPost)
 	s.mux.HandleFunc("GET /reset", s.resetPage)
 	s.mux.HandleFunc("POST /reset", s.resetPost)
+	s.mux.HandleFunc("POST /login/2fa", s.login2FA)
 	s.mux.HandleFunc("POST /logout", s.logout)
 	s.mux.HandleFunc("GET /auth/oidc/start", s.oidcStart)
 	s.mux.HandleFunc("GET /auth/oidc/callback", s.oidcCallback)
@@ -162,6 +163,10 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /{$}", s.requireUser(s.home))
 	s.mux.Handle("GET /account", s.requireUser(s.accountPage))
 	s.mux.Handle("POST /account/password", s.requireUser(s.accountPassword))
+	s.mux.Handle("GET /account/2fa", s.requireUser(s.twoFAPage))
+	s.mux.Handle("POST /account/2fa/start", s.requireUser(s.twoFAStart))
+	s.mux.Handle("POST /account/2fa/confirm", s.requireUser(s.twoFAConfirm))
+	s.mux.Handle("POST /account/2fa/disable", s.requireUser(s.twoFADisable))
 
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))

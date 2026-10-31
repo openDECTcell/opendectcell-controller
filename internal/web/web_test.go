@@ -24,14 +24,23 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/auth/oidctest"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
+	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	"github.com/openDECTcell/opendectcell-controller/internal/dbtest"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
+	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 )
 
 var ctx = context.Background()
+
+// one master key for the whole test process: every test database is opened with it
+var testMK = func() secret.MasterKey {
+	ks, _ := secret.GenerateMasterKey()
+	mk, _ := secret.ParseMasterKey(ks)
+	return mk
+}()
 
 type env struct {
 	srv   *httptest.Server
@@ -47,6 +56,9 @@ func newEnvWith(t *testing.T, setup func(*Server)) *env {
 	pool := dbtest.Migrated(t)
 	store := &auth.Store{Pool: pool, Argon: auth.ArgonParams{MemoryKiB: 64, Time: 1, Threads: 1},
 		SessionIdle: time.Hour, SessionMaxAge: 24 * time.Hour, RateLimit: 5}
+	if store.Keyring, _ = db.LoadKeyring(ctx, pool, testMK, nil); store.Keyring == nil {
+		t.Fatal("no keyring")
+	}
 	e := &env{store: store, idp: oidctest.New()}
 	t.Cleanup(e.idp.Close)
 	s := &Server{Pool: pool, Auth: store, LocalLogin: true, OIDCName: "Sign in with Test IdP",

@@ -16,7 +16,6 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
-	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 )
 
 func (e *env) adminBrowser(t *testing.T) *http.Client {
@@ -364,8 +363,7 @@ func TestStatisticsAreScoped(t *testing.T) {
 
 func TestStationProfile(t *testing.T) {
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -434,8 +432,7 @@ func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func TestPublicMapFeed(t *testing.T) {
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)

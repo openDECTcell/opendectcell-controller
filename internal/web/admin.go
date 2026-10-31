@@ -47,6 +47,11 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request, u *auth.
 			d.Alerts = append(d.Alerts, "Cells offline: see the list below.")
 		}
 	}
+	if u.AuthSource == "local" && s.Auth.Keyring != nil {
+		if on, err := s.Auth.HasTOTP(r.Context(), u.ID); err == nil && !on {
+			d.Alerts = append(d.Alerts, "Your own account has no two-factor login. Turn it on under Account.")
+		}
+	}
 	if f.CellsPending > 0 {
 		d.Alerts = append(d.Alerts, "A cell is waiting for your approval.")
 	}

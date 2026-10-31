@@ -8,6 +8,8 @@
   <dt>Sign-in</dt><dd>{{if eq .User.AuthSource "oidc"}}single sign-on{{else}}local account{{end}}</dd>
 </dl>
 {{if eq .User.AuthSource "local"}}
+<h3 class="mt-4 mb-2">Two-factor login</h3>
+<p><a class="btn btn-outline-primary" href="/account/2fa">{{icon "shield-lock"}} Manage two-factor login</a></p>
 <h3 class="mt-4 mb-2">Change password</h3>
 <div class="card mb-3"><div class="card-body"><form method="post" action="/account/password" class="narrow">
   <label class="form-label">Current password <input class="form-control" name="current" type="password" autocomplete="current-password" required></label>

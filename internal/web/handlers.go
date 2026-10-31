@@ -107,7 +107,7 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 	}
 	d := s.loginData(r)
 	d.Username = r.PostFormValue("username")
-	u, err := s.Auth.LoginLocal(r.Context(), d.Username, r.PostFormValue("password"), addrFrom(r.Context()).String())
+	id, err := s.Auth.CheckPassword1(r.Context(), d.Username, r.PostFormValue("password"), addrFrom(r.Context()).String())
 	switch {
 	case errors.Is(err, auth.ErrBadLogin):
 		s.render(w, http.StatusUnauthorized, "login.html", page{Title: "Log in", Error: "Invalid username or password.", Data: d})
@@ -119,7 +119,59 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
+	if s.Auth.Keyring != nil {
+		on, err := s.Auth.HasTOTP(r.Context(), id)
+		if err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		if on {
+			tok, err := s.Auth.NewMFAChallenge(r.Context(), id, d.Next)
+			if err != nil {
+				s.internalError(w, r, err)
+				return
+			}
+			s.render(w, http.StatusOK, "login_2fa.html", page{Title: "Second step", Data: tok})
+			return
+		}
+	}
+	u, err := s.Auth.CompleteLogin(r.Context(), id, "local")
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
 	s.startSession(w, r, u, "local", d.Next)
+}
+
+// login2FA is the second step of a login: the code from the authenticator, or
+// a recovery code.
+func (s *Server) login2FA(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	tok := r.PostFormValue("challenge")
+	id, next, err := s.Auth.PeekMFAChallenge(r.Context(), tok)
+	if err != nil {
+		s.render(w, http.StatusBadRequest, "login.html", page{Title: "Log in", Error: "The login took too long. Please start again.", Data: s.loginData(r)})
+		return
+	}
+	err = s.Auth.VerifySecondFactor(r.Context(), id, r.PostFormValue("code"), addrFrom(r.Context()).String())
+	switch {
+	case errors.Is(err, auth.ErrBadCode):
+		s.render(w, http.StatusUnauthorized, "login_2fa.html", page{Title: "Second step", Data: tok, Error: "That code is not right."})
+		return
+	case errors.Is(err, auth.ErrRateLimited):
+		s.render(w, http.StatusTooManyRequests, "login_2fa.html", page{Title: "Second step", Data: tok, Error: "Too many wrong codes. Try again in a few minutes."})
+		return
+	case err != nil:
+		s.internalError(w, r, err)
+		return
+	}
+	_ = s.Auth.DropMFAChallenge(r.Context(), tok)
+	u, err := s.Auth.CompleteLogin(r.Context(), id, "local")
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	s.startSession(w, r, u, "local", next)
 }
 
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *auth.User, method, next string) {

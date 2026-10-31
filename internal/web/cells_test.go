@@ -18,7 +18,6 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/cell/pki"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell/wire"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
-	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 )
 
 type fakeLink struct {
@@ -40,8 +39,7 @@ var enrollRE = regexp.MustCompile(`opendectcell-enroll:v1\?[^<\s]+`)
 func TestCellPages(t *testing.T) {
 	link := &fakeLink{states: map[uuid.UUID]wire.CellStateValue{}}
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -117,8 +115,7 @@ var hiddenRE = regexp.MustCompile(`name="(eic|fpn|fps|source)" value="([^"]*)"`)
 // seen the risks and ticked the box; an EIC typed in is checked.
 func TestSystemIdentityPages(t *testing.T) {
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)

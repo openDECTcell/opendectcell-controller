@@ -21,7 +21,6 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
-	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 )
 
@@ -96,8 +95,7 @@ func (a *apiClient) do(method, path string, body any, want int) map[string]any {
 
 func TestAPI(t *testing.T) {
 	e := newEnvWith(t, func(s *Server) {
-		ks, _ := secret.GenerateMasterKey()
-		mk, _ := secret.ParseMasterKey(ks)
+		mk := testMK
 		kr, err := db.LoadKeyring(ctx, s.Pool, mk, nil)
 		if err != nil {
 			t.Fatal(err)

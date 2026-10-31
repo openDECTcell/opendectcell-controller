@@ -26,6 +26,7 @@ var EncryptedColumns = []EncryptedColumn{
 	{"handset", "uak_enc", "id"},
 	{"sip_account", "password_enc", "id"},
 	{"cell_ca", "key_enc", "id"},
+	{"user_totp", "secret_enc", "user_id"},
 }
 
 // ErrWrongMasterKey means a data key could not be unwrapped with the

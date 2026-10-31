@@ -288,6 +288,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	defer sipMgr.Close()
 
 	store := authStore(cfg, pool)
+	store.Keyring = kr
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
