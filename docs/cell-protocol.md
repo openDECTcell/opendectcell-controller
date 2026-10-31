@@ -626,7 +626,7 @@ write-only cache:
   So every time the controller turns a cell's radio on (`0x015B 01`), and on
   HELLO with a new `boot_id` or `chip_epoch`, all of that cell's slots
   become *unknown*, and the controller **rewrites every slot it wants and
-  clears every other** (op 0, below) before it opens the cell to handsets.
+  clears every other** (op 0, below), in the order openDECTcell runs and has proven on hardware: the radio start-up mails first, then the slot writes, the cell open to handsets throughout (a handset's first message waits on the host's identity gate, not on the chip). Writing the slots before the radio is on has not been tried.
 - **The controller is the only writer.** In cell mode `dect-stubd` keeps no
   host-side subscription store and does no reload at start-up (the default in
   cell mode, not a flag), never writes slots on its own, and never sends
@@ -634,6 +634,10 @@ write-only cache:
   in the controller's database, encrypted, never on the cell.
 - **A clear is one mail:** `0x0247 {slot, op = 0, 0x00}` [CR A-0065];
   dect-stubd clears every slot it does not own at start this way.
+  **On 08.25 a clear leaves the slot's 17 key bytes readable** (measured
+  2026-10-31, openDECTcell `docs/more-than-six.md` §4b; Q-0073 asks what it resets), so
+  the host's audit may call a cleared slot "held". To give a slot to another
+  handset, write the new key over it.
 - A write is two MAIL_DOWN, in this order: `0x0247 {slot, op = 1, status}` then
   `0x020A {slot, UAK[16], extra}`, to task `0x02` [CR A-0026]. The `status` and
   `extra` bytes have no known enumeration and are sent as `0x00`, as
