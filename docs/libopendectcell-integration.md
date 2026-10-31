@@ -262,7 +262,7 @@ are seen.
 | Level | What | State |
 |---|---|---|
 | `cdect` unit tests | Round trips, LSIG learning, corrupt frames, bounds checked before C, use after close. Run under `cgocheck2` | **5 tests, passing** |
-| Golden traces | openDECTcell's tests and hardware captures (redacted) replayed through a session with the fake clock and recorded entropy; outgoing mails compared byte for byte | C3 |
+| Golden traces | openDECTcell's `tests/stubd-traces/` replayed through the host (`host.c`) with a fake clock and test_stubd.c's entropy; mails and bridge lines compared line for line (`trace_test.go`). Hardware captures: not yet | **15 of 15 traces, passing** (2026-10-31); dect-stubd-only lines skipped, one known difference, both listed in the test |
 | Fuzzing | Go native fuzz targets feed arbitrary bytes into each `*_rx` path through `cdect` | C3; short run in CI, longer nightly |
 | Session tests | Inbox overflow resets the session; a panic is contained; `Close` wipes | C3 |
 
