@@ -102,7 +102,7 @@ func identityForm(r *http.Request, source string) (cell.SystemIdentity, error) {
 	}
 	id := cell.SystemIdentity{EIC: uint16(eic), FPN: uint8(fpn), FPS: uint8(fps), Source: source}
 	if err := id.Validate(); err != nil {
-		return id, errors.New("EIC 0 is not used, and the FPS is 1 to 15 (EN 300 175-6 §5.2).")
+		return id, errors.New("EIC 0 is not used, and the FPS is 1 to 15 (EN 300 175-6 §5.2).") //nolint:staticcheck // ST1005: as above
 	}
 	return id, nil
 }
@@ -143,7 +143,7 @@ func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.Us
 	}
 	id, err := identityForm(r, source)
 	if err == nil && r.PostFormValue("understood") != "on" {
-		err = errors.New("Tick the box to confirm you read the risks.")
+		err = errors.New("Tick the box to confirm you read the risks.") //nolint:staticcheck // ST1005: shown on the page as a sentence
 	}
 	if err != nil {
 		cur, _ := s.Cells.SystemIdentity(r.Context())
