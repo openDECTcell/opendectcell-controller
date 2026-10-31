@@ -238,6 +238,15 @@ func (x *Host) Tick(now uint64) {
 	x.raise()
 }
 
+// Seen is when record i last had C-plane traffic, on the stack's clock; 0
+// if it never has.
+func (x *Host) Seen(i int) uint64 {
+	if i < 0 {
+		return 0
+	}
+	return uint64(C.cdect_host_last_seen(x.c, C.uint(i)))
+}
+
 // Hello sends a client that connected the `hello` and `hs` lines.
 func (x *Host) Hello() {
 	C.cdect_host_hello(x.c)

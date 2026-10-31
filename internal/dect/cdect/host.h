@@ -102,6 +102,8 @@ int cdect_host_start(struct cdect_host *c);
 void cdect_host_mail(struct cdect_host *c, uint64_t now);
 /* One loop pass: the host's steps and dect_base_tick(). */
 void cdect_host_tick(struct cdect_host *c, uint64_t now);
+/* When record i last had C-plane traffic, on the stack's clock; 0: never. */
+uint64_t cdect_host_last_seen(const struct cdect_host *c, unsigned i);
 /* The line in c->line from a client; is_bridge: that client is the bridge. */
 int cdect_host_ctl(struct cdect_host *c, uint64_t now, int is_bridge);
 /* `hello` and an `hs` line per listed record, to a client that connected. */

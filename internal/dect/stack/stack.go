@@ -128,6 +128,9 @@ type Stack interface {
 	Mail(m Mail, now uint64)
 	// Tick runs the stack's timers; call it at least every 100 ms.
 	Tick(now uint64)
+	// Seen is when record i last had C-plane traffic (any message of its
+	// handset on any link), on the clock Tick is given; 0 if never.
+	Seen(i int) uint64
 	// Hello sends a client that connected the `hello` and `hs` lines.
 	Hello()
 	// Ctl runs one bridge-interface line; it reports whether the client

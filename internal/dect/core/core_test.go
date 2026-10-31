@@ -42,6 +42,7 @@ type fakeStack struct {
 	// onMail runs on the cell's goroutine for each mail, with the env.
 	onMail func(env stack.Env, m stack.Mail)
 	onTick func(env stack.Env)
+	seen   map[int]uint64
 }
 
 func (f *fakeStack) AddRecord(i int, r stack.Record) {
@@ -87,6 +88,13 @@ func (f *fakeStack) Tick(now uint64) {
 	if cb != nil && radio {
 		cb(f.env)
 	}
+}
+
+// seen is what Seen answers, by record index; the test sets it.
+func (f *fakeStack) Seen(i int) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.seen[i]
 }
 
 func (f *fakeStack) SetRegPINs(p []string) {
@@ -159,6 +167,8 @@ type fakeRecords struct {
 	installed [][]uint
 	unknown   []uint
 	forgot    []uuid.UUID
+	seenOn    map[uuid.UUID]uuid.UUID // handset -> the cell it was last seen on
+	seenTimes []time.Time
 }
 
 func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, []uuid.UUID, error) {
@@ -203,6 +213,18 @@ func (r *fakeRecords) SlotUnknown(_ context.Context, _ uuid.UUID, slot uint) err
 	defer r.mu.Unlock()
 	r.unknown = append(r.unknown, slot)
 	return nil
+}
+
+func (r *fakeRecords) Seen(_ context.Context, cell, id uuid.UUID, at time.Time) (uuid.UUID, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seenOn == nil {
+		r.seenOn = map[uuid.UUID]uuid.UUID{}
+	}
+	prev := r.seenOn[id]
+	r.seenOn[id] = cell
+	r.seenTimes = append(r.seenTimes, at)
+	return prev, nil
 }
 
 func (r *fakeRecords) get(fn func(r *fakeRecords)) { r.mu.Lock(); defer r.mu.Unlock(); fn(r) }
@@ -869,4 +891,56 @@ func TestIdentityCellThatNeverComesBack(t *testing.T) {
 	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "06.88", RFPI: rfpiOwn, HasRFPI: true})
 	waitFor(t, "the push", func() bool { return g.link.nPushes() == 1 })
 	waitFor(t, "the stack after the wait", func() bool { return g.stack(0) != nil })
+}
+
+// A handset heard on a cell is noted: the cell and the time, at most once per
+// seenEvery, and a later contact on the same cell after the pause is noted too.
+func TestHandsetSeenOnACell(t *testing.T) {
+	old := seenEvery
+	seenEvery = 60 * time.Millisecond
+	defer func() { seenEvery = old }()
+	h := handset(1, owner)
+	recs := &fakeRecords{hs: []Handset{h}}
+	g := newRig(t, recs, func(f *fakeStack) { f.seen = map[int]uint64{} })
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	// nobody heard yet: nothing written
+	time.Sleep(50 * time.Millisecond)
+	recs.get(func(r *fakeRecords) {
+		if len(r.seenTimes) != 0 {
+			t.Fatalf("a handset nobody heard was noted: %v", r.seenTimes)
+		}
+	})
+	set := func(ms uint64) { g.stack(0).get(func(f *fakeStack) { f.seen[0] = ms }) }
+	set(g.core.now())
+	waitFor(t, "the first contact", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.seenTimes) })
+		return n == 1
+	})
+	recs.get(func(r *fakeRecords) {
+		if r.seenOn[h.ID] != id {
+			t.Errorf("noted on cell %v, want %v", r.seenOn[h.ID], id)
+		}
+		if d := time.Since(r.seenTimes[0]); d < 0 || d > time.Second {
+			t.Errorf("the contact time is %v ago", d)
+		}
+	})
+	// the same value again, or a new one inside the pause: no second write
+	set(g.core.now())
+	time.Sleep(20 * time.Millisecond)
+	recs.get(func(r *fakeRecords) {
+		if len(r.seenTimes) != 1 {
+			t.Errorf("written again inside the pause: %d", len(r.seenTimes))
+		}
+	})
+	// after the pause a newer contact is written
+	time.Sleep(80 * time.Millisecond)
+	set(g.core.now())
+	waitFor(t, "a later contact", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.seenTimes) })
+		return n == 2
+	})
 }

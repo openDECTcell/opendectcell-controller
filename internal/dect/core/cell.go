@@ -43,7 +43,11 @@ type cellRun struct {
 	slots       []uint // the slots the records went into, for Installed
 	install     bool   // the radio is on: the records go in at the next tick
 	retryAt     time.Time
-	noStack     bool // said once: this binary has no libopendectcell
+	// the last contact written for each record, and when
+	seenMs    map[int]uint64
+	seenAt    map[int]time.Time
+	seenCheck time.Time
+	noStack   bool // said once: this binary has no libopendectcell
 	// resumed: the session resumed, so the radio may carry calls and is
 	// never switched off for the bring-up (the maintainers' notes)
 	resumed bool
@@ -268,10 +272,39 @@ func (r *cellRun) tick() {
 	}
 	r.registration(now)
 	r.st.Tick(r.core.now())
+	r.seen(now)
 	if r.install {
 		// dect_base's install() ran in that tick (host.c, cdect_host_tick)
 		r.install = false
 		r.gen.job(job{kind: jobInstalled, slots: slices.Clone(r.slots)})
+	}
+}
+
+// seenEvery is how often a handset's contact is written to the database: a
+// move between cells shows within this, and a handset on a call does not make
+// a write per segment.
+var seenEvery = 30 * time.Second
+
+// seen notes which handsets of this cell's stack have been heard since the last
+// time, for the database: the cell a handset was last on is what a call is
+// routed to first (docs/roaming.md).
+func (r *cellRun) seen(now time.Time) {
+	if r.gen == nil || now.Sub(r.seenCheck) < 200*time.Millisecond {
+		return
+	}
+	r.seenCheck = now
+	if r.seenAt == nil {
+		r.seenAt, r.seenMs = map[int]time.Time{}, map[int]uint64{}
+	}
+	for i := range r.gen.slotOf {
+		ms := r.st.Seen(i)
+		if ms == 0 || ms == r.seenMs[i] || now.Sub(r.seenAt[i]) < seenEvery {
+			continue
+		}
+		r.seenMs[i], r.seenAt[i] = ms, now
+		// the stack's clock is monotonic ms; the contact was this long ago
+		ago := time.Duration(r.core.now()-ms) * time.Millisecond
+		r.gen.job(job{kind: jobSeen, i: i, at: now.Add(-ago)})
 	}
 }
 
@@ -370,6 +403,7 @@ func (r *cellRun) drop() {
 	st, g := r.st, r.gen
 	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
+	r.seenMs, r.seenAt = nil, nil
 	r.radioOn, r.regSet, r.regUntil = false, false, time.Time{}
 	clear(r.corrSlot)
 	if g != nil {
@@ -414,6 +448,7 @@ const (
 	jobRename
 	jobInstalled
 	jobUnknown
+	jobSeen
 )
 
 type job struct {
@@ -425,6 +460,7 @@ type job struct {
 	name   string
 	slot   uint
 	slots  []uint
+	at     time.Time // jobSeen: when the handset was heard
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
@@ -496,6 +532,13 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 		err = core.Records.Installed(ctx, id, j.slots)
 	case jobUnknown:
 		err = core.Records.SlotUnknown(ctx, id, j.slot)
+	case jobSeen:
+		if hid, ok := ids[j.i]; ok {
+			var prev uuid.UUID
+			if prev, err = core.Records.Seen(ctx, id, hid, j.at); err == nil && prev != uuid.Nil && prev != id {
+				log.Info("handset moved to this cell", "handset", hid, "from", prev)
+			}
+		}
 	}
 	if err != nil {
 		log.Error("handset record not stored", "job", j.kind, "err", err)

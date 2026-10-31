@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -177,5 +178,40 @@ func TestStoreCellFull(t *testing.T) {
 	hs, unplaced, err := s.CellRecords(ctx, c, 3)
 	if err != nil || len(hs) != 3 || len(unplaced) != 1 || unplaced[0] != extra {
 		t.Fatalf("full cell: %d records, unplaced %v, %v", len(hs), unplaced, err)
+	}
+}
+
+// Seen follows the handset from cell to cell: it returns where it was before,
+// and an older report does not undo a newer one.
+func TestStoreSeen(t *testing.T) {
+	s, ctx := newStore(t)
+	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
+	owner := s.newUser(t, ctx, "owner")
+	id, err := s.SaveRecord(ctx, a, uuid.Nil, owner, rec(1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Now().Truncate(time.Millisecond)
+	if prev, err := s.Seen(ctx, a, id, t0); err != nil || prev != uuid.Nil {
+		t.Fatalf("first sighting: prev %v, %v", prev, err)
+	}
+	if prev, err := s.Seen(ctx, b, id, t0.Add(time.Minute)); err != nil || prev != a {
+		t.Fatalf("moved to b: prev %v, %v (want a)", prev, err)
+	}
+	// a late report from a: the newer sighting on b stays
+	if _, err := s.Seen(ctx, a, id, t0.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var on uuid.UUID
+	var at time.Time
+	if err := s.Pool.QueryRow(ctx, "SELECT last_seen_cell_id, last_seen_at FROM handset WHERE id = $1", id).Scan(&on, &at); err != nil {
+		t.Fatal(err)
+	}
+	if on != b || !at.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("stored %v at %v, want b at %v", on, at, t0.Add(time.Minute))
+	}
+	// an unknown handset is not an error
+	if _, err := s.Seen(ctx, a, uuid.New(), t0); err != nil {
+		t.Fatalf("unknown handset: %v", err)
 	}
 }

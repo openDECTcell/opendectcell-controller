@@ -794,3 +794,8 @@ int cdect_host_ctl(struct cdect_host *c, uint64_t now, int is_bridge)
 	reply(c, m.verb, "unknown", NULL, 0);
 	return CDECT_CTL_DONE;
 }
+
+uint64_t cdect_host_last_seen(const struct cdect_host *c, unsigned i)
+{
+	return i < c->b.n_hs && i < DECT_BASE_HS_MAX ? c->b.last_seen_ms[i] : 0u;
+}

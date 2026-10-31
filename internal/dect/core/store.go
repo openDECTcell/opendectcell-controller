@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,10 @@ type Records interface {
 	Installed(ctx context.Context, cell uuid.UUID, slots []uint) error
 	// SlotUnknown: a write to slot was not delivered.
 	SlotUnknown(ctx context.Context, cell uuid.UUID, slot uint) error
+	// Seen: the handset had contact on cell at the given time. It returns the
+	// cell it was last seen on before, uuid.Nil if none, so a move between
+	// cells can be told.
+	Seen(ctx context.Context, cell, id uuid.UUID, at time.Time) (prev uuid.UUID, err error)
 }
 
 // Store keeps the records in PostgreSQL, the UAK sealed (AGENTS.md §5).
@@ -292,4 +297,21 @@ func (s *Store) Installed(ctx context.Context, cell uuid.UUID, slots []uint) err
 func (s *Store) SlotUnknown(ctx context.Context, cell uuid.UUID, slot uint) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE cell_slot SET state = 'unknown' WHERE cell_id = $1 AND slot = $2", cell, int16(slot))
 	return err
+}
+
+// Seen notes where the handset is: its last contact, and on which cell. The
+// time only moves forward, so two cells reporting out of order leave the later.
+func (s *Store) Seen(ctx context.Context, cell, id uuid.UUID, at time.Time) (uuid.UUID, error) {
+	var prev *uuid.UUID
+	err := s.Pool.QueryRow(ctx, `WITH old AS (SELECT last_seen_cell_id, last_seen_at FROM handset WHERE id = $2 FOR UPDATE),
+		up AS (UPDATE handset SET last_seen_cell_id = $1, last_seen_at = $3
+			WHERE id = $2 AND (last_seen_at IS NULL OR last_seen_at <= $3) RETURNING id)
+		SELECT old.last_seen_cell_id FROM old`, cell, id, at).Scan(&prev)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, nil
+	}
+	if err != nil || prev == nil {
+		return uuid.Nil, err
+	}
+	return *prev, nil
 }
