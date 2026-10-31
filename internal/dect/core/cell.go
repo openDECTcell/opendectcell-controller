@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,8 +45,14 @@ type cellRun struct {
 	next        int       // the next free record index in the stack
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
-	install     bool // the radio is on: the records go in at the next tick
-	retryAt     time.Time
+	bridge      bool // this stack has been told it carries external calls (route.go)
+	// what the router reads from other goroutines (route.go): the handsets
+	// this stack holds by record number, and whether its radio is on
+	pub     sync.Mutex
+	held    map[uuid.UUID]uint
+	ready   bool
+	install bool // the radio is on: the records go in at the next tick
+	retryAt time.Time
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
 	seenAt    map[int]time.Time
@@ -135,6 +142,8 @@ func (r *cellRun) handle(ev event) {
 		r.linkUp = false
 	case evAdd:
 		r.addHandset(ev.hid)
+	case evCtl:
+		r.ctl(ev)
 	case evReload:
 		if r.st != nil && r.reloadAt.IsZero() {
 			r.reloadAt = time.Now().Add(reloadDelay)
@@ -216,7 +225,39 @@ func (r *cellRun) addHandset(hid uuid.UUID) {
 	r.st.AddRecord(i, h.Rec)
 	r.gen.place(i, h.Rec.Slot, h.Owner)
 	r.gen.job(job{kind: jobTrack, i: i, hid: h.ID})
+	r.pub.Lock()
+	if r.held == nil {
+		r.held = map[uuid.UUID]uint{}
+	}
+	r.held[h.ID] = h.Rec.Slot
+	r.pub.Unlock()
 	r.log.Info("a pooled handset is held on this cell too", "handset", h.ID, "record", h.Rec.Slot)
+}
+
+// setReady and setHeld publish what the router reads (route.go).
+func (r *cellRun) setReady(v bool) {
+	r.pub.Lock()
+	r.ready = v
+	r.pub.Unlock()
+}
+
+func (r *cellRun) setHeld(m map[uuid.UUID]uint) {
+	r.pub.Lock()
+	r.held = m
+	r.pub.Unlock()
+}
+
+// ctl runs a bridge command for the router on the stack. The stack is told it
+// carries external calls before its first one.
+func (r *cellRun) ctl(ev event) {
+	if r.st == nil {
+		r.core.legFailed(r.id, ev.sip)
+		return
+	}
+	if !r.bridge {
+		r.bridge = r.st.Ctl("bridge", r.core.now(), false)
+	}
+	r.st.Ctl(ev.line, r.core.now(), r.bridge)
 }
 
 // radioSettle is how long after our bring-up a STATUS saying "radio off" is
@@ -315,6 +356,7 @@ func (r *cellRun) tick() {
 			r.st.RadioUp(true)
 			r.install = true
 			r.radioOn = true
+			r.setReady(true)
 			r.radioAt = time.Now()
 			r.log.Info("cell radio on")
 		}
@@ -462,6 +504,11 @@ func (r *cellRun) restart() {
 			r.next++
 		}
 	}
+	held := map[uuid.UUID]uint{}
+	for _, h := range hs {
+		held[h.ID] = h.Rec.Slot
+	}
+	r.setHeld(held)
 	g.start(ids)
 	r.gen = g
 	if err := st.Start(); err != nil {
@@ -487,6 +534,9 @@ func (r *cellRun) drop() {
 	}
 	r.offered = nil
 	r.radioOn, r.regSet, r.regUntil = false, false, time.Time{}
+	r.bridge = false
+	r.setReady(false)
+	r.setHeld(nil)
 	clear(r.corrSlot)
 	if g != nil {
 		g.stop()
@@ -664,8 +714,9 @@ func (g *gen) Log(line string) {
 }
 
 func (g *gen) Event(to stack.To, line string) {
-	// The bridge to the SIP side is step 5 of C3.
-	g.r.log.Debug("bridge line, no bridge yet", "line", strings.TrimSpace(line))
+	line = strings.TrimSpace(line)
+	g.r.log.Debug("bridge line", "line", line)
+	g.r.core.bridgeLine(g.r.id, line)
 }
 
 func (g *gen) Save(i int, rec stack.Record) {

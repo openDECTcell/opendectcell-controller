@@ -58,6 +58,9 @@ type Records interface {
 	Installed(ctx context.Context, cell uuid.UUID, slots []uint) error
 	// SlotUnknown: a write to slot was not delivered.
 	SlotUnknown(ctx context.Context, cell uuid.UUID, slot uint) error
+	// LastSeenCell is the cell the handset was last heard on, uuid.Nil if
+	// none.
+	LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// Seen: the handset had contact on cell at the given time. It returns the
 	// cell it was last seen on before, uuid.Nil if none, so a move between
 	// cells can be told.
@@ -583,17 +586,34 @@ func (s *Store) SlotUnknown(ctx context.Context, cell uuid.UUID, slot uint) erro
 
 // Seen notes where the handset is: its last contact, and on which cell. The
 // time only moves forward, so two cells reporting out of order leave the later.
+// A contact on another cell than last time is a move, and is written down.
 func (s *Store) Seen(ctx context.Context, cell, id uuid.UUID, at time.Time) (uuid.UUID, error) {
 	var prev *uuid.UUID
+	var applied bool
 	err := s.Pool.QueryRow(ctx, `WITH old AS (SELECT last_seen_cell_id, last_seen_at FROM handset WHERE id = $2 FOR UPDATE),
 		up AS (UPDATE handset SET last_seen_cell_id = $1, last_seen_at = $3
 			WHERE id = $2 AND (last_seen_at IS NULL OR last_seen_at <= $3) RETURNING id)
-		SELECT old.last_seen_cell_id FROM old`, cell, id, at).Scan(&prev)
+		SELECT old.last_seen_cell_id, EXISTS (SELECT 1 FROM up) FROM old`, cell, id, at).Scan(&prev, &applied)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, nil
 	}
 	if err != nil || prev == nil {
 		return uuid.Nil, err
 	}
+	if applied && *prev != cell {
+		if _, err := s.Pool.Exec(ctx, "INSERT INTO handset_move (handset_id, from_cell_id, to_cell_id, at) VALUES ($1, $2, $3, $4)",
+			id, *prev, cell, at); err != nil {
+			return *prev, err
+		}
+	}
 	return *prev, nil
+}
+
+func (s *Store) LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	var c *uuid.UUID
+	err := s.Pool.QueryRow(ctx, "SELECT last_seen_cell_id FROM handset WHERE id = $1", id).Scan(&c)
+	if errors.Is(err, pgx.ErrNoRows) || c == nil {
+		return uuid.Nil, nil
+	}
+	return *c, err
 }

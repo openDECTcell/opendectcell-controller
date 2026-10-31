@@ -46,6 +46,8 @@ type Summary struct {
 	Encrypted7d    int   // calls with SRTP on the SIP side
 	CallsTotal     int
 	LongestSeconds int64 // the longest conversation of the last 7 days
+	Moves24h       int   // times a handset was heard on another cell
+	Moves7d        int
 }
 
 // Summary returns the headline numbers for scope.
@@ -56,6 +58,12 @@ func (s *Store) Summary(ctx context.Context, sc Scope) (Summary, error) {
 		(SELECT count(*) FROM handset WHERE $1::uuid IS NULL OR owner_user_id = $1),
 		(SELECT count(*) FROM sip_account WHERE $1::uuid IS NULL OR owner_user_id = $1)`, sc.User).
 		Scan(&m.Handsets, &m.SIPAccounts)
+	if err != nil {
+		return m, err
+	}
+	err = s.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE m.at >= $2), count(*) FILTER (WHERE m.at >= $3)
+		FROM handset_move m JOIN handset h ON h.id = m.handset_id WHERE $1::uuid IS NULL OR h.owner_user_id = $1`,
+		sc.User, now.Add(-24*time.Hour), now.Add(-7*24*time.Hour)).Scan(&m.Moves24h, &m.Moves7d)
 	if err != nil {
 		return m, err
 	}

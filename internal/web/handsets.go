@@ -42,11 +42,15 @@ type handsetPage struct {
 	H        *handset.Handset
 	Accounts []handset.Account
 	Line     map[int]*handset.Line
+	Moves    []handset.Move
 }
 
 func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, error) {
 	accts, err := s.Handsets.Accounts(r.Context(), h.OwnerID)
 	d := handsetPage{H: h, Accounts: accts, Line: map[int]*handset.Line{}}
+	if err == nil {
+		d.Moves, err = s.Handsets.Moves(r.Context(), h.ID, 10)
+	}
 	for i := range h.Lines {
 		d.Line[h.Lines[i].Line] = &h.Lines[i]
 	}

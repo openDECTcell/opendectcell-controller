@@ -49,8 +49,13 @@
         <dt>Owner</dt><dd>{{.H.Owner}}</dd>
         <dt>Registered</dt><dd>{{fmtTime .H.RegisteredAt}}</dd>
         <dt>Last seen</dt><dd>{{with .H.LastSeenAt}}{{fmtTime .}}{{if $.Data.H.LastSeenCell}} on {{$.Data.H.LastSeenCell}}{{end}}{{else}}never{{end}}</dd>
-        <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}</dd>
+        <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}{{if .H.Pooled}} <span class="badge bg-blue-lt" title="Every cell holds this handset under an identity of its own, so it can move between cells and be rung wherever it is">every cell</span>{{else}} <span class="badge bg-secondary-lt" title="Registered before handsets were shared between cells: it stays with the cell it was registered on">home cell only</span>{{end}}</dd>
       </dl></div>
+      <div class="card-header border-top"><h3 class="card-title">Cell changes</h3></div>
+      <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>When</th><th>From</th><th>To</th></tr></thead><tbody>
+        {{range .Moves}}<tr><td>{{fmtTime .At}}</td><td>{{with .From}}{{.}}{{else}}<span class="text-secondary">gone</span>{{end}}</td><td>{{with .To}}{{.}}{{else}}<span class="text-secondary">gone</span>{{end}}</td></tr>
+        {{else}}<tr><td colspan="3" class="text-secondary">The handset has not changed cell since this was recorded.</td></tr>{{end}}
+      </tbody></table></div>
       <div class="card-footer text-secondary small">Removing a handset is not built yet: it has to be deregistered on every cell that holds it.</div>
     </div>
   </div>

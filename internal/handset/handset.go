@@ -48,6 +48,15 @@ type Handset struct {
 	DualRing      string // call_waiting or busy
 	Lines         []Line
 	CellsHoldingN int // cells that hold its record (a slot)
+	// Pooled: every cell holds it, host-only, under a TPUI of its own
+	// (docs/roaming.md); otherwise it sits in chip slots of its home cells.
+	Pooled bool
+}
+
+// Move is a handset heard on another cell than the time before.
+type Move struct {
+	At       time.Time
+	From, To string // cell names; "" for a cell that is gone
 }
 
 // Display is the name, or a fallback for a handset nobody named.
@@ -68,13 +77,13 @@ type Store struct {
 
 const cols = `h.id, h.owner_user_id, coalesce(nullif(u.display_name, ''), u.username), h.display_name, coalesce(h.model, ''), h.registered_at,
 	h.last_seen_at, coalesce(c.name, ''), h.default_line, h.dual_ring_policy,
-	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id)`
+	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled`
 
 const from = ` FROM handset h JOIN app_user u ON u.id = h.owner_user_id LEFT JOIN cell c ON c.id = h.last_seen_cell_id`
 
 func scan(r pgx.Row) (*Handset, error) {
 	var h Handset
-	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN)
+	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -141,6 +150,22 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Handset, 
 		}
 	}
 	return h, nil
+}
+
+// Moves are the last n times the handset was heard on another cell, newest first.
+// The caller has checked the access to the handset (Get).
+func (s *Store) Moves(ctx context.Context, id uuid.UUID, n int) ([]Move, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT m.at, coalesce(f.name, ''), coalesce(t.name, '')
+		FROM handset_move m LEFT JOIN cell f ON f.id = m.from_cell_id LEFT JOIN cell t ON t.id = m.to_cell_id
+		WHERE m.handset_id = $1 ORDER BY m.at DESC, m.id DESC LIMIT $2`, id, n)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Move, error) {
+		var m Move
+		err := r.Scan(&m.At, &m.From, &m.To)
+		return m, err
+	})
 }
 
 // Update is the edit of a handset's own fields.

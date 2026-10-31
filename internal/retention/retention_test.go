@@ -32,6 +32,19 @@ func TestRetention(t *testing.T) {
 	exec(`INSERT INTO audit_log (at, actor_name, action) VALUES ($1, 'x', 'old'), ($2, 'x', 'recent')`, now.AddDate(0, 0, -400), now.AddDate(0, 0, -10))
 	exec(`ALTER TABLE audit_log ENABLE TRIGGER audit_log_append_only`)
 
+	var uid, hid, cid string
+	if err := pool.QueryRow(ctx, "INSERT INTO app_user (username, role, auth_source) VALUES ('r', 'user', 'local') RETURNING id").Scan(&uid); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\\x01', 5, '\\x') RETURNING id", uid).Scan(&hid); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "INSERT INTO cell (name, state) VALUES ('c', 'active') RETURNING id").Scan(&cid); err != nil {
+		t.Fatal(err)
+	}
+	exec(`INSERT INTO handset_move (handset_id, from_cell_id, to_cell_id, at) VALUES ($1, $2, $2, $3), ($1, $2, $2, $4)`,
+		hid, cid, now.AddDate(0, 0, -100), now.AddDate(0, 0, -5))
+
 	// nothing saved: the defaults, 90 days and 365 days
 	if err := Apply(ctx, pool, st, now, log); err != nil {
 		t.Fatal(err)
@@ -40,6 +53,10 @@ func TestRetention(t *testing.T) {
 	pool.QueryRow(ctx, "SELECT count(*) FROM call_log WHERE remote_party <> ''").Scan(&left)
 	if left != 1 {
 		t.Fatalf("defaults: %d calls keep their number, want the recent one only", left)
+	}
+	pool.QueryRow(ctx, "SELECT count(*) FROM handset_move").Scan(&left)
+	if left != 1 {
+		t.Fatalf("defaults: %d handset moves kept, want the recent one only", left)
 	}
 	pool.QueryRow(ctx, "SELECT count(*) FROM audit_log WHERE action = 'old'").Scan(&left)
 	if left != 0 {

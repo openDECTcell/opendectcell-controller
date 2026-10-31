@@ -45,6 +45,14 @@ type fakeStack struct {
 	onMail func(env stack.Env, m stack.Mail)
 	onTick func(env stack.Env)
 	seen   map[int]uint64
+	// the bridge commands the core sent, and what to do about each
+	ctls  []ctlLine
+	onCtl func(env stack.Env, line string)
+}
+
+type ctlLine struct {
+	line     string
+	isBridge bool
 }
 
 func (f *fakeStack) AddRecord(i int, r stack.Record) {
@@ -121,11 +129,23 @@ func (f *fakeStack) RegState() (bool, bool) {
 	return f.regOpen, !f.notFree
 }
 
-func (f *fakeStack) Hello()                        {}
-func (f *fakeStack) Ctl(string, uint64, bool) bool { return false }
-func (f *fakeStack) Close()                        { f.mu.Lock(); f.closed = true; f.mu.Unlock() }
-func (f *fakeStack) get(fn func(f *fakeStack))     { f.mu.Lock(); defer f.mu.Unlock(); fn(f) }
-func (f *fakeStack) isClosed() bool                { f.mu.Lock(); defer f.mu.Unlock(); return f.closed }
+func (f *fakeStack) Hello() {}
+
+// Ctl records the command; "bridge" says the client became the bridge, as the
+// real stack does.
+func (f *fakeStack) Ctl(line string, _ uint64, isBridge bool) bool {
+	f.mu.Lock()
+	f.ctls = append(f.ctls, ctlLine{line, isBridge})
+	cb := f.onCtl
+	f.mu.Unlock()
+	if cb != nil {
+		cb(f.env, line)
+	}
+	return line == "bridge"
+}
+func (f *fakeStack) Close()                    { f.mu.Lock(); f.closed = true; f.mu.Unlock() }
+func (f *fakeStack) get(fn func(f *fakeStack)) { f.mu.Lock(); defer f.mu.Unlock(); fn(f) }
+func (f *fakeStack) isClosed() bool            { f.mu.Lock(); defer f.mu.Unlock(); return f.closed }
 
 type fakeLink struct {
 	mu    sync.Mutex
@@ -183,6 +203,7 @@ type fakeRecords struct {
 	placed       []uuid.UUID
 	forgetPooled bool
 	saved        []stack.Record
+	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
 }
 
 func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, []uuid.UUID, error) {
@@ -272,6 +293,12 @@ func (r *fakeRecords) Seen(_ context.Context, cell, id uuid.UUID, at time.Time) 
 	r.seenOn[id] = cell
 	r.seenTimes = append(r.seenTimes, at)
 	return prev, nil
+}
+
+func (r *fakeRecords) LastSeenCell(_ context.Context, id uuid.UUID) (uuid.UUID, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastOn[id], nil
 }
 
 func (r *fakeRecords) get(fn func(r *fakeRecords)) { r.mu.Lock(); defer r.mu.Unlock(); fn(r) }

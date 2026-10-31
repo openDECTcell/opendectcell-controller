@@ -205,6 +205,11 @@ func TestStoreSeen(t *testing.T) {
 	if prev, err := s.Seen(ctx, b, id, t0.Add(time.Minute)); err != nil || prev != a {
 		t.Fatalf("moved to b: prev %v, %v (want a)", prev, err)
 	}
+	var moves int
+	s.Pool.QueryRow(ctx, "SELECT count(*) FROM handset_move WHERE handset_id = $1 AND from_cell_id = $2 AND to_cell_id = $3", id, a, b).Scan(&moves)
+	if moves != 1 {
+		t.Errorf("the move from a to b is recorded %d times", moves)
+	}
 	// a late report from a: the newer sighting on b stays
 	if _, err := s.Seen(ctx, a, id, t0.Add(10*time.Second)); err != nil {
 		t.Fatal(err)
@@ -216,6 +221,10 @@ func TestStoreSeen(t *testing.T) {
 	}
 	if on != b || !at.Equal(t0.Add(time.Minute)) {
 		t.Fatalf("stored %v at %v, want b at %v", on, at, t0.Add(time.Minute))
+	}
+	s.Pool.QueryRow(ctx, "SELECT count(*) FROM handset_move WHERE handset_id = $1", id).Scan(&moves)
+	if moves != 1 {
+		t.Errorf("a late report made %d moves, want the one", moves)
 	}
 	// an unknown handset is not an error
 	if _, err := s.Seen(ctx, a, uuid.New(), t0); err != nil {

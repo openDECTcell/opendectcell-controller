@@ -47,9 +47,29 @@ func TestScopedStatistics(t *testing.T) {
 	call(bob, 2*time.Hour, 10*time.Minute, "in", "")
 	call(bob, 20*24*time.Hour, 1*time.Minute, "in", "")
 
+	// cell changes: alice's handset moved twice today, bob's once last week
+	var ha, hb uuid.UUID
+	for owner, id := range map[uuid.UUID]*uuid.UUID{alice: &ha, bob: &hb} {
+		if err := pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, $2, $3, '\\x') RETURNING id",
+			owner, owner[:5], int(owner[0])+100).Scan(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, mv := range []struct {
+		h   uuid.UUID
+		ago time.Duration
+	}{{ha, time.Hour}, {ha, 5 * time.Hour}, {hb, 6 * 24 * time.Hour}} {
+		if _, err := pool.Exec(ctx, "INSERT INTO handset_move (handset_id, from_cell_id, to_cell_id, at) VALUES ($1, $2, $2, $3)", mv.h, cellID, now.Add(-mv.ago)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	m, err := s.Summary(ctx, Own(alice))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if m.Moves24h != 2 || m.Moves7d != 2 {
+		t.Errorf("alice's cell changes %d/%d, want 2/2", m.Moves24h, m.Moves7d)
 	}
 	if m.Calls24h != 1 || m.Calls7d != 3 || m.Answered7d != 2 || m.Failed7d != 1 || m.TalkSeconds7d != 420 || m.CallsTotal != 3 {
 		t.Errorf("alice %+v", m)

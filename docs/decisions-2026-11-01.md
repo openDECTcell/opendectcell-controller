@@ -112,6 +112,25 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 16. **Next**: handsets page (B1) and public map (B3) first, or two-factor login
     (B4)?
 
+## Roaming (added after "implement 1 to 5")
+
+17. **Pooling is on by default** for handsets that enrol from now on (`cells.handset_pool`). It has run in the
+    library's tests and the controller's, not on air. Leave on, or default off until bench B1 passes?
+18. **Handsets enrolled before stay on their home cells**, in chip slots, with the old TPUI. There is no migration
+    (a handset takes a new TPUI only at its next locate, and its key would have to leave the chip). Re-enrolling a
+    handset through a window makes it pooled (same IPUI, same owner). Want a button for it?
+19. **Limits of the pool**: 249 pooled handsets in the installation (TPUI `{00,11,N}`, N 7 to 255) and ten on a cell
+    (record numbers 7 to 16). A cell that is full says so in the log and does not hold the handset. Enough for a
+    makerspace; a hosted installation with hundreds of handsets per cell needs a bigger TPUI form, which is a
+    question for the clean-room Q&A.
+20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it** (radio stays on; a call in progress on
+    that cell would end). Fine while there is no call path; once there is, the rebuild should wait for an idle cell.
+21. **Records numbered 8 or more have no entry in the handsets' Internal Names list and no call list** (library
+    limits: eight names, seven terminal ids). Widening them is library work; do you want it?
+22. **Location history**: every change of cell is a row (handset, from, to, time), shown on the handset page and
+    counted in the statistics, and erased with the call details after the retention period (90 days by default).
+    OK as location data, or shorter?
+
 ## Not decided by me, only noticed
 
 - The signing key for releases (earlier open item), the 7412's PIN (1111) and

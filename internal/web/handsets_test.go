@@ -36,7 +36,21 @@ func TestHandsetPages(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var hall uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state) VALUES ('Hall', 'active') RETURNING id").Scan(&hall)
+	var barn uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state) VALUES ('Barn', 'active') RETURNING id").Scan(&barn)
+	e.store.Pool.Exec(ctx, "INSERT INTO handset_move (handset_id, from_cell_id, to_cell_id, at) VALUES ($1, $2, $3, now())", mine, hall, barn)
+
 	u, a := e.userBrowser(t), e.adminBrowser(t)
+	_, mv := e.get(t, u, "/handsets/"+mine.String())
+	if !strings.Contains(mv, "home cell only") || !strings.Contains(mv, "Hall") || !strings.Contains(mv, "Barn") {
+		t.Errorf("the handset page shows no cell change or its kind: %s", mv)
+	}
+	e.store.Pool.Exec(ctx, "UPDATE handset SET pooled = true WHERE id = $1", mine)
+	if _, mv := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(mv, ">every cell<") {
+		t.Errorf("a pooled handset is not marked: %s", mv)
+	}
 	_, list := e.get(t, u, "/handsets")
 	if !strings.Contains(list, "Kitchen") || strings.Contains(list, "Admin phone") {
 		t.Errorf("a user's list: %s", list)

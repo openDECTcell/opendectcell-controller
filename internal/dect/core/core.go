@@ -46,6 +46,7 @@ const (
 	DefaultTick      = 10 * time.Millisecond  // dect-stubd's loop in its traces
 	DefaultBringUp   = 100 * time.Millisecond // one start-up mail per loop pass, as dect-stubd
 	DefaultRetry     = 5 * time.Second        // after the records could not be loaded
+	DefaultPageDelay = 3 * time.Second        // <LCE.03>: a page is repeated after this
 	inboxSize        = 1024
 	saveQueue        = 64
 	storeTimeout     = 10 * time.Second
@@ -70,6 +71,12 @@ type Core struct {
 	// Tick, BringUp and Retry default to the constants above; tests
 	// shorten them.
 	Tick, BringUp, Retry time.Duration
+
+	// PageDelay is how long the cell a handset was last on is paged alone,
+	// before the others are (route.go); 0 is DefaultPageDelay.
+	PageDelay time.Duration
+
+	calls routes
 
 	mu    sync.Mutex
 	ctx   context.Context
@@ -172,10 +179,11 @@ const (
 	evRadio
 	evAdd    // a pooled handset enrolled elsewhere: this cell holds it too
 	evReload // rebuild the stack soon, from the records
+	evCtl    // a bridge command for the stack (route.go)
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "add", "reload"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "add", "reload", "ctl"}[k]
 }
 
 type event struct {
@@ -186,6 +194,8 @@ type event struct {
 	radio  uint8 // evRadio: the cell's radio and chip state
 	chip   uint8
 	hid    uuid.UUID // evAdd: the handset
+	line   string    // evCtl: the command
+	sip    string    // evCtl: the call it belongs to
 }
 
 // cellIDs are the cells that have a goroutine now.
