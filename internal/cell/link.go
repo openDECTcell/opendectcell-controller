@@ -78,6 +78,34 @@ type MailSink interface {
 	MailReject(cell uuid.UUID, m wire.MailRejectMsg)
 }
 
+// CellWatcher is told when an active cell's mail tunnel opens and when its
+// DECT state ends (§6.4). Server.Mails gets these calls if it implements
+// it. The methods must not block or call back into the Server.
+type CellWatcher interface {
+	// CellUp: an active cell's session started, or resumed (§6.4).
+	CellUp(cell uuid.UUID, up CellUp)
+	// CellDown: the link is lost; the grace period runs and the cell's
+	// state is kept.
+	CellDown(cell uuid.UUID)
+	// CellGone: the grace period ended, or the cell is no longer active:
+	// its calls and DECT state end.
+	CellGone(cell uuid.UUID)
+}
+
+// CellUp is what the DECT core needs from a cell's HELLO (§6.1).
+type CellUp struct {
+	Resumed       bool  // the previous session resumed: keep its state
+	RadioState    uint8 // tag 14: 0 off, 1 on, 2 fault
+	CapSubRecords uint8
+	StubVersion   string // tag 3: the chip firmware build, "06.88" etc.
+	HWModel       string
+}
+
+func (s *Server) watcher() CellWatcher {
+	w, _ := s.Mails.(CellWatcher)
+	return w
+}
+
 // ErrNoCell means the cell has no active session to carry a mail.
 var ErrNoCell = errors.New("cell: not connected or not active")
 
@@ -327,6 +355,7 @@ type session struct {
 	conn   *tls.Conn
 	cell   *Info
 	cert   *x509.Certificate
+	hello  wire.HelloMsg
 	addr   netip.Addr
 	log    *slog.Logger
 	queues [3]chan wire.Frame
@@ -377,6 +406,7 @@ func (s *Server) runSession(ctx context.Context, c *tls.Conn, info *Info, cert *
 		return
 	}
 	c.SetDeadline(time.Time{})
+	ss.hello = hello
 
 	resumed, tok, err := s.attach(ss, hello)
 	if err != nil {
@@ -401,6 +431,9 @@ func (s *Server) runSession(ctx context.Context, c *tls.Conn, info *Info, cert *
 	go func() { writerDone <- ss.writer() }()
 	ss.send(wire.Frame{Type: wire.HelloAck, Corr: f.Corr, Body: ack.Encode()})
 	ss.send(wire.Frame{Type: wire.CellState, Body: wire.CellStateMsg{State: info.State}.Encode()})
+	if w := s.watcher(); w != nil && info.State == wire.StateActive {
+		w.CellUp(info.ID, ss.cellUp(resumed))
+	}
 
 	frames := make(chan wire.Frame, 16)
 	readErr := make(chan error, 1)
@@ -476,6 +509,12 @@ loop:
 	} else {
 		ss.log.Info("cell link closed")
 	}
+}
+
+func (ss *session) cellUp(resumed bool) CellUp {
+	h := ss.hello
+	return CellUp{Resumed: resumed, RadioState: h.RadioState, CapSubRecords: h.CapSubRecords,
+		StubVersion: h.StubVersion, HWModel: h.HWModel}
 }
 
 func (ss *session) shutdown() {
@@ -793,10 +832,22 @@ func (s *Server) detach(ss *session) {
 	rec.disconnected = time.Now()
 	rec.status.Online = false
 	id := ss.cell.ID
+	w := s.watcher()
+	if w != nil {
+		w.CellDown(id)
+	}
 	rec.graceTimer = time.AfterFunc(s.Grace, func() {
-		// The grace period is over: calls and DECT sessions on this cell
-		// end here once they exist (C3–C5).
+		// The grace period is over: the cell's calls and DECT state end.
+		s.mu.Lock()
+		back := s.cells[id] != nil && s.cells[id].sess != nil
+		s.mu.Unlock()
+		if back {
+			return
+		}
 		s.Log.Info("cell grace period expired", "cell", id)
+		if w != nil {
+			w.CellGone(id)
+		}
 	})
 	rec.orphanTimer = time.AfterFunc(s.Orphan, func() {
 		s.mu.Lock()
@@ -846,9 +897,17 @@ func maps(m map[string]uint64) map[string]uint64 {
 // an admin approved it.
 func (s *Server) NotifyState(id uuid.UUID, st wire.CellStateValue, reason string) {
 	s.withSession(id, func(ss *session) {
+		was := ss.cell.State == wire.StateActive
 		ss.cell.State = st
 		ss.active.Store(st == wire.StateActive)
 		ss.send(wire.Frame{Type: wire.CellState, Body: wire.CellStateMsg{State: st, Reason: reason}.Encode()})
+		if w := s.watcher(); w != nil && was != (st == wire.StateActive) {
+			if was {
+				w.CellGone(id)
+			} else {
+				w.CellUp(id, ss.cellUp(false))
+			}
+		}
 	})
 }
 

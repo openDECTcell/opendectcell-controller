@@ -5,6 +5,7 @@ package cell_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -323,6 +324,52 @@ func TestMailTunnel(t *testing.T) {
 	if err := e.srv.SendMail(uuid.New(), 0, wire.MailDownMsg{}); !errors.Is(err, cell.ErrNoCell) {
 		t.Errorf("SendMail to an unknown cell: %v", err)
 	}
+}
+
+// watchSink is a mail sink that is also a CellWatcher.
+type watchSink struct {
+	mailSink
+	ev chan string
+}
+
+func (w *watchSink) CellUp(_ uuid.UUID, up cell.CellUp) {
+	w.ev <- fmt.Sprintf("up resumed=%v", up.Resumed)
+}
+func (w *watchSink) CellDown(uuid.UUID) { w.ev <- "down" }
+func (w *watchSink) CellGone(uuid.UUID) { w.ev <- "gone" }
+
+func TestCellWatcher(t *testing.T) {
+	e := newEnv(t)
+	w := &watchSink{ev: make(chan string, 16)}
+	e.srv.Mails = w
+	expect := func(want string) {
+		t.Helper()
+		select {
+		case got := <-w.ev:
+			if got != want {
+				t.Fatalf("watcher: %q, want %q", got, want)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("watcher: nothing, want %q", want)
+		}
+	}
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect("up resumed=false")
+	tok := cn.Ack.SessionToken
+	cn.Close()
+	expect("down")
+	cn2, err := c.Connect(e.ctx, celltest.Options{ResumeToken: tok[:]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect("up resumed=true")
+	cn2.Close()
+	expect("down")
+	expect("gone") // the grace period (400 ms) ran out
 }
 
 func TestDeadLinkAndResume(t *testing.T) {
