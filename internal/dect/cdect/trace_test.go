@@ -47,7 +47,7 @@ func skipLine(line string, atStart bool) bool {
 // `deregister` goes out one pass (10 ms) later; this host runs a command
 // before dect_base_tick(), which has no point for one in between.
 var onePassEarly = map[string]map[int]bool{
-	"deregister": {34: true},
+	"deregister": {27: true},
 }
 
 var apiRE = regexp.MustCompile(` api=\d+`)
@@ -322,7 +322,7 @@ func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 			steps[i+1].want = steps[i+1].want[1:]
 		}
 	}
-	cfg := Config{PIN: "12345678", UAKTable: 0x9518, Stub: "dectfw_secondlevel_441.hex"}
+	cfg := Config{PIN: "12345678", UAKTable: 0x9518, CheckDelayMs: 50, Stub: "dectfw_secondlevel_441.hex"}
 	type rec struct {
 		free bool
 		r    Record
