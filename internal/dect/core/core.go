@@ -162,14 +162,15 @@ func (c *Core) CellDown(id uuid.UUID)               { c.post(id, event{kind: evD
 func (c *Core) CellGone(id uuid.UUID)               { c.post(id, event{kind: evGone}) }
 
 // chipConfig is the per-build chip settings (hosting-dect-base.md §6,
-// the maintainers' notes): the STUB build's UAK table, and on 06.88 the read-back
-// held back, since the chip applies a key write late.
+// the maintainers' notes): the STUB build's UAK table, and how long the read-back
+// waits after a key write (06.88 applies it late; on 08.25 a read in the
+// same instant gets no answer, from 20 ms it matches: measured 2026-10-31).
 func chipConfig(stub string) (table, delayMs uint32) {
 	switch stub {
 	case "06.88":
 		return 0x067F, 1000
 	case "08.25":
-		return 0x9518, 0
+		return 0x9518, 50
 	}
 	return 0, 0 // 07.56 and any other build: no table known, no read-back
 }

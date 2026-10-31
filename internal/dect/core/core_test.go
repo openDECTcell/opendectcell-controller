@@ -288,7 +288,7 @@ func TestChipConfigPerBuild(t *testing.T) {
 		stub         string
 		table, delay uint32
 		first        uint16
-	}{{"08.25", 0x9518, 0, 0x0153}, {"07.56", 0, 0, 0x0153}, {"06.88", 0x067F, 1000, 0x015B}} {
+	}{{"08.25", 0x9518, 50, 0x0153}, {"07.56", 0, 0, 0x0153}, {"06.88", 0x067F, 1000, 0x015B}} {
 		table, delay := chipConfig(c.stub)
 		if table != c.table || delay != c.delay {
 			t.Errorf("%s: table %#x delay %d", c.stub, table, delay)
