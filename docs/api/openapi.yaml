@@ -224,7 +224,7 @@ paths:
     patch:
       tags: [handsets]
       operationId: updateHandset
-      description: Changing `owner_id` (including to `null` = shared) is admin-only; lines whose account the new owner may not use are removed.
+      description: Changing `owner_id` is admin-only; lines whose account the new owner may not use are removed. A handset always has an owner.
       x-authz: owner-or-admin
       requestBody:
         required: true
@@ -354,7 +354,7 @@ paths:
         Opens a window (default 120 s) on the chosen cells and returns a
         one-time PIN, **shown once**. The handset that registers within the
         window belongs to `owner_id`: the caller, or (admins only) another
-        user or `null` for a shared handset. At most one open window per
+        user, such as an organisation account. At most one open window per
         caller (`409 window_open`).
       x-authz: user
       requestBody:
@@ -366,7 +366,7 @@ paths:
               required: [cell_ids]
               properties:
                 cell_ids: { type: array, items: { type: string, format: uuid }, minItems: 1, uniqueItems: true }
-                owner_id: { type: string, format: uuid, nullable: true, description: Admin only. Default the caller }
+                owner_id: { type: string, format: uuid, description: Admin only. Default the caller }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
         "201":
@@ -915,7 +915,7 @@ components:
       required: [id, owner_id, display_name, registered_at, lines, home_cell_ids]
       properties:
         id: { type: string, format: uuid }
-        owner_id: { type: string, format: uuid, nullable: true, description: "null = shared, admin-managed" }
+        owner_id: { type: string, format: uuid, description: "Always set: a team's handset belongs to an organisation or admin account" }
         display_name: { type: string }
         ipui_display: { type: string, description: "The identity in the form handsets show it, for telling handsets apart. Not a secret, but personal data" }
         manufacturer_emc: { type: integer, nullable: true }

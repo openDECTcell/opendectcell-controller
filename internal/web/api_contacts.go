@@ -151,7 +151,7 @@ func (s *Server) apiContactDelete(w http.ResponseWriter, r *http.Request, u *aut
 }
 
 // apiHandsetList returns a list as the handset reads it. The caller must be
-// the handset's owner or an admin (shared handsets: admins).
+// the handset's owner or an admin.
 func (s *Server) apiHandsetList(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	hid, ok := pathID(w, r)
 	if !ok {

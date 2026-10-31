@@ -47,6 +47,11 @@ type Core struct {
 	Records Records
 	New     stack.New
 	Log     *slog.Logger
+	// Window is the owner of the registration window open on cell, if
+	// any; a handset enrols only through one (the maintainers' notes point 2). It
+	// runs on the cell's goroutine inside a stack call: it must not block.
+	// nil: no window is ever open (they are C3 step 4).
+	Window func(cell uuid.UUID) (owner uuid.UUID, ok bool)
 
 	// Tick, BringUp and Retry default to the constants above; tests
 	// shorten them.

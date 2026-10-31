@@ -21,7 +21,7 @@ import (
 // that cell's chip.
 type Handset struct {
 	ID    uuid.UUID
-	Owner *uuid.UUID // nil: a shared, admin-managed handset
+	Owner uuid.UUID // always set: there is no ownerless handset (the maintainers' notes)
 	Name  string
 	Rec   stack.Record // Rec.Slot is the cell's chip slot
 }
@@ -33,8 +33,9 @@ type Records interface {
 	// lists home-set handsets that found no free slot.
 	CellRecords(ctx context.Context, cell uuid.UUID, max int) (hs []Handset, unplaced []uuid.UUID, err error)
 	// SaveRecord stores a record the stack changed. id uuid.Nil is a
-	// handset that just enrolled on cell; its id is returned.
-	SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Record) (uuid.UUID, error)
+	// handset that just enrolled on cell through owner's registration
+	// window; its id is returned. owner is ignored for a known id.
+	SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r stack.Record) (uuid.UUID, error)
 	// Forget: a handset deregistered on cell; it is no longer placed there.
 	Forget(ctx context.Context, cell, id uuid.UUID) error
 	// Rename sets a handset's name.
@@ -151,6 +152,12 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 	return hs, unplaced, nil
 }
 
+// errNoOwner: an enrolment came without a registration window's owner.
+var errNoOwner = errors.New("core: an enrolment without an owner (no registration window)")
+
+// errOtherOwner: a handset enrolled again through another user's window.
+var errOtherOwner = errors.New("core: a handset of another owner enrolled again")
+
 // errTPUI means no free TPUI was found; it does not happen in practice.
 var errTPUI = errors.New("core: no free TPUI found")
 
@@ -181,9 +188,12 @@ func nullIfEmpty(b []byte) []byte {
 	return b
 }
 
-func (s *Store) SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Record) (uuid.UUID, error) {
+func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r stack.Record) (uuid.UUID, error) {
 	if r.Slot < 1 || r.Slot > maxSlot {
 		return uuid.Nil, fmt.Errorf("core: record in chip slot %d", r.Slot)
+	}
+	if id == uuid.Nil && owner == uuid.Nil {
+		return uuid.Nil, errNoOwner
 	}
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if id == uuid.Nil {
@@ -191,7 +201,12 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Reco
 				return errors.New("core: an enrolled record without an identity")
 			}
 			// A handset enrolling again keeps its row: same IPUI, new key.
-			err := tx.QueryRow(ctx, "SELECT id FROM handset WHERE ipui = $1", r.PortID).Scan(&id)
+			// Only its owner can do that; a change of owner is not built.
+			var was uuid.UUID
+			err := tx.QueryRow(ctx, "SELECT id, owner_user_id FROM handset WHERE ipui = $1", r.PortID).Scan(&id, &was)
+			if err == nil && was != owner {
+				return errOtherOwner
+			}
 			if errors.Is(err, pgx.ErrNoRows) {
 				id = uuid.New()
 				tpui, err := newTPUI(ctx, tx)
@@ -202,8 +217,8 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id uuid.UUID, r stack.Reco
 				if err != nil {
 					return err
 				}
-				if _, err := tx.Exec(ctx, `INSERT INTO handset (id, ipui, tpui, uak_enc, cc_port_id, cc_fixed_id)
-					VALUES ($1, $2, $3, $4, $5, $6)`, id, r.PortID, tpui, enc,
+				if _, err := tx.Exec(ctx, `INSERT INTO handset (id, owner_user_id, ipui, tpui, uak_enc, cc_port_id, cc_fixed_id)
+					VALUES ($1, $2, $3, $4, $5, $6, $7)`, id, owner, r.PortID, tpui, enc,
 					nullIfEmpty(r.CCPortID), nullIfEmpty(r.CCFixedID)); err != nil {
 					return err
 				}

@@ -38,6 +38,10 @@ type cellRun struct {
 	// resumed: the session resumed, so the radio may carry calls and is
 	// never switched off for the bring-up (the maintainers' notes)
 	resumed bool
+	// refused: an enrolment came without a registration window; the stack
+	// is rebuilt once the call into it has returned, so the handset's key
+	// leaves the stack and the chip
+	refused bool
 
 	corr     uint16
 	corrSlot map[uint16]uint // slot writes in flight, by corr (§7.4)
@@ -78,10 +82,17 @@ func (r *cellRun) guard(fn func()) {
 			}()
 			r.drop()
 		}()
-		r.resumed = false // the calls went with the stack
+		r.resumed, r.refused = false, false // the calls went with the stack
 		r.retryAt = time.Now().Add(r.core.Retry)
 	}()
 	fn()
+	if r.refused {
+		r.refused = false
+		r.log.Error("enrolment without a registration window refused: DECT stack rebuilt")
+		r.drop()
+		r.resumed = false // the calls went with the stack
+		r.retryAt = time.Now()
+	}
 }
 
 func (r *cellRun) handle(ev event) {
@@ -176,7 +187,7 @@ func (r *cellRun) restart() {
 		r.log.Error("cell full: a home-set handset has no slot here (cell-protocol.md §7.4)", "handset", id)
 	}
 	table, delay := chipConfig(r.up.StubVersion)
-	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]*uuid.UUID{}, jobs: make(chan job, saveQueue)}
+	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]uuid.UUID{}, jobs: make(chan job, saveQueue)}
 	defer func() {
 		for i := range hs {
 			clear(hs[i].Rec.UAK[:])
@@ -246,7 +257,7 @@ func (r *cellRun) send(corr uint16, m stack.Mail) error {
 type gen struct {
 	r      *cellRun
 	slotOf map[int]uint // record index -> chip slot
-	owner  map[uint]*uuid.UUID
+	owner  map[uint]uuid.UUID
 	jobs   chan job
 }
 
@@ -263,6 +274,7 @@ const (
 type job struct {
 	kind  jobKind
 	i     int
+	owner uuid.UUID // an enrolment's
 	rec   stack.Record
 	name  string
 	slot  uint
@@ -270,7 +282,7 @@ type job struct {
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
-func (g *gen) place(i int, slot uint, owner *uuid.UUID) {
+func (g *gen) place(i int, slot uint, owner uuid.UUID) {
 	if old, ok := g.slotOf[i]; ok && old != slot {
 		delete(g.owner, old)
 	}
@@ -314,7 +326,7 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 	switch j.kind {
 	case jobSave:
 		var hid uuid.UUID
-		hid, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.rec)
+		hid, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.owner, j.rec)
 		clear(j.rec.UAK[:])
 		if err == nil {
 			if ids[j.i] == uuid.Nil {
@@ -363,10 +375,22 @@ func (g *gen) Event(to stack.To, line string) {
 }
 
 func (g *gen) Save(i int, rec stack.Record) {
+	var owner uuid.UUID
 	if _, ok := g.slotOf[i]; !ok {
-		g.place(i, rec.Slot, nil) // an enrolment: shared until it has an owner (step 4)
+		// An enrolment: the open window's user owns the handset. Without
+		// a window it is refused (the maintainers' notes point 2).
+		ok := false
+		if w := g.r.core.Window; w != nil {
+			owner, ok = w(g.r.id)
+		}
+		if !ok || owner == uuid.Nil {
+			clear(rec.UAK[:])
+			g.r.refused = true
+			return
+		}
+		g.place(i, rec.Slot, owner)
 	}
-	g.job(job{kind: jobSave, i: i, rec: rec})
+	g.job(job{kind: jobSave, i: i, rec: rec, owner: owner})
 }
 
 func (g *gen) Forget(i int, why string) {
@@ -381,20 +405,14 @@ func (g *gen) Forget(i int, why string) {
 func (g *gen) Named(i int, name string) { g.job(job{kind: jobRename, i: i, name: name}) }
 
 // NameVisible: a handset sees the handsets of its own user's account
-// (list-access.md §1.1); shared handsets see each other.
+// (list-access.md §1.1).
 func (g *gen) NameVisible(viewer, slot uint) bool {
 	if viewer == slot {
 		return true
 	}
 	ov, ok1 := g.owner[viewer]
 	os, ok2 := g.owner[slot]
-	if !ok1 || !ok2 {
-		return false
-	}
-	if ov == nil || os == nil {
-		return ov == nil && os == nil
-	}
-	return *ov == *os
+	return ok1 && ok2 && ov == os
 }
 
 func (g *gen) Switched(cur int, why string) {

@@ -115,6 +115,7 @@ type fakeRecords struct {
 	hs        []Handset
 	fail      int // CellRecords fails this many times
 	saves     []uuid.UUID
+	owners    []uuid.UUID
 	newID     uuid.UUID
 	installed [][]uint
 	unknown   []uint
@@ -131,10 +132,11 @@ func (r *fakeRecords) CellRecords(context.Context, uuid.UUID, int) ([]Handset, [
 	return slices.Clone(r.hs), nil, nil
 }
 
-func (r *fakeRecords) SaveRecord(_ context.Context, _, id uuid.UUID, _ stack.Record) (uuid.UUID, error) {
+func (r *fakeRecords) SaveRecord(_ context.Context, _, id, owner uuid.UUID, _ stack.Record) (uuid.UUID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.saves = append(r.saves, id)
+	r.owners = append(r.owners, owner)
 	if id == uuid.Nil {
 		return r.newID, nil
 	}
@@ -227,7 +229,10 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-func handset(slot uint, owner *uuid.UUID) Handset {
+// owner owns the test handsets.
+var owner = uuid.New()
+
+func handset(slot uint, owner uuid.UUID) Handset {
 	h := Handset{ID: uuid.New(), Owner: owner, Rec: stack.Record{Slot: slot, PortID: []byte{0x80, byte(slot)}}}
 	h.Rec.UAK[0] = byte(slot)
 	return h
@@ -247,7 +252,7 @@ func radioOnAt(g *rig, i int) func() bool {
 }
 
 func TestBringUpAndRecords(t *testing.T) {
-	recs := &fakeRecords{hs: []Handset{handset(2, nil), handset(5, nil)}}
+	recs := &fakeRecords{hs: []Handset{handset(2, owner), handset(5, owner)}}
 	g := newRig(t, recs, nil)
 	id := uuid.New()
 	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", CapSubRecords: 6})
@@ -360,7 +365,7 @@ func TestPanicContainedPerCell(t *testing.T) {
 }
 
 func TestResumeKeepsTheStack(t *testing.T) {
-	g := newRig(t, &fakeRecords{hs: []Handset{handset(1, nil)}}, nil)
+	g := newRig(t, &fakeRecords{hs: []Handset{handset(1, owner)}}, nil)
 	id := uuid.New()
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "radio on", radioOn(g))
@@ -401,7 +406,7 @@ func TestResumeKeepsTheStack(t *testing.T) {
 }
 
 func TestEnrolmentSaves(t *testing.T) {
-	newID := uuid.New()
+	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID}
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
@@ -409,6 +414,7 @@ func TestEnrolmentSaves(t *testing.T) {
 		}
 	})
 	id := uuid.New()
+	g.core.Window = func(c uuid.UUID) (uuid.UUID, bool) { return anna, c == id }
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "radio on", radioOn(g))
 	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
@@ -422,16 +428,45 @@ func TestEnrolmentSaves(t *testing.T) {
 		if r.saves[0] != uuid.Nil || r.saves[1] != newID {
 			t.Errorf("saves %v: the first creates the handset, the second updates it", r.saves)
 		}
+		if r.owners[0] != anna {
+			t.Errorf("enrolment owned by %v, want the window's user", r.owners[0])
+		}
+	})
+}
+
+// An enrolment without a registration window is not stored, and the stack
+// is rebuilt so the key leaves it (the maintainers' notes point 2).
+func TestEnrolmentWithoutWindow(t *testing.T) {
+	recs := &fakeRecords{newID: uuid.New()}
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}})
+		}
+	})
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "the first stack closed", func() bool {
+		c := false
+		g.stack(0).get(func(f *fakeStack) { c = f.closed })
+		return c
+	})
+	waitFor(t, "a new stack", func() bool { return g.nStacks() == 2 })
+	recs.get(func(r *fakeRecords) {
+		if len(r.saves) != 0 {
+			t.Errorf("saves %v without a window", r.saves)
+		}
 	})
 }
 
 func TestNameVisible(t *testing.T) {
 	anna, ben := uuid.New(), uuid.New()
-	g := &gen{owner: map[uint]*uuid.UUID{1: &anna, 2: &anna, 3: &ben, 4: nil, 5: nil}}
+	g := &gen{owner: map[uint]uuid.UUID{1: anna, 2: anna, 3: ben}}
 	for _, c := range []struct {
 		viewer, slot uint
 		want         bool
-	}{{1, 2, true}, {1, 3, false}, {3, 1, false}, {4, 5, true}, {4, 1, false}, {1, 4, false}, {1, 6, false}, {6, 6, true}} {
+	}{{1, 2, true}, {1, 3, false}, {3, 1, false}, {1, 6, false}, {6, 6, true}} {
 		if got := g.NameVisible(c.viewer, c.slot); got != c.want {
 			t.Errorf("NameVisible(%d, %d) = %v", c.viewer, c.slot, got)
 		}
@@ -439,7 +474,7 @@ func TestNameVisible(t *testing.T) {
 }
 
 func TestSlotWriteRejected(t *testing.T) {
-	recs := &fakeRecords{hs: []Handset{handset(3, nil)}}
+	recs := &fakeRecords{hs: []Handset{handset(3, owner)}}
 	g := newRig(t, recs, func(f *fakeStack) {
 		once := false
 		f.onTick = func(env stack.Env) {
@@ -477,7 +512,7 @@ func TestSlotWriteRejected(t *testing.T) {
 func TestPanicWhileBuilding(t *testing.T) {
 	var mu sync.Mutex
 	broken := 1
-	g := newRig(t, &fakeRecords{hs: []Handset{handset(1, nil)}}, func(f *fakeStack) {
+	g := newRig(t, &fakeRecords{hs: []Handset{handset(1, owner)}}, func(f *fakeStack) {
 		mu.Lock()
 		defer mu.Unlock()
 		if broken > 0 {

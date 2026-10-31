@@ -281,33 +281,28 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 // handset views (what the DECT side will serve)
 
 // ForHandset returns the contacts a handset reads: its owner's and the
-// shared ones; a shared handset reads only the shared ones.
+// shared ones.
 func (s *Store) ForHandset(ctx context.Context, handset uuid.UUID) ([]*Contact, error) {
-	var owner *uuid.UUID
+	var owner uuid.UUID
 	if err := s.Pool.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1", handset).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	if owner == nil {
-		return s.load(ctx, "c.owner_user_id IS NULL")
-	}
-	return s.load(ctx, "(c.owner_user_id = $1 OR c.owner_user_id IS NULL)", *owner)
+	return s.load(ctx, "(c.owner_user_id = $1 OR c.owner_user_id IS NULL)", owner)
 }
 
 // SaveFromHandset stores a contact edited on a handset in its owner's
-// personal list (id 0 creates). Shared handsets are read-only.
+// personal list (id 0 creates). A handset has no write access to the
+// shared contacts.
 func (s *Store) SaveFromHandset(ctx context.Context, handset uuid.UUID, id int64, c Contact) (*Contact, error) {
-	var owner *uuid.UUID
+	var owner uuid.UUID
 	if err := s.Pool.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1", handset).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	if owner == nil {
-		return nil, ErrReadOnly
-	}
-	u, err := (&auth.Store{Pool: s.Pool}).UserByID(ctx, s.Pool, *owner)
+	u, err := (&auth.Store{Pool: s.Pool}).UserByID(ctx, s.Pool, owner)
 	if err != nil {
 		return nil, err
 	}

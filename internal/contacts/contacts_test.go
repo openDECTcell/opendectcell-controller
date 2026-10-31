@@ -31,7 +31,7 @@ func setup(t *testing.T) (*contacts.Store, *auth.User, *auth.User, *auth.User) {
 	return &contacts.Store{Pool: pool}, mk("admin", auth.RoleAdmin), mk("anna", auth.RoleUser), mk("ben", auth.RoleUser)
 }
 
-func handset(t *testing.T, pool *pgxpool.Pool, owner *uuid.UUID, tpui int) uuid.UUID {
+func handset(t *testing.T, pool *pgxpool.Pool, owner uuid.UUID, tpui int) uuid.UUID {
 	var id uuid.UUID
 	if err := pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, $2, $3, '\\x') RETURNING id",
 		owner, []byte{byte(tpui)}, tpui).Scan(&id); err != nil {
@@ -89,24 +89,17 @@ func TestContactsAccess(t *testing.T) {
 func TestHandsetViews(t *testing.T) {
 	s, admin, anna, _ := setup(t)
 	pool := s.Pool
-	annas := handset(t, pool, &anna.ID, 1)
-	sharedHS := handset(t, pool, nil, 2)
+	annas := handset(t, pool, anna.ID, 1)
 	mine, _ := s.Create(ctx, anna, contacts.Contact{FirstName: "Eva", LastName: "Meyer", Numbers: []contacts.Number{{Number: "0301234567"}}}, false)
 	s.Create(ctx, admin, contacts.Contact{LastName: "Reception", Numbers: []contacts.Number{{Number: "100"}}}, true)
 
 	if l, _ := s.ForHandset(ctx, annas); len(l) != 2 {
 		t.Errorf("anna's handset reads %d", len(l))
 	}
-	if l, _ := s.ForHandset(ctx, sharedHS); len(l) != 1 || l[0].LastName != "Reception" {
-		t.Errorf("shared handset reads %v", l)
-	}
-	// Edits from a handset go to the owner's list; shared handsets are read-only.
+	// Edits from a handset go to the owner's list.
 	c, err := s.SaveFromHandset(ctx, annas, 0, contacts.Contact{LastName: "New", Numbers: []contacts.Number{{Number: "5"}}})
 	if err != nil || c.OwnerID == nil || *c.OwnerID != anna.ID {
 		t.Fatalf("handset create: %+v %v", c, err)
-	}
-	if _, err := s.SaveFromHandset(ctx, sharedHS, 0, contacts.Contact{LastName: "x"}); !errors.Is(err, contacts.ErrReadOnly) {
-		t.Errorf("shared handset wrote: %v", err)
 	}
 	reception, _ := s.List(ctx, anna, "shared", "")
 	if _, err := s.SaveFromHandset(ctx, annas, reception[0].ID, contacts.Contact{LastName: "x"}); !errors.Is(err, contacts.ErrReadOnly) {
@@ -117,7 +110,7 @@ func TestHandsetViews(t *testing.T) {
 	var acct uuid.UUID
 	pool.QueryRow(ctx, "INSERT INTO sip_account (owner_user_id, label, username, domain) VALUES ($1, 'l', 'u', 'd') RETURNING id", anna.ID).Scan(&acct)
 	pool.Exec(ctx, "INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, 1, $2)", annas, acct)
-	other := handset(t, pool, &anna.ID, 3)
+	other := handset(t, pool, anna.ID, 3)
 	now := time.Now()
 	ins := func(h *uuid.UUID, dir, party string, answered bool, ago time.Duration) int64 {
 		var id int64

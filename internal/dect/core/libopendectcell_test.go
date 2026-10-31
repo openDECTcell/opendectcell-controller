@@ -19,7 +19,7 @@ import (
 // corr (§7.4). The mails are register.trace's start, except that on 08.25
 // the read-backs wait 50 ms (the maintainers' notes), so they follow the mask.
 func TestCellUpWithLibopendectcell(t *testing.T) {
-	h := handset(1, nil)
+	h := handset(1, owner)
 	for k := range h.Rec.UAK {
 		h.Rec.UAK[k] = byte(0xB0 + k)
 	}

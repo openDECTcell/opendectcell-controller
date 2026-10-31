@@ -31,9 +31,9 @@ rename any entry. That is fine for a desk. In the controller it is not:
 
 | Rule | Detail |
 |---|---|
-| **A handset sees only the handsets of its own user's account** in its Internal Names List, itself included | A handset of a user with two handsets sees two entries; a shared handset (no owner) sees the other shared handsets. Never another user's |
+| **A handset sees only the handsets of its own user's account** in its Internal Names List, itself included | A handset of a user with two handsets sees two entries; a team's handsets, owned by one organisation or admin account, see each other. Never another user's. Every handset has an owner (2026-10-31, the maintainers' notes) |
 | **No handset can rename any entry** | The entry's Name field is not editable (properties bit 7 clear) and a save is answered "procedure not allowed". Names are set in the admin UI and the user's own page |
-| **Internal calls stay inside the account** | The list is also the dial list for internal calls, so a handset can only call handsets in its list. Calls to anyone else go through the SIP server like any other call (`AGENTS.md` §1). *Assumption, to confirm with the maintainer:* nobody needs a handset-to-handset call across accounts by pressing an internal number |
+| **Internal calls stay inside the account** | The list is also the dial list for internal calls, so a handset can only call handsets in its list. Calls to anyone else go through the SIP server like any other call (`AGENTS.md` §1). *Confirmed by the maintainer 2026-10-31 (the maintainers' notes point 6):* short internal calls within one user's handsets are fine; nothing across accounts, no PBX features beyond that |
 | A standalone box keeps today's behaviour | Everything visible, renaming allowed |
 
 The names themselves belong to the controller's handset record (the
@@ -49,8 +49,8 @@ air; the fallback there is to ignore a rename in `named()`.
 | Decision | Alternatives | Reason |
 |---|---|---|
 | **Contacts belong to a user, or are shared** (`owner_user_id` NULL, admin-managed), like handsets and SIP accounts | Per handset; one global list | A person with two handsets wants one phonebook. A company wants a reception list everyone sees. Per-handset lists would duplicate both |
-| **A personal handset reads its owner's contacts plus the shared ones.** A shared handset reads only the shared ones | Shared handsets also read nobody's / everyone's personal lists | Personal contacts are personal data (`threat-model.md`, S12) |
-| **Edits from a handset** go to the owner's personal list. On a shared handset the contact list is read-only | Shared handsets edit the shared list | Anyone can pick up a shared handset; changing everyone's phonebook should need the admin UI |
+| **A handset reads its owner's contacts plus the shared ones.** A team's handset reads its organisation account's contacts plus the shared ones (2026-10-31: no handset is without an owner) | Shared handsets also read nobody's / everyone's personal lists | Personal contacts are personal data (`threat-model.md`, S12) |
+| **Edits from a handset** go to the owner's personal list; the shared contacts are read-only from every handset. *Changed 2026-10-31:* a team's handset (owned by an organisation account) edits that account's list, where it used to be read-only | Shared handsets edit the shared list | Changing everyone's phonebook should need the admin UI. A team that wants its handsets' list read-only keeps its contacts shared instead |
 | **Incoming call lists follow the line, not the handset.** A handset sees the calls on the SIP accounts assigned to its lines, including those another handset answered or that rang everywhere and were missed | Per handset | That is what a line is: on CAT-iq the missed-call list is per line, and #44 (missed-call notification) counts per line |
 | **Outgoing calls follow the handset** | Per line | "What did I dial" is per device, as on a mobile phone |
 | **One "read" mark per missed call** (`call_log.missed_read_at`), set when any handset or the UI marks it read | Per-handset read marks | The standard's read status is per entry; per-handset state would make the missed-call count differ between handsets on one line, and #44 needs one count |

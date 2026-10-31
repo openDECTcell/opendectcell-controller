@@ -10,6 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	"github.com/openDECTcell/opendectcell-controller/internal/dbtest"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
@@ -129,13 +131,31 @@ func TestAuditLogIsAppendOnly(t *testing.T) {
 
 func TestLinkSignatureUnique(t *testing.T) {
 	pool := dbtest.Migrated(t)
-	ins := "INSERT INTO handset (ipui, tpui, uak_enc) VALUES ($1, $2, '\\x00')"
-	if _, err := pool.Exec(ctx, ins, []byte{1}, 0x01234); err != nil {
+	owner := newUser(t, pool)
+	ins := "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, $2, $3, '\\x00')"
+	if _, err := pool.Exec(ctx, ins, owner, []byte{1}, 0x01234); err != nil {
 		t.Fatal(err)
 	}
 	// Same low 16 bits, different TPUI: same link signature.
-	if _, err := pool.Exec(ctx, ins, []byte{2}, 0x11234); err == nil {
+	if _, err := pool.Exec(ctx, ins, owner, []byte{2}, 0x11234); err == nil {
 		t.Fatal("two handsets with the same link signature")
+	}
+}
+
+func newUser(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	if err := pool.QueryRow(ctx, "INSERT INTO app_user (username, role, auth_source) VALUES ('owner', 'user', 'local') RETURNING id::text").Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// A handset always has an owner (0004).
+func TestHandsetOwnerRequired(t *testing.T) {
+	pool := dbtest.Migrated(t)
+	if _, err := pool.Exec(ctx, "INSERT INTO handset (ipui, tpui, uak_enc) VALUES ('\\x01', 1, '\\x')"); err == nil {
+		t.Fatal("a handset without an owner")
 	}
 }
 
@@ -158,7 +178,7 @@ func TestKeyringLifecycle(t *testing.T) {
 	// A secret in each encrypted column.
 	var hid, cid, sid string
 	loc := func(tbl, col, id string) secret.Location { return secret.Location{Table: tbl, Column: col, RowID: id} }
-	pool.QueryRow(ctx, "INSERT INTO handset (ipui, tpui, uak_enc) VALUES ('\\x01', 1, '\\x') RETURNING id::text").Scan(&hid)
+	pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\\x01', 1, '\\x') RETURNING id::text", newUser(t, pool)).Scan(&hid)
 	pool.QueryRow(ctx, "INSERT INTO sip_account (label, username, domain) VALUES ('l', 'u', 'd') RETURNING id::text").Scan(&sid)
 	pool.QueryRow(ctx, "INSERT INTO cell_ca (cert_der, key_enc, not_after) VALUES ('\\x', '\\x', now()) RETURNING id::text").Scan(&cid)
 	seal := func(tbl, col, id, v string) {
