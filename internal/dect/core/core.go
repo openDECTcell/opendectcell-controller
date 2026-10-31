@@ -179,10 +179,11 @@ func chipConfig(stub string) (table, delayMs uint32) {
 // FRITZ!OS 07.56 capture of 2026-10-24), radio and beacon on, registration
 // closed. 06.88 boots with its radio on and needs it off before the
 // configuration (openDECTcell docs/7412-spi-tdm-and-loader.md §1b); so does a
-// cell whose radio is on already.
-func bringUp(stub string, radioOn bool) []stack.Mail {
+// cell whose radio is on already. Never on a resumed session: the radio
+// may carry calls (the maintainers' notes).
+func bringUp(stub string, radioOn, resumed bool) []stack.Mail {
 	var ms []stack.Mail
-	if stub == "06.88" || radioOn {
+	if (stub == "06.88" || radioOn) && !resumed {
 		ms = append(ms, stack.Mail{Src: 0x22, Dst: 0x02, Prim: 0x015B, Param: []byte{0x00}})
 	}
 	return append(ms,

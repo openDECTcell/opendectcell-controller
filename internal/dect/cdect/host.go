@@ -8,7 +8,9 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"runtime/cgo"
+	"runtime/debug"
 	"unsafe"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
@@ -51,6 +53,40 @@ type Host struct {
 	h     cgo.Handle
 	env   Env
 	cstrs []*C.char
+	fault *Fault // a panic caught in a callback, raised once C has returned
+}
+
+// Fault is a panic in one of the host's callbacks. It is caught there,
+// because a panic must not unwind through C frames, and raised again by
+// the Host method that called into C (libopendectcell-integration.md §8). The
+// stack is then in an unknown state: close it.
+type Fault struct {
+	Callback string
+	Value    any
+	Stack    []byte
+}
+
+func (f *Fault) Error() string {
+	return fmt.Sprintf("cdect: panic in callback %s: %v\n%s", f.Callback, f.Value, f.Stack)
+}
+
+// catch is deferred by every callback: it keeps the first panic for raise.
+func catch(h C.uintptr_t, cb string) {
+	v := recover()
+	if v == nil {
+		return
+	}
+	if x := hostOf(h); x.fault == nil {
+		x.fault = &Fault{Callback: cb, Value: v, Stack: debug.Stack()}
+	}
+}
+
+// raise panics with a fault caught during the last call into C.
+func (x *Host) raise() {
+	if f := x.fault; f != nil {
+		x.fault = nil
+		panic(f)
+	}
 }
 
 // NewHost allocates a stack for one cell. Add the records, then Start.
@@ -116,16 +152,20 @@ func (x *Host) AddRecord(i int, r Record) {
 	in.cc_port_id_len = C.size_t(copyCapped(in.cc_port_id[:], r.CCPortID))
 	in.cc_fixed_id_len = C.size_t(copyCapped(in.cc_fixed_id[:], r.CCFixedID))
 	C.cdect_host_record(x.c, C.unsigned(i))
+	x.raise()
 }
 
 // AddFreeStore makes record i a place a new handset can enrol.
 func (x *Host) AddFreeStore(i int) {
 	C.cdect_host_free_store(x.c, C.unsigned(i))
+	x.raise()
 }
 
 // Start finishes the set-up once the records are in.
 func (x *Host) Start() error {
-	if C.cdect_host_start(x.c) != 0 {
+	rc := C.cdect_host_start(x.c)
+	x.raise()
+	if rc != 0 {
 		return ErrNoSlot
 	}
 	return nil
@@ -149,16 +189,19 @@ func (x *Host) Mail(m Mail, now uint64) {
 	in.param_len = C.uint16_t(len(m.Param))
 	copyIn(in.param[:], m.Param)
 	C.cdect_host_mail(x.c, C.uint64_t(now))
+	x.raise()
 }
 
 // Tick runs the stack's timers; call it at least every 100 ms.
 func (x *Host) Tick(now uint64) {
 	C.cdect_host_tick(x.c, C.uint64_t(now))
+	x.raise()
 }
 
 // Hello sends a client that connected the `hello` and `hs` lines.
 func (x *Host) Hello() {
 	C.cdect_host_hello(x.c)
+	x.raise()
 }
 
 // Ctl runs one bridge-interface line (without its newline) from a client;
@@ -172,7 +215,9 @@ func (x *Host) Ctl(line string, now uint64, isBridge bool) bool {
 		x.c.line[i] = C.char(line[i])
 	}
 	x.c.line[len(line)] = 0
-	return C.cdect_host_ctl(x.c, C.uint64_t(now), cbool(isBridge)) == C.CDECT_CTL_BRIDGE
+	rc := C.cdect_host_ctl(x.c, C.uint64_t(now), cbool(isBridge))
+	x.raise()
+	return rc == C.CDECT_CTL_BRIDGE
 }
 
 func cbool(v bool) C.int {
@@ -197,7 +242,9 @@ func goBytes(p *C.uint8_t, n C.size_t) []byte {
 }
 
 //export cdectSend
-func cdectSend(h C.uintptr_t, m *C.struct_dect_mail) C.int {
+func cdectSend(h C.uintptr_t, m *C.struct_dect_mail) (rc C.int) {
+	rc = -1
+	defer catch(h, "send")
 	x := hostOf(h)
 	err := x.env.Send(Mail{Src: uint8(m.src), Dst: uint8(m.dst), Prim: uint16(m.prim),
 		Param: goBytes(&m.param[0], C.size_t(m.param_len))})
@@ -209,11 +256,13 @@ func cdectSend(h C.uintptr_t, m *C.struct_dect_mail) C.int {
 
 //export cdectRoom
 func cdectRoom(h C.uintptr_t) C.int {
+	defer catch(h, "room")
 	return cbool(hostOf(h).env.Room())
 }
 
 //export cdectRandom
 func cdectRandom(h C.uintptr_t, out *C.uint8_t, n C.size_t) {
+	defer catch(h, "random")
 	b := make([]byte, int(n))
 	hostOf(h).env.Random(b)
 	copyIn(unsafe.Slice(out, int(n)), b)
@@ -222,16 +271,19 @@ func cdectRandom(h C.uintptr_t, out *C.uint8_t, n C.size_t) {
 
 //export cdectLog
 func cdectLog(h C.uintptr_t, line *C.char) {
+	defer catch(h, "log")
 	hostOf(h).env.Log(C.GoString(line))
 }
 
 //export cdectEvent
 func cdectEvent(h C.uintptr_t, to C.int, line *C.char, n C.size_t) {
+	defer catch(h, "event")
 	hostOf(h).env.Event(To(to), C.GoStringN(line, C.int(n)))
 }
 
 //export cdectSave
 func cdectSave(h C.uintptr_t, i C.unsigned, r *C.struct_dect_hs_rec) {
+	defer catch(h, "save")
 	rec := Record{Slot: uint(r.slot),
 		PortID:    goBytes(&r.port_id[0], r.port_id_len),
 		CCPortID:  goBytes(&r.cc_port_id[0], r.cc_port_id_len),
@@ -245,37 +297,45 @@ func cdectSave(h C.uintptr_t, i C.unsigned, r *C.struct_dect_hs_rec) {
 
 //export cdectForget
 func cdectForget(h C.uintptr_t, i C.unsigned, why *C.char) {
+	defer catch(h, "forget")
 	hostOf(h).env.Forget(int(i), C.GoString(why))
 }
 
 //export cdectNamed
 func cdectNamed(h C.uintptr_t, i C.unsigned) {
+	defer catch(h, "named")
 	x := hostOf(h)
 	x.env.Named(int(i), C.GoString(&x.c.b.name[i][0]))
 }
 
 //export cdectNameVisible
 func cdectNameVisible(h C.uintptr_t, viewer, slot C.unsigned) C.int {
+	defer catch(h, "namevisible")
 	return cbool(hostOf(h).env.NameVisible(uint(viewer), uint(slot)))
 }
 
 //export cdectSwitched
 func cdectSwitched(h C.uintptr_t, cur C.unsigned, why *C.char) {
+	defer catch(h, "switched")
 	hostOf(h).env.Switched(int(cur), C.GoString(why))
 }
 
 //export cdectRegistered
 func cdectRegistered(h C.uintptr_t, cur C.unsigned) {
+	defer catch(h, "registered")
 	hostOf(h).env.Registered(int(cur))
 }
 
 //export cdectCapLearned
 func cdectCapLearned(h C.uintptr_t, i C.unsigned) {
+	defer catch(h, "caplearned")
 	hostOf(h).env.CapLearned(int(i))
 }
 
 //export cdectClock
 func cdectClock(h C.uintptr_t, dt *C.struct_dect_time, off *C.long) C.int {
+	defer catch(h, "clock")
+	*dt, *off = C.struct_dect_time{}, 0 // what C reads if Clock panics
 	now, ok := hostOf(h).env.Clock()
 	_, o := now.Zone()
 	*dt = C.struct_dect_time{year: C.uint8_t(now.Year() % 100), month: C.uint8_t(now.Month()),
@@ -287,6 +347,7 @@ func cdectClock(h C.uintptr_t, dt *C.struct_dect_time, off *C.long) C.int {
 
 //export cdectMedia
 func cdectMedia(h C.uintptr_t, handle, channel C.uint8_t, wideband, up C.int) {
+	defer catch(h, "media")
 	hostOf(h).env.Media(uint8(handle), uint8(channel), wideband != 0, up != 0)
 }
 

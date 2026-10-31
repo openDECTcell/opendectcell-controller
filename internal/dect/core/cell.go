@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
@@ -34,6 +35,9 @@ type cellRun struct {
 	install bool   // the radio is on: the records go in at the next tick
 	retryAt time.Time
 	noStack bool // said once: this binary has no libopendectcell
+	// resumed: the session resumed, so the radio may carry calls and is
+	// never switched off for the bring-up (the maintainers' notes)
+	resumed bool
 
 	corr     uint16
 	corrSlot map[uint16]uint // slot writes in flight, by corr (§7.4)
@@ -48,17 +52,42 @@ func (r *cellRun) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case ev := <-r.in:
-			r.handle(ev)
+			r.guard(func() { r.handle(ev) })
 		case <-t.C:
-			r.tick()
+			r.guard(r.tick)
 		}
 	}
+}
+
+// guard contains a panic in the cell's stack or its callbacks to this
+// cell: the stack is dropped and rebuilt after the retry delay, the other
+// cells carry on (libopendectcell-integration.md §8).
+func (r *cellRun) guard(fn func()) {
+	defer func() {
+		v := recover()
+		if v == nil {
+			return
+		}
+		r.log.Error("DECT stack panicked: dropped, rebuilt after the retry delay",
+			"panic", v, "stack", string(debug.Stack()), "retry", r.core.Retry)
+		func() {
+			defer func() {
+				if v := recover(); v != nil {
+					r.log.Error("DECT stack panicked again while closing", "panic", v)
+				}
+			}()
+			r.drop()
+		}()
+		r.resumed = false // the calls went with the stack
+		r.retryAt = time.Now().Add(r.core.Retry)
+	}()
+	fn()
 }
 
 func (r *cellRun) handle(ev event) {
 	switch ev.kind {
 	case evUp:
-		r.linkUp, r.up = true, ev.up
+		r.linkUp, r.up, r.resumed = true, ev.up, ev.up.Resumed
 		if ev.up.Resumed && r.st != nil {
 			r.log.Info("DECT stack resumed")
 			return
@@ -169,22 +198,24 @@ func (r *cellRun) restart() {
 		return
 	}
 	r.st, r.gen = st, g
-	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1)
+	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1, r.resumed)
 	r.nextAt = time.Now()
 	r.log.Info("DECT stack started", "records", len(hs), "free", max-len(hs), "stub", r.up.StubVersion)
 }
 
+// drop closes the stack. The fields are cleared first, so a panic in
+// Close cannot close anything twice.
 func (r *cellRun) drop() {
-	if r.st != nil {
-		r.st.Close()
-		r.st = nil
-	}
-	if r.gen != nil {
-		r.gen.stop()
-		r.gen = nil
-	}
+	st, g := r.st, r.gen
+	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
 	clear(r.corrSlot)
+	if g != nil {
+		g.stop()
+	}
+	if st != nil {
+		st.Close()
+	}
 }
 
 // send is MAIL_DOWN. A slot write gets a corr, so a cell that cannot
@@ -252,44 +283,56 @@ func (g *gen) job(j job) {
 
 // start runs the writer; ids (record index -> handset) is its own from now.
 func (g *gen) start(ids map[int]uuid.UUID) {
-	core, id, log := g.r.core, g.r.id, g.r.log
+	core := g.r.core
 	core.wg.Add(1)
 	go func() {
 		defer core.wg.Done()
 		for j := range g.jobs {
-			ctx, cancel := context.WithTimeout(context.WithoutCancel(core.ctx), storeTimeout)
-			var err error
-			switch j.kind {
-			case jobSave:
-				var hid uuid.UUID
-				hid, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.rec)
-				clear(j.rec.UAK[:])
-				if err == nil {
-					if ids[j.i] == uuid.Nil {
-						log.Info("handset enrolled: record stored", "handset", hid, "slot", j.rec.Slot)
-					}
-					ids[j.i] = hid
-				}
-			case jobForget:
-				if hid, ok := ids[j.i]; ok {
-					err = core.Records.Forget(ctx, id, hid)
-					delete(ids, j.i)
-				}
-			case jobRename:
-				if hid, ok := ids[j.i]; ok {
-					err = core.Records.Rename(ctx, hid, j.name)
-				}
-			case jobInstalled:
-				err = core.Records.Installed(ctx, id, j.slots)
-			case jobUnknown:
-				err = core.Records.SlotUnknown(ctx, id, j.slot)
-			}
-			cancel()
-			if err != nil {
-				log.Error("handset record not stored", "job", j.kind, "err", err)
-			}
+			g.write(ids, j)
 		}
 	}()
+}
+
+// write is one database job on the writer goroutine. A panic in it is
+// logged and the writer goes on with the next job.
+func (g *gen) write(ids map[int]uuid.UUID, j job) {
+	core, id, log := g.r.core, g.r.id, g.r.log
+	defer func() {
+		if v := recover(); v != nil {
+			log.Error("handset record writer panicked: job lost", "job", j.kind, "panic", v, "stack", string(debug.Stack()))
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(core.ctx), storeTimeout)
+	defer cancel()
+	var err error
+	switch j.kind {
+	case jobSave:
+		var hid uuid.UUID
+		hid, err = core.Records.SaveRecord(ctx, id, ids[j.i], j.rec)
+		clear(j.rec.UAK[:])
+		if err == nil {
+			if ids[j.i] == uuid.Nil {
+				log.Info("handset enrolled: record stored", "handset", hid, "slot", j.rec.Slot)
+			}
+			ids[j.i] = hid
+		}
+	case jobForget:
+		if hid, ok := ids[j.i]; ok {
+			err = core.Records.Forget(ctx, id, hid)
+			delete(ids, j.i)
+		}
+	case jobRename:
+		if hid, ok := ids[j.i]; ok {
+			err = core.Records.Rename(ctx, hid, j.name)
+		}
+	case jobInstalled:
+		err = core.Records.Installed(ctx, id, j.slots)
+	case jobUnknown:
+		err = core.Records.SlotUnknown(ctx, id, j.slot)
+	}
+	if err != nil {
+		log.Error("handset record not stored", "job", j.kind, "err", err)
+	}
 }
 
 // stop lets the writer finish what is queued, then end.

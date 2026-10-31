@@ -293,12 +293,67 @@ func TestChipConfigPerBuild(t *testing.T) {
 		if table != c.table || delay != c.delay {
 			t.Errorf("%s: table %#x delay %d", c.stub, table, delay)
 		}
-		if p := bringUp(c.stub, false)[0].Prim; p != c.first {
+		if p := bringUp(c.stub, false, false)[0].Prim; p != c.first {
 			t.Errorf("%s: first bring-up mail %#04x", c.stub, p)
 		}
 	}
-	if p := bringUp("08.25", true)[0]; p.Prim != 0x015B || p.Param[0] != 0 {
+	if p := bringUp("08.25", true, false)[0]; p.Prim != 0x015B || p.Param[0] != 0 {
 		t.Error("a cell whose radio is on is switched off before the configuration")
+	}
+	for _, stub := range []string{"06.88", "08.25"} {
+		if p := bringUp(stub, true, true)[0].Prim; p != 0x0153 {
+			t.Errorf("%s: a resumed session's radio is switched off (first mail %#04x)", stub, p)
+		}
+	}
+}
+
+// A resumed session the controller has no stack for (the records did not
+// load before) gets one, without the radio switched off: it may carry calls.
+func TestResumeWithoutStackKeepsTheRadio(t *testing.T) {
+	g := newRig(t, &fakeRecords{fail: 1}, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", RadioState: 1, Resumed: true})
+	waitFor(t, "radio on", radioOn(g))
+	if m := g.link.all()[0].m; m.Prim != 0x0153 {
+		t.Errorf("first mail %04x %x, want the configuration, no radio off", m.Prim, m.Param)
+	}
+}
+
+// A panic in one cell's stack drops that stack and rebuilds it; another
+// cell carries on.
+func TestPanicContainedPerCell(t *testing.T) {
+	var mu sync.Mutex
+	broken := 1 // the first stack built panics on its first mail
+	g := newRig(t, &fakeRecords{}, func(f *fakeStack) {
+		mu.Lock()
+		defer mu.Unlock()
+		if broken > 0 {
+			broken--
+			f.onMail = func(stack.Env, stack.Mail) { panic("stack broke") }
+		}
+	})
+	bad, good := uuid.New(), uuid.New()
+	g.core.CellUp(bad, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "the bad cell's stack", func() bool { return g.nStacks() == 1 })
+	g.core.CellUp(good, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "the good cell's stack", func() bool { return g.nStacks() == 2 })
+
+	g.core.MailUp(bad, wire.MailUpMsg{Prim: 0x0200})
+	waitFor(t, "the bad stack closed", func() bool {
+		c := false
+		g.stack(0).get(func(f *fakeStack) { c = f.closed })
+		return c
+	})
+	waitFor(t, "the bad cell rebuilt", func() bool { return g.nStacks() == 3 })
+
+	g.core.MailUp(good, wire.MailUpMsg{Prim: 0x0201})
+	waitFor(t, "the good cell's mail", func() bool {
+		n := 0
+		g.stack(1).get(func(f *fakeStack) { n = len(f.mails) })
+		return n == 1
+	})
+	if c := false; func() bool { g.stack(1).get(func(f *fakeStack) { c = f.closed }); return c }() {
+		t.Error("the good cell's stack was closed")
 	}
 }
 
