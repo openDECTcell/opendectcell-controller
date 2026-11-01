@@ -216,7 +216,7 @@ func (r *cellRun) handle(ev event) {
 	case evMail:
 		r.log.Debug("chip mail", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "len", len(ev.mail.Param))
 		switch ev.mail.Prim { // the link's own mails, with what they carry: no memory reads, so no keys
-		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242:
+		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242, 0xF601, 0xF602: // F601/F602: the chip's RFPI and its broadcast report
 			r.log.Debug("chip mail content", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "param", hex.EncodeToString(ev.mail.Param))
 		}
 		if ev.mail.Prim == 0x0201 {
