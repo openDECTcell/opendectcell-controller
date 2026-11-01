@@ -165,6 +165,7 @@ type Options struct {
 	NoAutoEcho  bool     // don't answer the controller's heartbeats
 	NoHello     bool     // connect but send nothing
 	RFPI        *[5]byte // the identity the chip broadcasts, in HELLO tag 17
+	Media       bool     // announce MEDIA and SRTP with audio formats L16 8 kHz and G.722, as a real cell does
 }
 
 // Conn is an established link.
@@ -196,6 +197,10 @@ func (c *Cell) Connect(ctx context.Context, o Options) (*Conn, error) {
 		CapRadioContexts: 6, CapAudioNB: 4, CapAudioWB: 4, ResumeToken: o.ResumeToken, RadioState: 1}
 	if o.RFPI != nil {
 		h.RFPI, h.HasRFPI = *o.RFPI, true
+	}
+	if o.Media {
+		h.Capabilities |= wire.CapMedia | wire.CapSRTP
+		h.AudioFormats = []uint8{wire.FormatL16_8k, wire.FormatG722}
 	}
 	if err := cn.Send(wire.Frame{Type: wire.Hello, Corr: 1, Body: h.Encode()}); err != nil {
 		conn.Close()

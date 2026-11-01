@@ -186,6 +186,23 @@ func TestTokenAuthorisation(t *testing.T) {
 	}
 }
 
+// A cell that announces media and SRTP is granted both: without the grant it
+// refuses MEDIA_OPEN as "not allowed" (found on air, 2026-11-01). Plain RTP is
+// never granted.
+func TestHelloAckGrantsMedia(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{Media: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	got := cn.Ack.Capabilities
+	if got&wire.CapMedia == 0 || got&wire.CapSRTP == 0 || got&wire.CapPlainRTP != 0 {
+		t.Errorf("capabilities %b", got)
+	}
+}
+
 func TestHandshakeApproveAndHeartbeat(t *testing.T) {
 	e := newEnv(t)
 	c := e.enrolled(t, false)
@@ -331,6 +348,24 @@ func TestMediaMessages(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no MEDIA_CLOSED at the sink")
+	}
+	// an ERROR the cell answers MEDIA_OPEN with is an answer, not silence
+	if err := e.srv.OpenMedia(c.ID, wire.MediaOpenMsg{MediaID: 11, AudioChannel: 1, Format: wire.FormatL16_8k, PayloadType: 96,
+		CtlAddr: mo.CtlAddr, SRTPProfile: wire.SRTPNone}); err != nil {
+		t.Fatal(err)
+	}
+	f, err = cn.Expect(wire.MediaOpen, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cn.Send(wire.Frame{Type: wire.Error, Corr: f.Corr, Body: wire.ErrorMsg{Code: wire.ErrNotAllowed, RefType: wire.MediaOpen, RefCorr: f.Corr}.Encode()})
+	select {
+	case a := <-sink.opened:
+		if a.MediaID != 11 || a.Status == wire.MediaOK {
+			t.Errorf("refusal %+v", a)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a refused MEDIA_OPEN did not reach the sink")
 	}
 	// a malformed answer is an ERROR
 	cn.Send(wire.Frame{Type: wire.MediaOpenAck, Body: []byte{1, 2}})

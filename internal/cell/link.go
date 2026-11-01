@@ -44,8 +44,11 @@ const (
 
 // controllerCaps are the capabilities the controller uses (§6.1). MAIL is
 // required in v1: the tunnel ends at Server.Mails; without one, mails are
-// counted and dropped.
-const controllerCaps = wire.CapMail | wire.CapStats | wire.CapFlow | wire.CapResume
+// counted and dropped. MEDIA and SRTP: the controller sends MEDIA_OPEN
+// (bridge.Manager); a cell refuses it ("not allowed") unless HELLO_ACK
+// grants both. Plain RTP is never granted here: it needs the cell's
+// allow_plain_rtp and is not used.
+const controllerCaps = wire.CapMail | wire.CapMedia | wire.CapSRTP | wire.CapStats | wire.CapFlow | wire.CapResume
 
 // Server accepts cell connections on the control port.
 type Server struct {
@@ -176,7 +179,9 @@ func (s *Server) SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error {
 // OpenMedia asks an active cell to tie a chip channel to a UDP flow
 // (MEDIA_OPEN, §8.1). The answer comes to Server.Media.
 func (s *Server) OpenMedia(id uuid.UUID, m wire.MediaOpenMsg) error {
-	return s.sendFrame(id, wire.Frame{Type: wire.MediaOpen, Body: m.Encode()})
+	// The cell echoes corr in an ERROR it answers with, which is how a refusal
+	// finds its call (the media id, which is small, as a 16 bit number).
+	return s.sendFrame(id, wire.Frame{Type: wire.MediaOpen, Corr: uint16(m.MediaID), Body: m.Encode()})
 }
 
 // CloseMedia asks the cell to end a flow (MEDIA_CLOSE); it answers
@@ -719,6 +724,10 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 	case wire.Error:
 		e, _ := wire.DecodeError(f.Body)
 		ss.log.Warn("ERROR from cell", "code", e.Code, "ref_type", e.RefType, "text", e.Text)
+		if e.RefType == wire.MediaOpen && ss.srv.Media != nil {
+			// a refused MEDIA_OPEN is an answer: the call need not wait for one
+			ss.srv.Media.MediaOpened(ss.cell.ID, wire.MediaOpenAckMsg{MediaID: uint32(e.RefCorr), Status: wire.MediaInternalError})
+		}
 	case wire.Status:
 		m, err := wire.DecodeStatus(f.Body)
 		if err != nil {
