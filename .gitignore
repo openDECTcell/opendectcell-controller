@@ -10,3 +10,4 @@
 # editors
 .vscode/
 .idea/
+docker-compose.override.yml
