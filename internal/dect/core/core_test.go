@@ -2018,6 +2018,17 @@ func TestResidentCellKeepsSlotsAndTakesNewcomers(t *testing.T) {
 			t.Errorf("CellRecords asked resident %v, want [false true]", r.residentAsked)
 		}
 	})
+	// a resident cell's free stores carry no pool TPUI: the enrolled handset takes the slot's
+	g.stack(1).get(func(f *fakeStack) {
+		for k, tp := range f.freeTPUI {
+			if tp != ([3]byte{}) {
+				t.Errorf("free store %d of the resident cell offered %x", k, tp)
+			}
+		}
+		if len(f.free) == 0 {
+			t.Error("the resident cell has no free store for an enrolment")
+		}
+	})
 
 	// the handset enrols on a: a frees the chip slot, b, resident, is rebuilt
 	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})

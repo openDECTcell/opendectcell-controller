@@ -276,6 +276,15 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int, reside
 			}
 		}
 		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxSlot))
+		if resident {
+			// The chip finds a handset's slot by its TPUI {00 11 n}, n the slot: with
+			// the pool's TPUI a handset in a slot is not heard (bench 2026-11-02,
+			// 06.88), so a record in a resident cell's chip slot takes the TPUI
+			// derived from its slot, and the handset takes it at its next locate.
+			for i := range hs {
+				hs[i].Rec.TPUI = [3]byte{}
+			}
+		}
 		return err
 	})
 	if err != nil {

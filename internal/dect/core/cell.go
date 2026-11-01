@@ -795,9 +795,13 @@ func (r *cellRun) restart() {
 	}
 	free := 0
 	for ; chipRecs+free < max; free++ {
-		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-		t, err := r.core.Records.ReserveTPUI(ctx)
-		cancel()
+		var t [3]byte
+		var err error
+		if !r.resident { // a resident cell's chip hears only slot-derived TPUIs: none from the pool
+			ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+			t, err = r.core.Records.ReserveTPUI(ctx)
+			cancel()
+		}
 		if err != nil {
 			// no pooled TPUI: this store takes a chip-slot handset as before
 			r.log.Warn("no pool TPUI for a free record: a handset enrolling here sits in a chip slot", "err", err)

@@ -450,7 +450,8 @@ func TestStoreTableFull(t *testing.T) {
 
 // A resident cell (a chip that hears only handsets in its slots, chipNeedsSlots)
 // holds every handset of the controller in a chip slot, a pooled one included
-// and under its pool TPUI, the most recently heard first; the last slot stays
+// and under the TPUI its slot gives (the chip finds a handset by it), the most
+// recently heard first; the last slot stays
 // free for an enrolment.
 func TestStoreResidentCell(t *testing.T) {
 	s, ctx := newStore(t)
@@ -476,7 +477,7 @@ func TestStoreResidentCell(t *testing.T) {
 	if hs, _, _ := s.CellRecords(ctx, a, 6, false); len(hs) != 1 || hs[0].ID != chip {
 		t.Fatalf("a, not resident: %+v", hs)
 	}
-	// A resident cell takes both, the pooled one under its pool TPUI.
+	// A resident cell takes both, the pooled one under no pool TPUI.
 	hs, unplaced, err := s.CellRecords(ctx, c, 6, true)
 	if err != nil || len(unplaced) != 0 || len(hs) != 2 {
 		t.Fatalf("c, resident: %+v %v %v", hs, unplaced, err)
@@ -488,8 +489,8 @@ func TestStoreResidentCell(t *testing.T) {
 		}
 		if h.ID == pooled.ID {
 			sawPool = true
-			if h.Rec.TPUI != tp {
-				t.Errorf("the pooled handset's TPUI %x, want %x", h.Rec.TPUI, tp)
+			if h.Rec.TPUI != ([3]byte{}) {
+				t.Errorf("the pooled handset's TPUI %x on a resident cell, want none (derived from its slot)", h.Rec.TPUI)
 			}
 		}
 	}
