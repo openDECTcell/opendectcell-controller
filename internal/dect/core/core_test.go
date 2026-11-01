@@ -1454,8 +1454,8 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 				t.Errorf("free store %d offered %x", k, tp)
 			}
 		}
-		if !f.cfg.DeferUnknown || f.cfg.LocateValidity != 1 {
-			t.Errorf("config %+v: unknown handsets are held for a fetch, validity 41 s is one unit", f.cfg)
+		if !f.cfg.DeferUnknown || f.cfg.LocateValidity != 6 {
+			t.Errorf("config %+v: unknown handsets are held for a fetch, validity 246 s is six units", f.cfg)
 		}
 	})
 	waitFor(t, "slots recorded", func() bool {

@@ -16,7 +16,7 @@ func TestRoamingUnits(t *testing.T) {
 			t.Errorf("%v: %d units, want %d", c.d, got, c.want)
 		}
 	}
-	if d := DefaultRoaming(); d.LocateValidity != 41*time.Second || d.ExpireAfter != time.Minute || d.MovedAfter != 3*time.Minute {
+	if d := DefaultRoaming(); d.LocateValidity != 246*time.Second || d.ExpireAfter != time.Minute || d.MovedAfter != 3*time.Minute {
 		t.Errorf("defaults %+v", d)
 	}
 }

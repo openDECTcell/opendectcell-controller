@@ -104,7 +104,7 @@
           <p class="text-secondary">Every handset can connect to every cell. A cell holds a handset in memory only while it is around: it is taken from the database when it first talks to the cell, and dropped when it stops renewing.</p>
           <div class="mb-3"><label class="form-label" for="locate_validity_sec">Handsets register again every (seconds)</label>
             <input class="form-control" id="locate_validity_sec" name="locate_validity_sec" inputmode="numeric" value="{{.Roaming.LocateValiditySec}}">
-            <div class="form-hint">Rounded to 40.96 s; at most 10445; 0 does not ask them to. Each renewal costs the handset a short radio link, so battery. Keep it short: the chip stops hearing an idle handset a few minutes after its last contact (calls and pages then fail until it registers again), and a renewal is what refreshes that.</div></div>
+            <div class="form-hint">Rounded to 40.96 s; at most 10445; 0 does not ask them to. Each renewal costs the handset a short radio link, so battery. Keep it under about 4 minutes: the chip stops hearing an idle handset some minutes after its last contact (calls and pages then fail until it registers again), and a renewal is what refreshes that.</div></div>
           <div class="mb-3"><label class="form-label" for="expire_after_sec">Drop a handset that did not, after another (seconds)</label>
             <input class="form-control" id="expire_after_sec" name="expire_after_sec" inputmode="numeric" value="{{.Roaming.ExpireAfterSec}}"></div>
           <div class="mb-0"><label class="form-label" for="moved_after_sec">Drop a handset that was heard on another cell, after (seconds)</label>
