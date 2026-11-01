@@ -38,7 +38,7 @@ type Roaming struct {
 
 // DefaultRoaming is what an installation without settings runs with.
 func DefaultRoaming() Roaming {
-	return Roaming{LocateValidity: 10 * time.Minute, ExpireAfter: 60 * time.Second, MovedAfter: 180 * time.Second}
+	return Roaming{LocateValidity: 41 * time.Second, ExpireAfter: 60 * time.Second, MovedAfter: 180 * time.Second}
 }
 
 // locateUnit is the unit of <<DURATION>> in a LOCATE-ACCEPT (EN 300 175-5 §7.7.13:

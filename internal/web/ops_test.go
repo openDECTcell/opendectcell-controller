@@ -273,9 +273,9 @@ func TestIdentityPages(t *testing.T) {
 func TestRoamingSettings(t *testing.T) {
 	e := newEnv(t)
 	a := e.adminBrowser(t)
-	// the defaults are shown before anything is saved: 10 minutes, 60 s, 180 s
+	// the defaults are shown before anything is saved: 41 s, 60 s, 180 s
 	_, body := e.get(t, a, "/admin/settings")
-	for _, want := range []string{`name="locate_validity_sec" inputmode="numeric" value="600"`, `name="expire_after_sec" inputmode="numeric" value="60"`, `name="moved_after_sec" inputmode="numeric" value="180"`} {
+	for _, want := range []string{`name="locate_validity_sec" inputmode="numeric" value="41"`, `name="expire_after_sec" inputmode="numeric" value="60"`, `name="moved_after_sec" inputmode="numeric" value="180"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("default not shown: %s", want)
 		}

@@ -294,10 +294,14 @@ func (s *Store) Security(ctx context.Context) (Security, error) {
 
 // Roaming's defaults, in seconds (maintainer, 2026-11-01).
 const (
-	DefaultLocateValiditySec = 600 // handsets register again every 10 minutes
+	DefaultLocateValiditySec = 41  // handsets register again every 41 s (one unit): see below
 	DefaultExpireAfterSec    = 60  // a handset that did not is dropped from a cell's table within a minute after
 	DefaultMovedAfterSec     = 180 // one heard on another cell, three minutes after that
 )
+
+// The renewal is short on purpose: the chip stops hearing an idle handset it has
+// no slot for a few minutes after its last contact, and only a location
+// registration revives it (clean room Q-0081, A-0146, A-0147).
 
 // MaxLocateValiditySec is 255 units of 40.96 s, the most a LOCATE-ACCEPT can say.
 const MaxLocateValiditySec = 10445
