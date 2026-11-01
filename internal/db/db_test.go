@@ -192,6 +192,7 @@ func TestKeyringLifecycle(t *testing.T) {
 	}
 	seal("handset", "uak_enc", hid, "uak")
 	seal("sip_account", "password_enc", sid, "pw")
+	seal("sip_account", "stunpass_enc", sid, "turnpw")
 	seal("cell_ca", "key_enc", cid, "cakey")
 
 	// Reloading finds the same key; a wrong master key is refused.
@@ -218,7 +219,7 @@ func TestKeyringLifecycle(t *testing.T) {
 	// DEK rotation re-encrypts everything and drops the old key.
 	before, _ := kr.ActiveID()
 	n, err := db.RotateDEK(ctx, pool, other, kr)
-	if err != nil || n != 3 {
+	if err != nil || n != 4 {
 		t.Fatalf("RotateDEK: %d %v", n, err)
 	}
 	after, _ := kr.ActiveID()
@@ -235,7 +236,8 @@ func TestKeyringLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ tbl, col, id, want string }{
-		{"handset", "uak_enc", hid, "uak"}, {"sip_account", "password_enc", sid, "pw"}, {"cell_ca", "key_enc", cid, "cakey"},
+		{"handset", "uak_enc", hid, "uak"}, {"sip_account", "password_enc", sid, "pw"},
+		{"sip_account", "stunpass_enc", sid, "turnpw"}, {"cell_ca", "key_enc", cid, "cakey"},
 	} {
 		var ct []byte
 		pool.QueryRow(ctx, "SELECT "+c.col+" FROM "+c.tbl+" WHERE id::text = $1", c.id).Scan(&ct)

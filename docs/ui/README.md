@@ -7,7 +7,7 @@ screen lists the API operations it needs; a screen that needs something the
 API lacks is a bug in one of them. Server-rendered with htmx
 (`docs/adr/0001-web-frontend.md`); 🔄 marks a fragment that refreshes itself.
 
-Navigation: **Overview · Handsets · SIP accounts · Calls** for everyone;
+Navigation: **Overview · Handsets · VoIP profiles · Calls** for everyone;
 **Cells · Users · Audit log · Settings** added for admins.
 
 ## User
@@ -70,38 +70,41 @@ Features        Date/time [x]   Missed calls [x]   Message waiting [ ] (unsuppor
 ones for admins), `setHomeCells`, `listHandsetFeatures` / `setHandsetFeature`,
 `deleteHandset` (confirm: "The handset stops working on every cell.").
 
-### U4 SIP accounts
+### U4 VoIP profiles
+
+The names and the structure are those of the VoIP Profiles tab of luci-app-opendectcell
+(docs/luci-manual.md §2.3 in the openDECTcell repo), so a profile reads the same on the
+box and on the controller.
 
 ```
-SIP accounts                                                  [ + Add account ]
-┌────────┬────────────────────────────┬───────────┬───────────────┬─────────┐
-│ Label  │ Address                    │ Transport │ Registration  │         │
-├────────┼────────────────────────────┼───────────┼───────────────┼─────────┤
-│ Home   │ 49301234@sip.example.net   │ TLS·SRTP  │ ● registered  │ [Edit]  │ 🔄
-│ Office │ 210@pbx.office.lan         │ UDP       │ ● 403 Forbid. │ [Edit]  │ 🔄
-└────────┴────────────────────────────┴───────────┴───────────────┴─────────┘
+VoIP profiles                                                [ Add a profile ]
+┌──────────────┬──────────────────────────┬───────────────┬──────────────────────┬───────────┐
+│ Profile name │ Account                  │ Registration  │ Line of              │ Transport │
+├──────────────┼──────────────────────────┼───────────────┼──────────────────────┼───────────┤
+│ Home         │ 49301234@sip.example.net │ ● registered  │ Kitchen, Line 1      │ tls · SRTP│
+│ Spare        │ 210@pbx.office.lan       │ ● 403 Forbid. │ free                 │ udp       │
+└──────────────┴──────────────────────────┴───────────────┴──────────────────────┴───────────┘
 ```
 
-`listSipAccounts`, `getSipAccountStatus` per row.
+`listSipAccounts`, `getSipAccountStatus` per row. "Line of" lists the lines of the
+user's own handsets (a handset's lines are private to its owner).
 
-### U5 SIP account form
+### U5 VoIP profile
 
-```
-Label [Home]   Display name [Paula]
-User [49301234]  Domain [sip.example.net]  Auth user [        ]
-Password [••••••••] (leave empty to keep)
-Transport (•) TLS ( ) TCP ( ) UDP      Register [x]  every [600] s
-Registrar [        ] (empty: from the domain, via DNS)   Outbound proxy [        ]
-Media encryption ( ) off (•) optional ( ) mandatory
-  ⚠ SRTP over UDP/TCP signalling sends the keys in clear      (only shown when it applies)
-Codecs  [G722][PCMA][PCMU]  (drag to order)     DTMF (•) RFC 4733 ( ) INFO ( ) in-band
-▸ Advanced: session timers, User-Agent, identity header, STUN/public address,
-  local port, digit timeout, line prefix
-                                                             [Save] [Delete]
-```
+One form, five tabs (without JavaScript they are five sections one under the other).
+The page opens on the first tab with a marked field.
 
-`createSipAccount` / `updateSipAccount` (the response's `warnings` drive the ⚠),
-`deleteSipAccount` (409 *in use* → "Used by: Kitchen line 1").
+| Tab | Fields (LuCI title; stored as) |
+|---|---|
+| **Account** | Profile name (`label`), Name on the handset (`advanced.line_name`), Display name, User name (`username`), Login name (`auth_username`), Password, **Registrar** (`registrar`; shows the domain when there is no override), **SIP domain** (`domain`; empty = the registrar's host), Register, Registration interval (`register_expiry`) |
+| **Server and NAT** | Transport UDP/TCP/TLS, Outbound proxy, Second outbound proxy (`outbound2`), SIP outbound (`sipnat`), NAT traversal for media (`medianat`), STUN/TURN server (`stunserver`), TURN user (`stunuser`), TURN password (column `stunpass_enc`, sealed), Keep media open (`rtpkeep`) |
+| **Media** | Try to autodetect (`media_auto`: codecs G722, PCMA, PCMU), Codecs, Packet time (`ptime`), Key tones (DTMF) RTP events / SIP INFO / automatic (`dtmf_mode`, `advanced.dtmf`) plus in-band, Reliable provisional responses (`rel100`), Voicemail notification (`mwi`), Allow call transfer (`transfer`) |
+| **Encryption** | Try to autodetect (`enc_auto`, = `optional`), Media encryption: none, SRTP when offered, SRTP required, SRTP required (in the offer), DTLS-SRTP (`media_encryption`, `advanced.mediaenc`) |
+| **Advanced** | Further account parameters (`extra`), and the controller's own: Caller ID from, Keep-alive, User-Agent, Line prefix, Check the server's certificate, Enabled, Owner |
+
+Options the SIP side does not use yet say so under the field: "Stored; this
+controller does not use it yet." The page's warnings (SRTP without TLS, certificate
+not checked, DTLS-SRTP not spoken) come from the account's `warnings`.
 
 ### U6 Calls
 

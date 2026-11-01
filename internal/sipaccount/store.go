@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -58,6 +60,7 @@ type Record struct {
 	Domain          string
 	AuthUsername    string
 	HasPassword     bool
+	HasStunPass     bool // a TURN password is stored (never returned)
 	Registrar       string
 	OutboundProxy   string
 	Transport       string
@@ -75,24 +78,125 @@ type Record struct {
 	UpdatedAt       time.Time
 }
 
-// Advanced holds the "should/later" parameters (docs/api/openapi.yaml,
-// SipAdvanced). Only user_agent is used by the SIP side so far; the rest is
-// stored for C4/C5 follow-ups.
+// Advanced holds the parameters that have no column of their own
+// (docs/api/openapi.yaml, SipAdvanced). The SIP side uses user_agent only;
+// the rest is stored, and the VoIP profile page shows it.
+//
+// The fields from line_name down carry the option names of the VoIP
+// profiles in luci-app-opendectcell (the maintainers' notes, 2026-11-01), so a profile
+// reads the same on both sides. Options that default to on there are
+// pointers: nil means "the default", false is a choice.
 type Advanced struct {
 	UserAgent           string `json:"user_agent,omitempty"`
 	SessionTimers       bool   `json:"session_timers,omitempty"`
 	SessionExpires      int    `json:"session_expires,omitempty"`
 	IdentityHeader      string `json:"identity_header,omitempty"`
-	STUNServer          string `json:"stun_server,omitempty"`
+	LegacySTUNServer    string `json:"stun_server,omitempty"` // before stunserver; shown as its fallback
 	PublicAddress       string `json:"public_address,omitempty"`
 	LocalPort           int    `json:"local_port,omitempty"`
 	InterDigitTimeoutMs int    `json:"inter_digit_timeout_ms,omitempty"`
 	LinePrefix          string `json:"line_prefix,omitempty"`
 	PRACK               bool   `json:"prack,omitempty"`
+
+	LineName   string `json:"line_name,omitempty"`  // what a CAT-iq handset shows for the line, at most 15 octets
+	Outbound2  string `json:"outbound2,omitempty"`  // second outbound proxy
+	SIPNat     bool   `json:"sipnat,omitempty"`     // SIP outbound (RFC 5626)
+	MediaNat   string `json:"medianat,omitempty"`   // "", stun, turn, ice
+	StunServer string `json:"stunserver,omitempty"` // STUN/TURN server
+	StunUser   string `json:"stunuser,omitempty"`   // TURN user (the password is the column stunpass_enc)
+	RTPKeep    string `json:"rtpkeep,omitempty"`    // "", zero, stun, dyna, rtcp
+	MediaAuto  *bool  `json:"media_auto,omitempty"` // codecs and key tones by autodetection
+	PTime      string `json:"ptime,omitempty"`      // 10, 20, 30, 40
+	DTMF       string `json:"dtmf,omitempty"`       // "auto" only: the other modes are the column dtmf_mode
+	Rel100     string `json:"rel100,omitempty"`     // yes, no, required
+	MWI        bool   `json:"mwi,omitempty"`
+	Transfer   *bool  `json:"transfer,omitempty"` // default on
+	EncAuto    *bool  `json:"enc_auto,omitempty"` // encryption by autodetection: the column media_encryption "optional"
+	MediaEnc   string `json:"mediaenc,omitempty"` // "srtp-mandf" or "dtls_srtp" only: the rest is the column media_encryption
+	Extra      string `json:"extra,omitempty"`    // further account parameters, baresip syntax
+}
+
+// DefaultCodecs is what "Try to autodetect" offers, HD first.
+var DefaultCodecs = []string{"G722", "PCMA", "PCMU"}
+
+// TransferOn reports whether call transfer is allowed (default on).
+func (a Advanced) TransferOn() bool { return a.Transfer == nil || *a.Transfer }
+
+// MediaAutoOn reports whether the profile takes codecs and key tones by
+// autodetection. An account that never said, has it when its codecs are the
+// default list and its key tones RTP events.
+func (r *Record) MediaAutoOn() bool {
+	if r.Advanced.MediaAuto != nil {
+		return *r.Advanced.MediaAuto
+	}
+	return strings.Join(r.Codecs, ",") == strings.Join(DefaultCodecs, ",") && r.DTMFMode == "rfc4733"
+}
+
+// EncAutoOn reports whether the profile takes media encryption by
+// autodetection: SRTP when the other side offers it, else plain speech.
+func (r *Record) EncAutoOn() bool {
+	return r.MediaEncryption == "optional" && (r.Advanced.EncAuto == nil || *r.Advanced.EncAuto)
+}
+
+// EncChoice is the media encryption as the VoIP profile page names it:
+// "" (none), srtp, srtp-mand, srtp-mandf or dtls_srtp. Only the first
+// three have their own column value; the other two ride on "mandatory"
+// (the stack does SDES-SRTP only: DTLS-SRTP is stored, not spoken).
+func (r *Record) EncChoice() string {
+	switch r.MediaEncryption {
+	case "optional":
+		return "srtp"
+	case "mandatory":
+		if r.Advanced.MediaEnc == "srtp-mandf" || r.Advanced.MediaEnc == "dtls_srtp" {
+			return r.Advanced.MediaEnc
+		}
+		return "srtp-mand"
+	}
+	return ""
+}
+
+// EncColumn maps a page choice to the column value and the extra the
+// advanced field keeps; ok is false for a choice that does not exist.
+func EncColumn(choice string) (column, extra string, ok bool) {
+	switch choice {
+	case "":
+		return "off", "", true
+	case "srtp":
+		return "optional", "", true
+	case "srtp-mand":
+		return "mandatory", "", true
+	case "srtp-mandf", "dtls_srtp":
+		return "mandatory", choice, true
+	}
+	return "", "", false
+}
+
+// DTMFChoice is the key-tone mode as the page names it: rfc4733, info,
+// auto or inband (inband has no counterpart there).
+func (r *Record) DTMFChoice() string {
+	if r.DTMFMode == "rfc4733" && r.Advanced.DTMF == "auto" {
+		return "auto"
+	}
+	return r.DTMFMode
+}
+
+// StunServerShown is the STUN/TURN server, or the one an older API client
+// stored as stun_server.
+func (a Advanced) StunServerShown() string {
+	if a.StunServer != "" {
+		return a.StunServer
+	}
+	return a.LegacySTUNServer
 }
 
 // Warnings are problems that are allowed but unwise.
-func (r *Record) Warnings() []string { return toSIP(r, "").Warnings() }
+func (r *Record) Warnings() []string {
+	w := toSIP(r, "").Warnings()
+	if r.Advanced.MediaEnc == "dtls_srtp" && r.MediaEncryption == "mandatory" {
+		w = append(w, "dtls_srtp_unsupported")
+	}
+	return w
+}
 
 // Input is a create or update. Nil fields are left unchanged on update;
 // on create they take the schema defaults. Password "" clears it; nil keeps.
@@ -104,6 +208,7 @@ type Input struct {
 	Domain          *string
 	AuthUsername    *string
 	Password        *string
+	StunPass        *string // the TURN password; same rules as Password
 	Registrar       *string
 	OutboundProxy   *string
 	Transport       *string
@@ -136,14 +241,14 @@ func (s *Store) changed() {
 
 const cols = `id, owner_user_id, label, display_name, username, domain, coalesce(auth_username, ''), password_enc IS NOT NULL,
 	coalesce(registrar, ''), coalesce(outbound_proxy, ''), transport, register, register_expiry, keepalive, media_encryption,
-	codecs, dtmf_mode, caller_id_source, tls_verify, advanced, enabled, created_at, updated_at`
+	codecs, dtmf_mode, caller_id_source, tls_verify, advanced, enabled, created_at, updated_at, stunpass_enc IS NOT NULL`
 
 func scan(r pgx.Row) (*Record, error) {
 	var a Record
 	var adv []byte
 	err := r.Scan(&a.ID, &a.OwnerID, &a.Label, &a.DisplayName, &a.Username, &a.Domain, &a.AuthUsername, &a.HasPassword,
 		&a.Registrar, &a.OutboundProxy, &a.Transport, &a.Register, &a.RegisterExpiry, &a.Keepalive, &a.MediaEncryption,
-		&a.Codecs, &a.DTMFMode, &a.CallerIDSource, &a.TLSVerify, &adv, &a.Enabled, &a.CreatedAt, &a.UpdatedAt)
+		&a.Codecs, &a.DTMFMode, &a.CallerIDSource, &a.TLSVerify, &adv, &a.Enabled, &a.CreatedAt, &a.UpdatedAt, &a.HasStunPass)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -227,8 +332,44 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Record, e
 	return r, nil
 }
 
-func loc(id uuid.UUID) secret.Location {
-	return secret.Location{Table: "sip_account", Column: "password_enc", RowID: id.String()}
+// LineUse is a handset line an account serves.
+type LineUse struct {
+	HandsetID uuid.UUID
+	Handset   string // the handset's name, or its model
+	Line      int    // 1 or 2
+}
+
+// Uses returns, per account, the lines of u's own handsets that have it. A
+// handset's lines are private to its owner (internal/handset), so another
+// user's handsets are not listed even on a shared account.
+func (s *Store) Uses(ctx context.Context, u *auth.User, ids []uuid.UUID) (map[uuid.UUID][]LineUse, error) {
+	out := map[uuid.UUID][]LineUse{}
+	if u == nil || len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT hl.sip_account_id, h.id, coalesce(nullif(h.display_name, ''), nullif(h.model, ''), 'Handset'), hl.line
+		FROM handset_line hl JOIN handset h ON h.id = hl.handset_id
+		WHERE hl.sip_account_id = ANY($1) AND h.owner_user_id = $2
+		ORDER BY lower(coalesce(nullif(h.display_name, ''), nullif(h.model, ''), 'Handset')), hl.line`, ids, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var acct uuid.UUID
+		var l LineUse
+		if err := rows.Scan(&acct, &l.HandsetID, &l.Handset, &l.Line); err != nil {
+			return nil, err
+		}
+		out[acct] = append(out[acct], l)
+	}
+	return out, rows.Err()
+}
+
+func loc(id uuid.UUID) secret.Location { return locCol(id, "password_enc") }
+
+func locCol(id uuid.UUID, col string) secret.Location {
+	return secret.Location{Table: "sip_account", Column: col, RowID: id.String()}
 }
 
 func defaults() *Record {
@@ -274,7 +415,7 @@ func apply(r *Record, in Input) []string {
 		r.Codecs = append([]string(nil), *in.Codecs...)
 		changed = append(changed, "codecs")
 	}
-	if in.Advanced != nil && *in.Advanced != r.Advanced {
+	if in.Advanced != nil && !reflect.DeepEqual(*in.Advanced, r.Advanced) {
 		r.Advanced = *in.Advanced
 		changed = append(changed, "advanced")
 	}
@@ -307,6 +448,7 @@ func validate(r *Record) error {
 	if len(r.Advanced.UserAgent) > 128 {
 		v["advanced.user_agent"] = "at most 128 characters"
 	}
+	validateProfile(v, &r.Advanced)
 	if err := toSIP(r, "").Validate(); err != nil {
 		v["account"] = err.Error()
 	}
@@ -315,6 +457,46 @@ func validate(r *Record) error {
 	}
 	return nil
 }
+
+// validateProfile checks the options of the VoIP profile page the way the
+// LuCI page does.
+func validateProfile(v ValidationError, a *Advanced) {
+	if len(a.LineName) > 15 { // octets, as the handset's name field counts them
+		v["advanced.line_name"] = "at most 15 characters (fewer with umlauts)"
+	}
+	for k, hp := range map[string]string{"advanced.outbound2": a.Outbound2, "advanced.stunserver": a.StunServer,
+		"advanced.stun_server": a.LegacySTUNServer} {
+		if hp == "" {
+			continue
+		}
+		if _, _, err := resolve.ParseHostPort(hp); err != nil || strings.ContainsAny(hp, " \t\r\n<>@;\"") {
+			v[k] = "a host name or address, optionally with :port"
+		}
+	}
+	for k, c := range map[string]struct {
+		val  string
+		opts []string
+	}{
+		"advanced.medianat": {a.MediaNat, []string{"", "stun", "turn", "ice"}},
+		"advanced.rtpkeep":  {a.RTPKeep, []string{"", "zero", "stun", "dyna", "rtcp"}},
+		"advanced.ptime":    {a.PTime, []string{"", "10", "20", "30", "40"}},
+		"advanced.dtmf":     {a.DTMF, []string{"", "auto"}},
+		"advanced.rel100":   {a.Rel100, []string{"", "yes", "no", "required"}},
+		"advanced.mediaenc": {a.MediaEnc, []string{"", "srtp-mandf", "dtls_srtp"}},
+	} {
+		if !oneOf(c.val, c.opts...) {
+			v[k] = "not a valid choice"
+		}
+	}
+	if len(a.StunUser) > 128 {
+		v["advanced.stunuser"] = "at most 128 characters"
+	}
+	if a.Extra != "" && !extraRE.MatchString(a.Extra) {
+		v["advanced.extra"] = ";key=value pairs, no spaces"
+	}
+}
+
+var extraRE = regexp.MustCompile(`^(;[a-z0-9_]+=[^;\s"<>]+)+$`)
 
 func oneOf(s string, opts ...string) bool {
 	for _, o := range opts {
@@ -362,6 +544,11 @@ func (s *Store) Create(ctx context.Context, u *auth.User, in Input) (*Record, er
 				return err
 			}
 		}
+		if in.StunPass != nil && *in.StunPass != "" {
+			if err := s.setSecret(ctx, tx, id, "stunpass_enc", "stunpass", *in.StunPass); err != nil {
+				return err
+			}
+		}
 		if out, err = scan(tx.QueryRow(ctx, "SELECT "+cols+" FROM sip_account WHERE id = $1", id)); err != nil {
 			return err
 		}
@@ -397,17 +584,23 @@ func (s *Store) checkOwner(ctx context.Context, owner *uuid.UUID) error {
 }
 
 func (s *Store) setPassword(ctx context.Context, tx pgx.Tx, id uuid.UUID, pw string) error {
+	return s.setSecret(ctx, tx, id, "password_enc", "password", pw)
+}
+
+// setSecret seals pw into one of the account's encrypted columns; "" clears it.
+func (s *Store) setSecret(ctx context.Context, tx pgx.Tx, id uuid.UUID, col, field, pw string) error {
 	if len(pw) > 256 {
-		return ValidationError{"password": "at most 256 characters"} //nolint:gosec // G101: a field name, not a credential
+		return ValidationError{field: "at most 256 characters"}
 	}
 	var enc []byte
 	if pw != "" {
 		var err error
-		if enc, err = s.Keyring.Seal(loc(id), []byte(pw)); err != nil {
+		if enc, err = s.Keyring.Seal(locCol(id, col), []byte(pw)); err != nil {
 			return err
 		}
 	}
-	_, err := tx.Exec(ctx, "UPDATE sip_account SET password_enc = $2 WHERE id = $1", id, enc)
+	// col is one of two constants above, never input
+	_, err := tx.Exec(ctx, "UPDATE sip_account SET "+col+" = $2 WHERE id = $1", id, enc) //nolint:gosec // G202: col is a constant
 	return err
 }
 
@@ -428,6 +621,9 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, in Input
 		changed := apply(r, in)
 		if in.Password != nil {
 			changed = append(changed, "password")
+		}
+		if in.StunPass != nil {
+			changed = append(changed, "stunpass")
 		}
 		if len(changed) == 0 {
 			out = r
@@ -450,6 +646,11 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, in Input
 		}
 		if in.Password != nil {
 			if err := s.setPassword(ctx, tx, id, *in.Password); err != nil {
+				return err
+			}
+		}
+		if in.StunPass != nil {
+			if err := s.setSecret(ctx, tx, id, "stunpass_enc", "stunpass", *in.StunPass); err != nil {
 				return err
 			}
 		}
@@ -544,7 +745,7 @@ func (s *Store) RuntimeAccounts(ctx context.Context) ([]sip.Account, error) {
 		var adv []byte
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Label, &a.DisplayName, &a.Username, &a.Domain, &a.AuthUsername, &a.HasPassword,
 			&a.Registrar, &a.OutboundProxy, &a.Transport, &a.Register, &a.RegisterExpiry, &a.Keepalive, &a.MediaEncryption,
-			&a.Codecs, &a.DTMFMode, &a.CallerIDSource, &a.TLSVerify, &adv, &a.Enabled, &a.CreatedAt, &a.UpdatedAt, &enc); err != nil {
+			&a.Codecs, &a.DTMFMode, &a.CallerIDSource, &a.TLSVerify, &adv, &a.Enabled, &a.CreatedAt, &a.UpdatedAt, &a.HasStunPass, &enc); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(adv, &a.Advanced)

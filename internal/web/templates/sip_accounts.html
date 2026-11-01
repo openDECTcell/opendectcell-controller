@@ -1,19 +1,21 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "sip_accounts.html"}}{{template "head" .}}
-<p><a class="btn btn-primary" href="/sip-accounts/new">Add account</a></p>
+<p class="text-secondary">One profile per SIP account. Give a handset its profile as Line 1 or Line 2 on the handset's page; a profile may be a line of several handsets, and a call to it rings them all.</p>
+<p><a class="btn btn-primary" href="/sip-accounts/new">Add a profile</a></p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
-<thead><tr><th>Label</th><th>Address</th><th>Transport</th><th>Registration</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
+<thead><tr><th>Profile name</th><th>Account</th><th>Registration</th><th>Line of</th><th>Transport</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
 <tbody>
 {{range .Data}}
 <tr>
   <td><a href="/sip-accounts/{{.ID}}">{{.Label}}</a>{{if not .Enabled}} <span class="text-secondary">(disabled)</span>{{end}}</td>
-  <td>{{.Username}}@{{.Domain}}</td>
-  <td>{{.Transport}}{{if ne .MediaEncryption "off"}} · SRTP {{.MediaEncryption}}{{end}}</td>
+  <td>{{.Username}}@{{.Server}}</td>
   <td>{{if .HasState}}{{.Status.State}}{{with .Status.LastError}} · <span class="text-secondary">{{.}}</span>{{end}}{{else}}<span class="text-secondary">not running</span>{{end}}</td>
+  <td>{{range .Uses}}<a class="badge bg-blue-lt me-1" href="/handsets/{{.HandsetID}}">{{.Handset}}, Line {{.Line}}</a>{{else}}<span class="text-secondary">free</span>{{end}}</td>
+  <td>{{.Transport}}{{if ne .MediaEncryption "off"}} · SRTP {{.MediaEncryption}}{{end}}</td>
   {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
 </tr>
 {{else}}
-<tr><td colspan="5" class="text-secondary">No SIP accounts yet.</td></tr>
+<tr><td colspan="6" class="text-secondary">No VoIP profiles yet.</td></tr>
 {{end}}
 </tbody>
 </table></div></div>

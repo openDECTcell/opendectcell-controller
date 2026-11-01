@@ -32,7 +32,7 @@ DDL: `internal/db/migrations/`. Requires PostgreSQL ≥ 15 (tested on 18).
 | `handset` | Handsets | `owner_user_id` **mandatory** (0004, the maintainers' notes: a handset enrols only through its owner's registration window; a team's handset belongs to an organisation or admin account). UAK encrypted. **TPUI from an installation-wide pool, unique; its low 16 bits (the link signature) unique too** (`cell-protocol.md` §7.4). No slot index here: slots are per cell. `cc_port_id`, `cc_fixed_id` (0003): the identities an FP-originated `{CC-SETUP}` carries, as the handset put them on the air; NULL until learned |
 | `handset_home_cell` | A handset's home set of cells | **Many-to-many** (see §3) |
 | `cell_slot` | The controller's copy of each chip's subscription table | `(cell, slot)`; state *empty / writing / present / unknown*; a handset is in at most one slot per cell |
-| `sip_account` | SIP accounts | `owner_user_id` NULL = shared. Password encrypted. The **M** parameters of `voip-requirements.md` §2 are columns; the S/L ones (session timers, User-Agent, identity headers, STUN, port overrides, digit-collection timeouts, line prefix) live in `advanced` (JSON), validated by the application |
+| `sip_account` | SIP accounts | `owner_user_id` NULL = shared. Password encrypted. The **M** parameters of `voip-requirements.md` §2 are columns; the S/L ones (session timers, User-Agent, identity headers, STUN, port overrides, digit-collection timeouts, line prefix) live in `advanced` (JSON), validated by the application. The options of a VoIP profile that luci-app-opendectcell has (line_name, outbound2, sipnat, medianat, stunserver, stunuser, rtpkeep, media_auto, ptime, dtmf, rel100, mwi, transfer, enc_auto, mediaenc, extra) are in `advanced` under those names |
 | `handset_line` | Line 1 / 2 → SIP account | 0–2 per handset. One account can serve several handsets |
 | `registration_window` (+ `_cell`) | *Unused since 2026-10-31* (ADR 0005): windows live 60 s and are held in memory; the audit log records them. To be dropped by a migration | — |
 | `call_log` | Call history | `owner_user_id` is a snapshot, so a user keeps their history after deleting a handset. `missed_read_at` (0002) is the one read mark of a missed call, shared by the line's handsets. `quality` is `media.Quality` as JSON: both legs, both directions, an MOS estimate and the worse leg (`media-engine.md` §7); `{}` when no media flowed |
@@ -60,6 +60,7 @@ DDL: `internal/db/migrations/`. Requires PostgreSQL ≥ 15 (tested on 18).
 |---|---|
 | `handset.uak_enc` | 16-byte UAK |
 | `sip_account.password_enc` | SIP password |
+| `sip_account.stunpass_enc` | TURN password of a VoIP profile (migration 0015) |
 | `cell_ca.key_enc` | CA private key, PKCS #8 DER |
 
 `internal/db.EncryptedColumns` lists them for key rotation, and a test fails

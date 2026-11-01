@@ -10,7 +10,7 @@
   {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
   <td>{{with .Model}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td>
   <td>{{with ipei .}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">n/a</span>{{end}}</td>
-  <td>{{if .LinesPrivate}}<span class="text-secondary" title="Phone lines are private to the handset's owner">private</span>{{else}}{{range .Lines}}<span class="badge bg-blue-lt me-1">{{.Line}}: {{.Label}}</span>{{else}}<span class="text-secondary">none</span>{{end}}{{end}}</td>
+  <td>{{if .LinesPrivate}}<span class="text-secondary" title="Lines are private to the handset's owner">private</span>{{else}}{{range .Lines}}<span class="badge bg-blue-lt me-1">{{.Line}}: {{.Label}}</span>{{else}}<span class="text-secondary">none</span>{{end}}{{end}}</td>
   <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}{{if .LastSeenCell}} · {{.LastSeenCell}}{{end}}</td>
 </tr>
 {{else}}

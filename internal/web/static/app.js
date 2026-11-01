@@ -33,6 +33,38 @@
     sync();
   });
 
+  // The VoIP profile form: its tabs, and the fields that only matter when
+  // another is set (data-dep="field:value,value", a box being on or off).
+  // Hidden fields are still sent, so what was typed there is kept.
+  document.querySelectorAll("form.sip-tabs").forEach(function (f) {
+    f.classList.add("tabs-on");
+    var links = f.querySelectorAll("[data-sip-tab]");
+    var show = function (id) {
+      links.forEach(function (a) { a.classList.toggle("active", a.getAttribute("data-sip-tab") === id); });
+      f.querySelectorAll(".sip-pane").forEach(function (p) { p.classList.toggle("active", p.id === "tab-" + id); });
+    };
+    links.forEach(function (a) {
+      a.addEventListener("click", function (e) { e.preventDefault(); show(a.getAttribute("data-sip-tab")); });
+    });
+    // a field the browser refuses sits on a tab out of view: open it
+    f.addEventListener("invalid", function (e) {
+      var p = e.target.closest(".sip-pane");
+      if (p) { show(p.id.slice(4)); }
+    }, true);
+    var deps = f.querySelectorAll("[data-dep]");
+    var sync = function () {
+      deps.forEach(function (d) {
+        var parts = d.getAttribute("data-dep").split(":");
+        var c = f.elements[parts[0]];
+        if (!c) { return; }
+        var v = c.type === "checkbox" ? (c.checked ? "on" : "off") : c.value;
+        d.hidden = parts[1].split(",").indexOf(v) < 0;
+      });
+    };
+    f.addEventListener("change", sync);
+    sync();
+  });
+
   // the sidebar keeps its scroll position from page to page: every menu
   // choice is a page load, and it used to start at the top again
   var side = document.getElementById("sidebar-menu");

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -135,6 +136,16 @@ func TestAPI(t *testing.T) {
 	id := acc["id"].(string)
 	user.do("GET", "/sip-accounts/"+id, nil, http.StatusOK)
 	user.do("PATCH", "/sip-accounts/"+id, map[string]any{"label": "Home line"}, http.StatusOK)
+	// the options of a VoIP profile, under the LuCI names; the TURN password is write-only
+	pm := user.do("PATCH", "/sip-accounts/"+id, map[string]any{"stunpass": "turn-secret", "advanced": map[string]any{
+		"line_name": "Home", "medianat": "turn", "stunserver": "turn.example.org", "transfer": false, "ptime": "30"}}, http.StatusOK)
+	if adv, _ := pm["advanced"].(map[string]any); adv["line_name"] != "Home" || adv["medianat"] != "turn" || adv["transfer"] != false ||
+		adv["ptime"] != "30" || pm["has_stunpass"] != true || pm["stunpass"] != nil || strings.Contains(fmt.Sprint(pm), "turn-secret") {
+		t.Errorf("profile options: %v", pm)
+	}
+	if m := user.do("PATCH", "/sip-accounts/"+id, map[string]any{"advanced": map[string]any{"line_name": "Sechzehn Zeichen!"}}, http.StatusBadRequest); m["code"] != "invalid" {
+		t.Errorf("long line name: %v", m)
+	}
 	if m := user.do("PATCH", "/sip-accounts/"+id, map[string]any{"codecs": []string{"GSM"}}, http.StatusBadRequest); m["code"] != "invalid" {
 		t.Errorf("invalid patch: %v", m)
 	}
