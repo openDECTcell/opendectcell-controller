@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -391,6 +392,14 @@ func (r *cellRun) rebuild(now time.Time) {
 // so it never ends a call.
 var reloadDelay = 3 * time.Second
 
+// parkPLIOverride (OPENDECTCELL_PARK_PLI, a number of bits; for experiments) replaces the PARK
+// length handsets get with a class B identity: does a handset re-find a class B base
+// when its PARK is longer than the EIC's? 0: the identity's own.
+var parkPLIOverride = func() uint {
+	n, _ := strconv.ParseUint(os.Getenv("OPENDECTCELL_PARK_PLI"), 10, 8)
+	return uint(n)
+}()
+
 // followWait is how long a freshly enrolled pooled handset's record stays in its
 // chip slot after the registration link ended, for the handset's follow-up
 // contact: a handset that was never located before makes it a moment after the
@@ -459,6 +468,9 @@ func (r *cellRun) negotiateIdentity() bool {
 		if r.up.RFPI == w.RFPI {
 			r.triedSet = false
 			r.parkPLI = w.ParkPLI
+			if parkPLIOverride > 0 && w.ParkPLI > 0 {
+				r.parkPLI = parkPLIOverride
+			}
 			return false
 		}
 		if r.triedSet && r.tried == w.RFPI {

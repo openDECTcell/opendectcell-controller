@@ -33,7 +33,7 @@
   <label class="form-check"><input class="form-check-input" type="checkbox" name="understood"> I have read this</label>
   {{if .Replaces}}
   <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="understood2"> I know that this can break the whole network and that every handset may have to register again</label>
-  <label class="form-label" for="confirm_eic">To confirm, type the EIC of the identity being replaced ({{printf "%04X" .Current.EIC}})</label>
+  <label class="form-label" for="confirm_eic">To confirm, type the identity being replaced ({{.ConfirmText}})</label>
   <input class="form-control mb-3" id="confirm_eic" name="confirm_eic" maxlength="4" autocomplete="off" required>
   {{end}}
   <button type="submit" class="btn {{if .Replaces}}btn-danger{{else}}btn-primary{{end}}">{{if .Replaces}}Replace the system identity{{else}}Save this identity{{end}}</button>

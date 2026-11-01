@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,6 +68,18 @@ type SystemIdentity struct {
 
 // IdentityDonor is the source of a class A identity taken from a cell.
 const IdentityDonor = "donor"
+
+// ConfirmText is what an admin types to confirm replacing this identity: the
+// EIC of a class B one, the first four hex digits of a class A one's ARI.
+func (id SystemIdentity) ConfirmText() string {
+	if id.IsA() {
+		if len(id.Donor) >= 4 {
+			return strings.ToUpper(id.Donor[:4])
+		}
+		return "A"
+	}
+	return fmt.Sprintf("%04X", id.EIC)
+}
 
 // IsA reports class A.
 func (id SystemIdentity) IsA() bool { return id.Class == "A" }

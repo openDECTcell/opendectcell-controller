@@ -4,7 +4,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -67,6 +66,9 @@ type identityPage struct {
 	Proposed cell.SystemIdentity
 	Current  *cell.SystemIdentity
 }
+
+// ConfirmText is what is typed to confirm replacing the current identity.
+func (p identityPage) ConfirmText() string { return p.Current.ConfirmText() }
 
 // Replaces: saving the proposal would replace a different identity.
 func (p identityPage) Replaces() bool {
@@ -141,7 +143,7 @@ func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.Us
 		err = errors.New("Tick the box to confirm you read the risks.") //nolint:staticcheck // ST1005: shown on the page as a sentence
 	case replacing && r.PostFormValue("understood2") != "on":
 		err = errors.New("Tick both boxes: replacing the identity of a running system breaks it.") //nolint:staticcheck // ST1005: as above
-	case replacing && !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm_eic")), fmt.Sprintf("%04X", cur.EIC)):
+	case replacing && !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm_eic")), cur.ConfirmText()):
 		err = errors.New("Type the EIC of the identity being replaced, exactly as shown, to confirm.") //nolint:staticcheck // ST1005: as above
 	}
 	if err != nil {
@@ -207,8 +209,11 @@ func (s *Server) identityDonor(w http.ResponseWriter, r *http.Request, u *auth.U
 	}
 	live := s.liveStatus(c.ID)
 	switch {
-	case cur != nil:
-		s.renderIdentity(w, r, u, http.StatusBadRequest, page{Error: "A system identity is set already. Replacing it can break every handset, so it is done under \"Replace the system identity…\", with confirmations."})
+	case cur != nil && cur.Apply:
+		s.renderIdentity(w, r, u, http.StatusBadRequest, page{Error: "The cells use the system identity now. Give them their own identity back first, wait until they have reloaded, then take a cell's."})
+		return
+	case cur != nil && (r.PostFormValue("understood2") != "on" || !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm_eic")), cur.ConfirmText())):
+		s.renderIdentity(w, r, u, http.StatusBadRequest, page{Error: "Replacing the system identity can break the network: tick both boxes and type " + cur.ConfirmText() + ", the identity being replaced, to confirm."})
 		return
 	case r.PostFormValue("understood") != "on":
 		s.renderIdentity(w, r, u, http.StatusBadRequest, page{Error: "Tick the box to confirm that you read what this does."})

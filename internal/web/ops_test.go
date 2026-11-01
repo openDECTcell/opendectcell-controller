@@ -238,6 +238,27 @@ func TestIdentityPages(t *testing.T) {
 	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"off"}}); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("turning off: %d", r.StatusCode)
 	}
+	// a cell's identity replaces the identity, once the cells run on their own again, with the
+	// confirmations of a replacement
+	link.mu.Lock()
+	link.rfpi[cid] = [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x8b}
+	link.mu.Unlock()
+	don := url.Values{"cell": {cid.String()}, "understood": {"on"}}
+	if r := e.post(t, a, "/network-identity/donor", don); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("replaced by a donor without the confirmations: %d", r.StatusCode)
+	}
+	don.Set("understood2", "on")
+	don.Set("confirm_eic", "0000")
+	if r := e.post(t, a, "/network-identity/donor", don); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("replaced by a donor with the wrong text typed: %d", r.StatusCode)
+	}
+	don.Set("confirm_eic", "0270")
+	if r := e.post(t, a, "/network-identity/donor", don); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("replaced by a donor with every confirmation: %d", r.StatusCode)
+	}
+	if id, err := e.cells.SystemIdentity(ctx); err != nil || id == nil || id.Donor != "02700d5e88" || id.Apply {
+		t.Errorf("identity after the donor replaced it: %+v %v", id, err)
+	}
 	// users see none of it
 	for _, p := range []string{"/network-identity/apply"} {
 		if r := e.post(t, u, p, url.Values{"apply": {"on"}}); r.StatusCode != http.StatusNotFound {

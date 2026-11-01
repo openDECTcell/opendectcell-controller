@@ -35,6 +35,16 @@
     <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
     <button type="submit" class="btn btn-primary">Use this EIC…</button>
   </form></div>
+  {{if not .Apply}}{{if $.Data.Donors}}
+  <div class="mb-3"><form method="post" action="/network-identity/donor" class="narrow">
+    <p class="text-secondary">Or a class A identity: one box's own identity for the whole system (at most 7 cells). In our test a Gigaset A540 did not find a class B base again after a restart; it does find a class A one. The cells must have broadcast their own identities again for this: they do once they have taken them back (above), which reloads their chips.</p>
+    <label class="form-label">Cell <select class="form-select" name="cell">{{range $.Data.Donors}}<option value="{{.ID}}">{{.Name}} · {{printf "%x" .Live.RFPI}}</option>{{end}}</select></label>
+    <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood"><span class="form-check-label">I know that the other cells will take this identity once it is applied.</span></label>
+    <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood2"><span class="form-check-label">I know that this can break the whole network and that every handset may have to register again.</span></label>
+    <label class="form-label">To confirm, type the identity being replaced ({{.ConfirmText}}) <input class="form-control" name="confirm_eic" maxlength="4" autocomplete="off"></label>
+    <button type="submit" class="btn btn-danger">Take this cell's identity as the system's</button>
+  </form></div>
+  {{end}}{{end}}
 </div></details>
 {{else}}
 <p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity makes the cells one system: class B (an EIC, up to 256 cells), or class A taken from one cell's own identity (up to 7 cells, no EIC needed).</p>
