@@ -156,8 +156,22 @@ func scan(r pgx.Row) (*Record, error) {
 	return &a, nil
 }
 
-// List returns the accounts u may see: their own, or for admins all of them
-// (owner filters: nil = all, "shared", or a user id).
+// mayUse is the rule for who may see and change an account: its owner only,
+// and the shared ones (no owner) the admins manage. An admin does not see
+// another user's lines: they hold that user's credentials.
+func mayUse(u *auth.User, owner *uuid.UUID) bool {
+	if u == nil || u.Disabled {
+		return false
+	}
+	if owner == nil {
+		return u.IsAdmin()
+	}
+	return *owner == u.ID
+}
+
+// List returns the accounts u may see: their own, and for admins the shared
+// ones too (owner filters, for admins: "shared", or their own id; another user's
+// id lists nothing).
 func (s *Store) List(ctx context.Context, u *auth.User, owner string) ([]*Record, error) {
 	if u == nil {
 		return nil, auth.ErrForbidden
@@ -175,10 +189,14 @@ func (s *Store) List(ctx context.Context, u *auth.User, owner string) ([]*Record
 		if err != nil {
 			return nil, ValidationError{"owner": "must be a user id or 'shared'"}
 		}
+		if id != u.ID {
+			return nil, nil // another user's lines are not the admin's to list
+		}
 		q += "owner_user_id = $1"
 		args = append(args, id)
 	default:
-		q += "true"
+		q += "(owner_user_id = $1 OR owner_user_id IS NULL)"
+		args = append(args, u.ID)
 	}
 	rows, err := s.Pool.Query(ctx, q+" ORDER BY lower(label), id", args...)
 	if err != nil {
@@ -203,7 +221,7 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Record, e
 	if err != nil {
 		return nil, err
 	}
-	if !auth.CanAccess(u, r.OwnerID) {
+	if !mayUse(u, r.OwnerID) {
 		return nil, ErrNotFound
 	}
 	return r, nil
@@ -404,7 +422,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, in Input
 		if err != nil {
 			return err
 		}
-		if !auth.CanAccess(u, r.OwnerID) {
+		if !mayUse(u, r.OwnerID) {
 			return ErrNotFound
 		}
 		changed := apply(r, in)
@@ -478,7 +496,7 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		if !auth.CanAccess(u, owner) {
+		if !mayUse(u, owner) {
 			return ErrNotFound
 		}
 		var used bool

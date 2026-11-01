@@ -101,8 +101,12 @@ func TestSIPAccountPages(t *testing.T) {
 	if r := e.post(t, carl, "/sip-accounts/"+id+"/delete", nil); r.StatusCode != http.StatusNotFound {
 		t.Errorf("other user delete: %d", r.StatusCode)
 	}
-	if resp, page := e.get(t, admin, "/sip-accounts"); resp.StatusCode != http.StatusOK || !strings.Contains(page, ">user<") {
-		t.Errorf("admin list: %d", resp.StatusCode)
+	// an admin does not see another user's lines either
+	if resp, page := e.get(t, admin, "/sip-accounts"); resp.StatusCode != http.StatusOK || strings.Contains(page, "/sip-accounts/"+id) {
+		t.Errorf("admin list: %d, shows the user's account", resp.StatusCode)
+	}
+	if resp, _ := e.get(t, admin, "/sip-accounts/"+id); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("admin GET of another user's account: %d", resp.StatusCode)
 	}
 
 	if r := e.post(t, user, "/sip-accounts/"+id+"/delete", nil); r.StatusCode != http.StatusSeeOther {

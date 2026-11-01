@@ -59,21 +59,30 @@ func TestCreateListGetAuthorisation(t *testing.T) {
 	if *a.OwnerID != anna.ID || !a.HasPassword || a.RegisterExpiry != 600 || strings.Join(a.Codecs, ",") != "G722,PCMA,PCMU" || *changes != 1 {
 		t.Fatalf("created %+v (changes %d)", a, *changes)
 	}
-	// Owners and admins see it; others get not-found.
+	// Only the owner sees it: another user and an admin get not-found, an admin
+	// included (the account holds the owner's credentials).
 	if _, err := s.Get(ctx, anna, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get(ctx, admin, a.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.Get(ctx, ben, a.ID); !errors.Is(err, sipaccount.ErrNotFound) {
-		t.Fatalf("other user: %v", err)
+	for who, u := range map[string]*auth.User{"admin": admin, "other user": ben} {
+		if _, err := s.Get(ctx, u, a.ID); !errors.Is(err, sipaccount.ErrNotFound) {
+			t.Fatalf("%s: %v", who, err)
+		}
+		if _, err := s.Update(ctx, u, a.ID, sipaccount.Input{Label: ptr("mine now")}); !errors.Is(err, sipaccount.ErrNotFound) {
+			t.Fatalf("%s updated it: %v", who, err)
+		}
+		if err := s.Delete(ctx, u, a.ID); !errors.Is(err, sipaccount.ErrNotFound) {
+			t.Fatalf("%s deleted it: %v", who, err)
+		}
 	}
 	if l, _ := s.List(ctx, ben, ""); len(l) != 0 {
 		t.Fatal("other user lists it")
 	}
-	if l, _ := s.List(ctx, admin, anna.ID.String()); len(l) != 1 {
-		t.Fatal("admin owner filter")
+	if l, _ := s.List(ctx, admin, ""); len(l) != 0 {
+		t.Fatal("the admin lists another user's account")
+	}
+	if l, _ := s.List(ctx, admin, anna.ID.String()); len(l) != 0 {
+		t.Fatal("the admin's owner filter shows another user's account")
 	}
 	// Users cannot choose an owner; admins can make it shared.
 	in := input()
@@ -91,6 +100,12 @@ func TestCreateListGetAuthorisation(t *testing.T) {
 	}
 	if l, _ := s.List(ctx, admin, "shared"); len(l) != 1 {
 		t.Fatal("shared filter")
+	}
+	if l, _ := s.List(ctx, admin, ""); len(l) != 1 || l[0].ID != sh.ID {
+		t.Fatalf("the admin's own list is the shared account only: %d", len(l))
+	}
+	if _, err := s.Get(ctx, admin, sh.ID); err != nil {
+		t.Fatal("the admin manages shared accounts")
 	}
 }
 
