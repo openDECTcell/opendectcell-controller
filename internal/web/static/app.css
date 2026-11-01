@@ -40,3 +40,13 @@ code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-sele
 .legend-all { opacity: .3; }
 
 .reg-pin { font-family: var(--tblr-font-monospace, monospace); letter-spacing: .15em; }
+
+/* The VoIP profile form: tabs when scripting is on, every tab in a row of
+   sections when it is not (app.js adds tabs-on). */
+.sip-tabs { max-width: 40rem; }
+.sip-tabs .sip-tabnav { display: none; }
+.sip-tabs.tabs-on .sip-tabnav { display: flex; }
+.sip-tabs.tabs-on .sip-pane:not(.active) { display: none; }
+.sip-tabs.tabs-on .sip-pane > h4 { display: none; }
+.sip-tabs .sip-pane > h4 { margin: 1.5rem 0 1rem; }
+.sip-tabs .form-hint { margin-top: .25rem; }

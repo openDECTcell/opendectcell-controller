@@ -276,7 +276,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	}
 	d.Steps = []homeStep{
 		{Done: d.Stations > 0, Text: "A base station is connected", Href: "/stations", Label: "Base stations"},
-		{Done: d.Summary.SIPAccounts > 0, Text: "A phone line (SIP account) is set up", Href: "/sip-accounts", Label: "Phone lines"},
+		{Done: d.Summary.SIPAccounts > 0, Text: "A VoIP profile (SIP account) is set up", Href: "/sip-accounts", Label: "VoIP profiles"},
 		{Done: d.Summary.Handsets > 0, Text: "A handset is registered", Href: "/handsets", Label: "Handsets"},
 	}
 	s.render(w, http.StatusOK, "home.html", page{Title: "Overview", User: u, Data: d})

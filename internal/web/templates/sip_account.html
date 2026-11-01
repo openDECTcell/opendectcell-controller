@@ -1,55 +1,184 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{/* A VoIP profile: the tabs and field names of the LuCI pop-up (luci-app-opendectcell, VoIP Profiles). Without JavaScript every tab shows, one under the other. */}}
 {{define "sip_account.html"}}{{template "head" .}}
 {{with .Data}}
-<h3 class="mb-3">{{if .New}}New SIP account{{else}}{{.Rec.Label}}{{end}}</h3>
+<h3 class="mb-3">{{if .New}}New VoIP profile{{else}}VoIP profile {{.Rec.Label}}{{end}}</h3>
 {{if not .New}}
 <p>Registration: <strong>{{if .HasState}}{{.Status.State}}{{else}}not running{{end}}</strong>
 {{with .Status.Server}} · {{.}}{{end}}{{with .Status.LastError}} · {{.}}{{end}}</p>
-{{range .Warnings}}<p class="msg error">{{if eq . "srtp_without_tls"}}SRTP keys are exchanged in the signalling: without TLS they travel in clear.{{else if eq . "tls_not_verified"}}The server's TLS certificate is not verified.{{else}}{{.}}{{end}}</p>{{end}}
+{{range .Warnings}}<p class="msg error">{{if eq . "srtp_without_tls"}}SRTP keys are exchanged in the signalling: without TLS they travel in clear.{{else if eq . "tls_not_verified"}}The server's TLS certificate is not verified.{{else if eq . "dtls_srtp_unsupported"}}DTLS-SRTP is stored, but this controller does not speak it: it offers SRTP keys in the signalling and requires them.{{else}}{{.}}{{end}}</p>{{end}}
 {{end}}
 {{$e := .Errors}}
-<div class="card mb-3"><div class="card-body"><form method="post" action="{{if .New}}/sip-accounts{{else}}/sip-accounts/{{.Rec.ID}}{{end}}" class="form-grid">
+{{with fieldErr $e "account"}}<p class="fielderr">{{.}}</p>{{end}}
+<div class="card mb-3"><div class="card-body"><form method="post" action="{{if .New}}/sip-accounts{{else}}/sip-accounts/{{.Rec.ID}}{{end}}" class="sip-tabs">
   {{with .Rec}}
-  <label class="form-label">Label <input class="form-control" name="label" value="{{.Label}}" maxlength="64" required></label>{{with fieldErr $e "label"}}<p class="fielderr">{{.}}</p>{{end}}
-  <label class="form-label">Display name <input class="form-control" name="display_name" value="{{.DisplayName}}"></label>
-  <label class="form-label">User (number) <input class="form-control" name="username" value="{{.Username}}" required></label>
-  <label class="form-label">Domain <input class="form-control" name="domain" value="{{.Domain}}" required></label>
-  <label class="form-label">Authentication user <input class="form-control" name="auth_username" value="{{.AuthUsername}}" placeholder="same as user"></label>
-  <label class="form-label">Password <input class="form-control" name="password" type="password" autocomplete="new-password" placeholder="{{if .HasPassword}}leave empty to keep{{end}}"></label>
-  {{if .HasPassword}}<label class="form-check"><input class="form-check-input" type="checkbox" name="clear_password">Remove the stored password</label>{{end}}
-  <label class="form-label">Registrar <input class="form-control" name="registrar" value="{{.Registrar}}" placeholder="from the domain (DNS)"></label>
-  <label class="form-label">Outbound proxy <input class="form-control" name="outbound_proxy" value="{{.OutboundProxy}}"></label>
-  <label class="form-label">Transport
-    <select class="form-select" name="transport">{{range $t := list "tls" "tcp" "udp"}}<option value="{{$t}}" {{if eq $t $.Data.Rec.Transport}}selected{{end}}>{{$t}}</option>{{end}}</select></label>
-  <label class="form-check"><input class="form-check-input" type="checkbox" name="tls_verify" {{if .TLSVerify}}checked{{end}}>Verify the server's TLS certificate</label>
-  <label class="form-check"><input class="form-check-input" type="checkbox" name="register" {{if .Register}}checked{{end}}>Register</label>
-  <label class="form-label">Registration interval (s) <input class="form-control" name="register_expiry" type="number" min="60" max="86400" value="{{.RegisterExpiry}}"></label>
-  <label class="form-label">Keep-alive
-    <select class="form-select" name="keepalive">{{range $k := list "auto" "options" "crlf" "none"}}<option {{if eq $k $.Data.Rec.Keepalive}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
-  <label class="form-label">Media encryption (SRTP)
-    <select class="form-select" name="media_encryption">{{range $k := list "off" "optional" "mandatory"}}<option {{if eq $k $.Data.Rec.MediaEncryption}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
-  <label class="form-label">Codecs, in order <input class="form-control" name="codecs" value="{{join .Codecs ", "}}"></label>
-  <label class="form-label">DTMF
-    <select class="form-select" name="dtmf_mode">{{range $k := list "rfc4733" "info" "inband"}}<option {{if eq $k $.Data.Rec.DTMFMode}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
-  <label class="form-label">Caller ID from
-    <select class="form-select" name="caller_id_source">{{range $k := list "auto" "pai" "rpid" "from"}}<option {{if eq $k $.Data.Rec.CallerIDSource}}selected{{end}}>{{$k}}</option>{{end}}</select></label>
-  <label class="form-label">User-Agent <input class="form-control" name="user_agent" value="{{.Advanced.UserAgent}}" placeholder="opendectcell-controller"></label>
-  <label class="form-label">Line prefix (GAP handsets) <input class="form-control" name="line_prefix" value="{{.Advanced.LinePrefix}}" placeholder="e.g. *1#"></label>{{with fieldErr $e "advanced.line_prefix"}}<p class="fielderr">{{.}}</p>{{end}}
-  <label class="form-check"><input class="form-check-input" type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}>Enabled</label>
+  <ul class="nav nav-tabs sip-tabnav flex-nowrap overflow-auto mb-3" role="tablist">
+    {{range $t := $.Data.TabList}}<li class="nav-item"><a class="nav-link text-nowrap{{if eq $t.ID $.Data.Tab}} active{{end}}{{if index $.Data.TabErr $t.ID}} text-danger{{end}}" href="#tab-{{$t.ID}}" data-sip-tab="{{$t.ID}}" role="tab">{{$t.Title}}</a></li>{{end}}
+  </ul>
+
+  <div class="sip-pane{{if eq $.Data.Tab "acct"}} active{{end}}" id="tab-acct">
+    <h4>Account</h4>
+    <div class="mb-3"><label class="form-label" for="label">Profile name</label>
+      <input class="form-control" id="label" name="label" value="{{.Label}}" maxlength="64" required>
+      <div class="form-hint">How the Line menus of the handsets name this profile.</div>{{with fieldErr $e "label"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="line_name">Name on the handset</label>
+      <input class="form-control" id="line_name" name="line_name" value="{{.Advanced.LineName}}">
+      <div class="form-hint">What CAT-iq handsets show for this line, at most 15 characters (fewer with umlauts). Empty: the profile name, if it is that short.<span class="d-block text-secondary">Stored; this controller does not use it yet.</span></div>{{with fieldErr $e "advanced.line_name"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="display_name">Display name</label>
+      <input class="form-control" id="display_name" name="display_name" value="{{.DisplayName}}">
+      <div class="form-hint">The name the called party sees.</div></div>
+    <div class="mb-3"><label class="form-label" for="username">User name</label>
+      <input class="form-control" id="username" name="username" value="{{.Username}}" required autocomplete="off">
+      <div class="form-hint">The SIP user, often the phone number.</div>{{with fieldErr $e "username"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="auth_username">Login name</label>
+      <input class="form-control" id="auth_username" name="auth_username" value="{{.AuthUsername}}" placeholder="same as the user name" autocomplete="off">
+      <div class="form-hint">When the provider wants a login other than the user name.</div></div>
+    <div class="mb-3"><label class="form-label" for="password">Password</label>
+      <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="{{if .HasPassword}}leave empty to keep{{end}}">
+      {{if .HasPassword}}<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="clear_password">Remove the stored password</label>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="registrar">Registrar</label>
+      <input class="form-control" id="registrar" name="registrar" value="{{if .Registrar}}{{.Registrar}}{{else}}{{.Domain}}{{end}}" autocapitalize="none" spellcheck="false">
+      <div class="form-hint">The provider's SIP server, host or host:port (e.g. sip.example.net, or 192.168.178.1 for a FRITZ!Box).</div></div>
+    <div class="mb-3"><label class="form-label" for="domain">SIP domain</label>
+      <input class="form-control" id="domain" name="domain" value="{{.Domain}}" placeholder="the registrar's host name" autocapitalize="none" spellcheck="false">
+      <div class="form-hint">The part after the @ in the account's address (user@domain). Empty: the registrar's host name, which is right for nearly every provider.</div>{{with fieldErr $e "domain"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="register" {{if .Register}}checked{{end}}>Register</label>
+      <div class="form-hint">Register with the server. Off for a peer that calls this handset directly by address.</div></div>
+    <div class="mb-3" data-dep="register:on"><label class="form-label" for="register_expiry">Registration interval</label>
+      <input class="form-control" id="register_expiry" name="register_expiry" type="number" min="60" max="86400" value="{{.RegisterExpiry}}" placeholder="600">
+      <div class="form-hint">Seconds between registrations.</div>{{with fieldErr $e "register_expiry"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+  </div>
+
+  <div class="sip-pane{{if eq $.Data.Tab "net"}} active{{end}}" id="tab-net">
+    <h4>Server and NAT</h4>
+    <div class="mb-3"><label class="form-label" for="transport">Transport</label>
+      <select class="form-select" id="transport" name="transport">
+        <option value="udp" {{if eq .Transport "udp"}}selected{{end}}>UDP</option>
+        <option value="tcp" {{if eq .Transport "tcp"}}selected{{end}}>TCP</option>
+        <option value="tls" {{if eq .Transport "tls"}}selected{{end}}>TLS (encrypted signalling)</option>
+      </select>
+      <div class="form-hint">Use TLS if your provider supports it: it encrypts the signalling, so your password and the numbers you call do not cross the internet in the clear (the provider names the port, often 5061). Encrypted speech (Encryption tab) is only private with TLS here.</div>{{with fieldErr $e "transport"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="outbound_proxy">Outbound proxy</label>
+      <input class="form-control" id="outbound_proxy" name="outbound_proxy" value="{{.OutboundProxy}}" autocapitalize="none" spellcheck="false">
+      <div class="form-hint">Only when the provider names one.</div></div>
+    <div class="mb-3"><label class="form-label" for="outbound2">Second outbound proxy</label>
+      <input class="form-control" id="outbound2" name="outbound2" value="{{.Advanced.Outbound2}}" autocapitalize="none" spellcheck="false">
+      <div class="form-hint text-secondary">Stored; this controller does not use it yet.</div>{{with fieldErr $e "advanced.outbound2"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="sipnat" {{if .Advanced.SIPNat}}checked{{end}}>SIP outbound (RFC 5626)</label>
+      <div class="form-hint">Keep the connection to the server open through NAT, when the provider supports it.<span class="d-block text-secondary">Stored; this controller does not use it yet (the keep-alive on the Advanced tab keeps the connection open).</span></div></div>
+    <div class="mb-3"><label class="form-label" for="medianat">NAT traversal for media</label>
+      <select class="form-select" id="medianat" name="medianat">
+        <option value="" {{if eq .Advanced.MediaNat ""}}selected{{end}}>none</option>
+        <option value="stun" {{if eq .Advanced.MediaNat "stun"}}selected{{end}}>STUN</option>
+        <option value="turn" {{if eq .Advanced.MediaNat "turn"}}selected{{end}}>TURN</option>
+        <option value="ice" {{if eq .Advanced.MediaNat "ice"}}selected{{end}}>ICE</option>
+      </select>
+      <div class="form-hint text-secondary">Stored; this controller does not use it yet. This and the three fields below.</div>{{with fieldErr $e "advanced.medianat"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="medianat:stun,turn,ice"><label class="form-label" for="stunserver">STUN/TURN server</label>
+      <input class="form-control" id="stunserver" name="stunserver" value="{{.Advanced.StunServerShown}}" autocapitalize="none" spellcheck="false">
+      <div class="form-hint">host or host:port.</div>{{with fieldErr $e "advanced.stunserver"}}<p class="fielderr">{{.}}</p>{{end}}{{with fieldErr $e "advanced.stun_server"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="medianat:turn"><label class="form-label" for="stunuser">TURN user</label>
+      <input class="form-control" id="stunuser" name="stunuser" value="{{.Advanced.StunUser}}" autocomplete="off">{{with fieldErr $e "advanced.stunuser"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="medianat:turn"><label class="form-label" for="stunpass">TURN password</label>
+      <input class="form-control" id="stunpass" name="stunpass" type="password" autocomplete="new-password" placeholder="{{if .HasStunPass}}leave empty to keep{{end}}">
+      {{if .HasStunPass}}<label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="clear_stunpass">Remove the stored TURN password</label>{{end}}{{with fieldErr $e "stunpass"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="rtpkeep">Keep media open</label>
+      <select class="form-select" id="rtpkeep" name="rtpkeep">
+        <option value="" {{if eq .Advanced.RTPKeep ""}}selected{{end}}>off</option>
+        <option value="zero" {{if eq .Advanced.RTPKeep "zero"}}selected{{end}}>empty RTP packets</option>
+        <option value="stun" {{if eq .Advanced.RTPKeep "stun"}}selected{{end}}>STUN</option>
+        <option value="dyna" {{if eq .Advanced.RTPKeep "dyna"}}selected{{end}}>dynamic</option>
+        <option value="rtcp" {{if eq .Advanced.RTPKeep "rtcp"}}selected{{end}}>RTCP</option>
+      </select>
+      <div class="form-hint">Packets that keep a NAT binding open while one side is silent.<span class="d-block text-secondary">Stored; this controller does not use it yet.</span></div>{{with fieldErr $e "advanced.rtpkeep"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+  </div>
+
+  <div class="sip-pane{{if eq $.Data.Tab "media"}} active{{end}}" id="tab-media">
+    <h4>Media</h4>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="media_auto" {{if .MediaAutoOn}}checked{{end}}>Try to autodetect</label>
+      <div class="form-hint">Offers every codec, HD first, and sends key tones the way the other side asks. Right for nearly every provider; untick to set them by hand.<span class="d-block text-secondary">Here it offers G.722, G.711 A-law and G.711 µ-law in this order; key tones keep the setting below.</span></div></div>
+    <div class="mb-3" data-dep="media_auto:off"><span class="form-label d-block">Codecs</span>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="codec" value="G722" {{if has .Codecs "G722"}}checked{{end}}>G.722 (HD)</label>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="codec" value="PCMA" {{if has .Codecs "PCMA"}}checked{{end}}>G.711 A-law</label>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="codec" value="PCMU" {{if has .Codecs "PCMU"}}checked{{end}}>G.711 µ-law</label>
+      <div class="form-hint">Offered in the order shown. G.722 keeps the handset's wideband (HD) audio end to end.</div>{{with fieldErr $e "codecs"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="media_auto:off"><label class="form-label" for="ptime">Packet time</label>
+      <select class="form-select" id="ptime" name="ptime">{{$pt := .Advanced.PTime}}{{if not $pt}}{{$pt = "20"}}{{end}}
+        {{range $v := list "20" "10" "30" "40"}}<option value="{{$v}}" {{if eq $v $pt}}selected{{end}}>{{$v}} ms</option>{{end}}
+      </select>
+      <div class="form-hint">Milliseconds of audio per RTP packet.<span class="d-block text-secondary">Stored; this controller does not use it yet.</span></div>{{with fieldErr $e "advanced.ptime"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="media_auto:off"><label class="form-label" for="dtmf_mode">Key tones (DTMF)</label>
+      <select class="form-select" id="dtmf_mode" name="dtmf_mode">{{$d := .DTMFChoice}}
+        <option value="rfc4733" {{if eq $d "rfc4733"}}selected{{end}}>RTP events (RFC 4733)</option>
+        <option value="info" {{if eq $d "info"}}selected{{end}}>SIP INFO</option>
+        <option value="auto" {{if eq $d "auto"}}selected{{end}}>automatic</option>
+        <option value="inband" {{if eq $d "inband"}}selected{{end}}>in-band audio tones (this controller only)</option>
+      </select>
+      <div class="form-hint">Automatic sends RTP events here.</div>{{with fieldErr $e "dtmf_mode"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3" data-dep="media_auto:off"><label class="form-label" for="rel100">Reliable provisional responses (100rel)</label>
+      {{$r := .Advanced.Rel100}}{{if not $r}}{{$r = "yes"}}{{end}}
+      <select class="form-select" id="rel100" name="rel100">
+        <option value="yes" {{if eq $r "yes"}}selected{{end}}>when the other side supports it</option>
+        <option value="no" {{if eq $r "no"}}selected{{end}}>never</option>
+        <option value="required" {{if eq $r "required"}}selected{{end}}>required</option>
+      </select>
+      <div class="form-hint text-secondary">Stored; this controller does not use it yet.</div>{{with fieldErr $e "advanced.rel100"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="mwi" {{if .Advanced.MWI}}checked{{end}}>Voicemail notification (MWI)</label>
+      <div class="form-hint text-secondary">Stored; this controller does not use it yet.</div></div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="transfer" {{if .Advanced.TransferOn}}checked{{end}}>Allow call transfer</label>
+      <div class="form-hint text-secondary">Stored; this controller does not use it yet.</div></div>
+  </div>
+
+  <div class="sip-pane{{if eq $.Data.Tab "enc"}} active{{end}}" id="tab-enc">
+    <h4>Encryption</h4>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="enc_auto" {{if .EncAutoOn}}checked{{end}}>Try to autodetect</label>
+      <div class="form-hint">Offers encrypted speech (SRTP) and falls back to plain speech when the other side does not take it. Untick to choose a method, or none.</div></div>
+    <div class="mb-3" data-dep="enc_auto:off"><label class="form-label" for="mediaenc">Media encryption</label>
+      <select class="form-select" id="mediaenc" name="mediaenc">{{$c := .EncChoice}}
+        <option value="" {{if eq $c ""}}selected{{end}}>none</option>
+        <option value="srtp" {{if eq $c "srtp"}}selected{{end}}>SRTP when offered</option>
+        <option value="srtp-mand" {{if eq $c "srtp-mand"}}selected{{end}}>SRTP required</option>
+        <option value="srtp-mandf" {{if eq $c "srtp-mandf"}}selected{{end}}>SRTP required (in the offer)</option>
+        <option value="dtls_srtp" {{if eq $c "dtls_srtp"}}selected{{end}}>DTLS-SRTP</option>
+      </select>
+      <div class="form-hint">Encrypts the speech on the internet side. Use TLS as transport too, or the keys travel in the clear.<span class="d-block text-secondary">This controller exchanges SRTP keys in the signalling (SDES). "SRTP required (in the offer)" works like "SRTP required"; DTLS-SRTP is stored, not spoken: the call then asks for SDES-SRTP and fails when the other side has none.</span></div>{{with fieldErr $e "media_encryption"}}<p class="fielderr">{{.}}</p>{{end}}{{with fieldErr $e "advanced.mediaenc"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+  </div>
+
+  <div class="sip-pane{{if eq $.Data.Tab "adv"}} active{{end}}" id="tab-adv">
+    <h4>Advanced</h4>
+    <div class="mb-3"><label class="form-label" for="extra">Further account parameters</label>
+      <input class="form-control" id="extra" name="extra" value="{{.Advanced.Extra}}" autocapitalize="none" spellcheck="false">
+      <div class="form-hint">Appended to the account as is, baresip syntax: ;key=value;key=value.<span class="d-block text-secondary">Stored; this controller does not use it (it is not baresip).</span></div>{{with fieldErr $e "advanced.extra"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="caller_id_source">Caller ID from</label>
+      <select class="form-select" id="caller_id_source" name="caller_id_source">{{range $k := list "auto" "pai" "rpid" "from"}}<option {{if eq $k $.Data.Rec.CallerIDSource}}selected{{end}}>{{$k}}</option>{{end}}</select>
+      <div class="form-hint">Which header of an incoming call gives the caller's number. This controller only.</div></div>
+    <div class="mb-3"><label class="form-label" for="keepalive">Keep-alive</label>
+      <select class="form-select" id="keepalive" name="keepalive">{{range $k := list "auto" "options" "crlf" "none"}}<option {{if eq $k $.Data.Rec.Keepalive}}selected{{end}}>{{$k}}</option>{{end}}</select>
+      <div class="form-hint">What keeps the connection to the server open. This controller only.</div></div>
+    <div class="mb-3"><label class="form-label" for="user_agent">User-Agent</label>
+      <input class="form-control" id="user_agent" name="user_agent" value="{{.Advanced.UserAgent}}" placeholder="opendectcell-controller">
+      <div class="form-hint">This controller only.</div>{{with fieldErr $e "advanced.user_agent"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-label" for="line_prefix">Line prefix (GAP handsets)</label>
+      <input class="form-control" id="line_prefix" name="line_prefix" value="{{.Advanced.LinePrefix}}" placeholder="e.g. *1#">
+      <div class="form-hint">This controller only.</div>{{with fieldErr $e "advanced.line_prefix"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="tls_verify" {{if .TLSVerify}}checked{{end}}>Check the server's certificate</label>
+      <div class="form-hint">For TLS transport. Off accepts any certificate, which defeats the encryption.</div></div>
+    <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}>Enabled</label>
+      <div class="form-hint">Off keeps the profile but does not register or ring it.</div></div>
+    {{if $.User.IsAdmin}}
+    <div class="mb-3"><label class="form-label" for="owner">Owner</label>
+      <select class="form-select" id="owner" name="owner">
+        <option value="">{{if $.Data.New}}me{{else}}unchanged{{end}}</option>
+        <option value="shared" {{if eq $.Data.Owner "shared"}}selected{{end}}>shared (admin-managed)</option>
+        {{range $.Data.Users}}<option value="{{.ID}}" {{if eq $.Data.Owner .ID.String}}selected{{end}}>{{.Username}}</option>{{end}}
+      </select></div>
+    {{end}}
+  </div>
   {{end}}
-  {{if $.User.IsAdmin}}
-  <label class="form-label">Owner
-    <select class="form-select" name="owner">
-      <option value="">{{if .New}}me{{else}}unchanged{{end}}</option>
-      <option value="shared" {{if eq .Owner "shared"}}selected{{end}}>shared (admin-managed)</option>
-      {{range .Users}}<option value="{{.ID}}" {{if eq $.Data.Owner .ID.String}}selected{{end}}>{{.Username}}</option>{{end}}
-    </select></label>
-  {{end}}
-  {{with fieldErr $e "account"}}<p class="fielderr">{{.}}</p>{{end}}
   <button type="submit" class="btn btn-primary">Save</button>
 </form></div></div>
 {{if not .New}}
-<form method="post" action="/sip-accounts/{{.Rec.ID}}/delete"><button type="submit" class="btn btn-link px-0">Delete this account</button></form>
+<form method="post" action="/sip-accounts/{{.Rec.ID}}/delete" data-confirm="Delete this VoIP profile?"><button type="submit" class="btn btn-link px-0">Delete this profile</button></form>
 {{end}}
 {{end}}
 {{template "foot" .}}{{end}}

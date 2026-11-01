@@ -19,7 +19,7 @@
               </optgroup>{{end}}
             </select>
             <div class="form-hint">What the base knows about this model's habits (how it shows names, what it needs to ring).</div></div>
-          {{if .H.LinesPrivate}}<div class="mb-3 text-secondary small">The phone lines of this handset are private to its owner.</div>{{else}}
+          {{if .H.LinesPrivate}}<div class="mb-3 text-secondary small">The VoIP profiles of this handset are private to its owner.</div>{{else}}
           <div class="mb-3"><label class="form-label" for="default_line">Default line for outgoing calls</label>
             <select class="form-select" id="default_line" name="default_line">
               <option value="">none</option>
@@ -38,9 +38,9 @@
   </div>
   <div class="col-lg-6">
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">{{icon "phone"}} Phone lines</h3></div>
+      <div class="card-header"><h3 class="card-title">{{icon "phone"}} Lines</h3></div>
       <div class="card-body">
-        {{if .H.LinesPrivate}}<p class="text-secondary mb-0">Phone lines are private to the handset's owner: other users, administrators included, do not see them.</p>{{else}}
+        {{if .H.LinesPrivate}}<p class="text-secondary mb-0">The VoIP profiles are private to the handset's owner: other users, administrators included, do not see them.</p>{{else}}
         {{range $n := list "1" "2"}}
         <form method="post" action="/handsets/{{$.Data.H.ID}}/lines/{{$n}}" class="d-flex gap-2 align-items-end mb-3" data-dirty>
           <div class="flex-fill"><label class="form-label" for="acct{{$n}}">Line {{$n}}</label>
@@ -51,7 +51,7 @@
           <button type="submit" class="btn btn-outline-primary">Set</button>
         </form>
         {{end}}
-        {{if not .Accounts}}<p class="text-secondary mb-0">There is no phone line to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
+        {{if not .Accounts}}<p class="text-secondary mb-0">There is no VoIP profile to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
         {{end}}
       </div>
     </div>

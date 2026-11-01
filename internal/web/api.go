@@ -323,6 +323,7 @@ type apiSIPJSON struct {
 	Domain          string              `json:"domain"`
 	AuthUsername    *string             `json:"auth_username"`
 	HasPassword     bool                `json:"has_password"`
+	HasStunPass     bool                `json:"has_stunpass"`
 	Registrar       *string             `json:"registrar"`
 	OutboundProxy   *string             `json:"outbound_proxy"`
 	Transport       string              `json:"transport"`
@@ -353,7 +354,7 @@ func sipJSON(a *sipaccount.Record) apiSIPJSON {
 	if w == nil {
 		w = []string{}
 	}
-	return apiSIPJSON{a.ID, a.OwnerID, a.Label, a.DisplayName, a.Username, a.Domain, nilIfEmpty(a.AuthUsername), a.HasPassword,
+	return apiSIPJSON{a.ID, a.OwnerID, a.Label, a.DisplayName, a.Username, a.Domain, nilIfEmpty(a.AuthUsername), a.HasPassword, a.HasStunPass,
 		nilIfEmpty(a.Registrar), nilIfEmpty(a.OutboundProxy), a.Transport, a.Register, a.RegisterExpiry, a.Keepalive,
 		a.MediaEncryption, a.Codecs, a.DTMFMode, a.CallerIDSource, a.TLSVerify, a.Advanced, a.Enabled, a.CreatedAt, a.UpdatedAt, w}
 }
@@ -367,6 +368,7 @@ type sipInput struct {
 	Domain          *string              `json:"domain"`
 	AuthUsername    *string              `json:"auth_username"`
 	Password        *string              `json:"password"`
+	StunPass        *string              `json:"stunpass"`
 	Registrar       *string              `json:"registrar"`
 	OutboundProxy   *string              `json:"outbound_proxy"`
 	Transport       *string              `json:"transport"`
@@ -386,7 +388,7 @@ type sipInput struct {
 
 func (in sipInput) toStore() (sipaccount.Input, error) {
 	out := sipaccount.Input{Label: in.Label, DisplayName: in.DisplayName, Username: in.Username, Domain: in.Domain,
-		AuthUsername: in.AuthUsername, Password: in.Password, Registrar: in.Registrar, OutboundProxy: in.OutboundProxy,
+		AuthUsername: in.AuthUsername, Password: in.Password, StunPass: in.StunPass, Registrar: in.Registrar, OutboundProxy: in.OutboundProxy,
 		Transport: in.Transport, Register: in.Register, RegisterExpiry: in.RegisterExpiry, Keepalive: in.Keepalive,
 		MediaEncryption: in.MediaEncryption, Codecs: in.Codecs, DTMFMode: in.DTMFMode, CallerIDSource: in.CallerIDSource,
 		TLSVerify: in.TLSVerify, Advanced: in.Advanced, Enabled: in.Enabled}

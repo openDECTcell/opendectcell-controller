@@ -991,7 +991,8 @@ components:
         domain: { type: string, minLength: 1 }
         auth_username: { type: string, nullable: true }
         password: { type: string, format: password, writeOnly: true }
-        registrar: { type: string, nullable: true, description: "host[:port]; empty = resolve the domain (RFC 3263)" }
+        stunpass: { type: string, format: password, writeOnly: true, description: "The TURN password of the VoIP profile (advanced.medianat turn); sealed like password, \"\" removes it" }
+        registrar: { type: string, nullable: true, description: "host[:port]; empty = resolve the domain (RFC 3263). The profile page shows it as Registrar, with the domain as SIP domain" }
         outbound_proxy: { type: string, nullable: true }
         transport: { type: string, enum: [udp, tcp, tls] }
         register: { type: boolean }
@@ -1014,6 +1015,7 @@ components:
           properties:
             id: { type: string, format: uuid }
             has_password: { type: boolean, description: The password itself is never returned }
+            has_stunpass: { type: boolean, description: A TURN password is stored; it is never returned }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
             warnings:
@@ -1029,12 +1031,29 @@ components:
         session_expires: { type: integer, minimum: 90 }
         user_agent: { type: string, maxLength: 128 }
         identity_header: { type: string, enum: [none, ppi, pai] }
-        stun_server: { type: string }
+        stun_server: { type: string, description: "Older name of stunserver; the profile page shows it when stunserver is empty" }
         public_address: { type: string, description: "Static public address[:port] override" }
         local_port: { type: integer, minimum: 1, maximum: 65535 }
         inter_digit_timeout_ms: { type: integer, minimum: 1000, maximum: 20000 }
         line_prefix: { type: string, pattern: "^[*#0-9]{1,6}$", description: "Outgoing line selection on GAP handsets, e.g. *1#" }
         prack: { type: boolean }
+        # The VoIP profile options, under the names of luci-app-opendectcell. Stored; the SIP side does not use them yet.
+        line_name: { type: string, description: "What a CAT-iq handset shows for the line, at most 15 octets" }
+        outbound2: { type: string, description: "Second outbound proxy, host[:port]" }
+        sipnat: { type: boolean, description: SIP outbound (RFC 5626) }
+        medianat: { type: string, enum: ["", stun, turn, ice], description: NAT traversal for media }
+        stunserver: { type: string, description: "STUN/TURN server, host[:port]" }
+        stunuser: { type: string, maxLength: 128, description: TURN user }
+        rtpkeep: { type: string, enum: ["", zero, stun, dyna, rtcp], description: Keep media open }
+        media_auto: { type: boolean, description: "Codecs and key tones by autodetection; absent: on when the codecs are the default list and the key tones RTP events" }
+        ptime: { type: string, enum: ["", "10", "20", "30", "40"], description: Packet time in ms }
+        dtmf: { type: string, enum: ["", auto], description: "\"auto\" for key tones the way the other side asks; the other modes are dtmf_mode" }
+        rel100: { type: string, enum: ["", "yes", "no", required], description: Reliable provisional responses (100rel) }
+        mwi: { type: boolean, description: Voicemail notification }
+        transfer: { type: boolean, description: "Allow call transfer; absent: yes" }
+        enc_auto: { type: boolean, description: "Media encryption by autodetection (media_encryption optional); absent: on when media_encryption is optional" }
+        mediaenc: { type: string, enum: ["", srtp-mandf, dtls_srtp], description: "The two LuCI menu entries media_encryption has no value for; both ride on mandatory (SDES-SRTP is all the SIP side speaks)" }
+        extra: { type: string, description: "Further account parameters, baresip syntax ;key=value;key=value" }
     SipAccountStatus:
       type: object
       required: [registration]

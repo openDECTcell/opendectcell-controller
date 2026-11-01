@@ -25,6 +25,7 @@ type EncryptedColumn struct {
 var EncryptedColumns = []EncryptedColumn{
 	{"handset", "uak_enc", "id"},
 	{"sip_account", "password_enc", "id"},
+	{"sip_account", "stunpass_enc", "id"},
 	{"cell_ca", "key_enc", "id"},
 	{"user_totp", "secret_enc", "user_id"},
 }

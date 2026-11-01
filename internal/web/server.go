@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -126,6 +127,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		},
 		"atoi": func(s string) int { n, _ := strconv.Atoi(s); return n },
 		"join": strings.Join,
+		"has":  func(xs []string, x string) bool { return slices.Contains(xs, x) },
 		"list": func(xs ...string) []string { return xs },
 		"fieldErr": func(m map[string]string, k string) string {
 			if m == nil {
