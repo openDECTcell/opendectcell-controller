@@ -197,6 +197,7 @@ func (r *cellRun) handle(ev event) {
 		}
 		r.drop()
 	case evMail:
+		r.log.Debug("chip mail", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "len", len(ev.mail.Param))
 		if r.st != nil {
 			r.st.Mail(ev.mail, r.core.now())
 		}
