@@ -202,6 +202,7 @@ func (s *Server) routes() {
 	s.adminRoutes()
 	s.notificationRoutes()
 	s.cellRoutes()
+	s.identityRoutes()
 	s.sipRoutes()
 	s.userRoutes()
 	s.apiRoutes()

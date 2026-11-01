@@ -1,7 +1,7 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "identity.html"}}{{template "head" .}}
 {{with .Data}}
-<h3 class="mb-3">DECT system identity</h3>
+<h3 class="mb-3">Network identity</h3>
 <dl class="kv">
   <dt>Proposed</dt><dd>{{.Proposed.String}}</dd>
   <dt>Now</dt><dd>{{with .Current}}{{.String}}{{else}}none (factory identities){{end}}</dd>
@@ -25,7 +25,7 @@
   <li>Changing the identity later, once cells use it, means every handset must register again.</li>
 </ul>
 
-<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity/save" class="narrow">
+<div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity/save" class="narrow">
   <input type="hidden" name="eic" value="{{printf "%04X" .Proposed.EIC}}">
   <input type="hidden" name="fpn" value="{{.Proposed.FPN}}">
   <input type="hidden" name="fps" value="{{.Proposed.FPS}}">
@@ -38,6 +38,6 @@
   {{end}}
   <button type="submit" class="btn {{if .Replaces}}btn-danger{{else}}btn-primary{{end}}">{{if .Replaces}}Replace the system identity{{else}}Save this identity{{end}}</button>
 </form></div></div>
-<p><a href="/cells">Cancel</a>{{if eq .Proposed.Source "random"}} · or make up another one from the Cells page{{end}}</p>
+<p><a href="/network-identity">Cancel</a>{{if eq .Proposed.Source "random"}} · or make up another one from the Network identity page{{end}}</p>
 {{end}}
 {{template "foot" .}}{{end}}

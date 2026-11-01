@@ -19,49 +19,5 @@
 </tbody>
 </table></div></div>
 
-<h3 class="mt-4 mb-2">DECT system identity</h3>
-{{with .Data.Identity}}
-<dl class="kv">
-  <dt>Identity</dt><dd>{{.String}} · {{if eq .Source "random"}}made up on this controller{{else if eq .Source "donor"}}the factory identity of one of the cells{{else}}an EIC allocated by ETSI{{end}}</dd>
-  <dt>Set</dt><dd>by {{.SetBy}}, {{fmtTime .SetAt}}</dd>
-  <dt>Cells use it</dt><dd>{{if .Apply}}<span class="badge bg-success-lt">yes</span> each cell broadcasts it with its own number; handsets register once and move between cells by themselves{{else}}<span class="badge bg-secondary-lt">no</span> every cell still broadcasts its box's factory identity{{end}}</dd>
-</dl>
-<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity/apply" class="narrow">
-  {{if .Apply}}<input type="hidden" name="apply" value="off">
-  <p class="text-secondary">Taking it away gives every cell its own identity back when it next connects. Handsets registered under the system identity must then register again.</p>
-  <button type="submit" class="btn btn-outline-danger">Give the cells their own identity back</button>
-  {{else}}<input type="hidden" name="apply" value="on">
-  <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood"><span class="form-check-label">Every cell reloads its chip with this identity, and every handset registered so far has to register again.</span></label>
-  <button type="submit" class="btn btn-primary">Use this identity on all cells</button>{{end}}
-</form></div></div>
-{{else}}
-<p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity makes the cells one system: class B (an EIC, up to 256 cells) below, or class A taken from one cell's own identity (up to 7 cells, no EIC needed) on that cell's page.</p>
-{{end}}
-{{if .Data.Identity}}
-<details class="card mb-3 border-danger"><summary class="card-body text-danger">Replace the system identity…</summary>
-<div class="card-body border-top">
-  <div class="alert alert-danger">Handsets know the cells by this identity. Replacing it can break the whole network: every handset may have to register again. The next page asks you to confirm, more than once.</div>
-<div class="mb-3"><form method="post" action="/cells/identity" class="narrow">
-  <input type="hidden" name="action" value="random">
-  <button type="submit" class="btn btn-primary">Make one up…</button>
-</form></div>
-<div class="mb-3"><form method="post" action="/cells/identity" class="narrow">
-  <label class="form-label">EIC from ETSI, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
-  <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
-  <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
-  <button type="submit" class="btn btn-primary">Use this EIC…</button>
-</form></div>
-</div></details>
-{{else}}
-<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity" class="narrow">
-  <input type="hidden" name="action" value="random">
-  <button type="submit" class="btn btn-primary">Make one up…</button>
-</form></div></div>
-<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/identity" class="narrow">
-  <label class="form-label">EIC from ETSI, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
-  <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
-  <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
-  <button type="submit" class="btn btn-primary">Use this EIC…</button>
-</form></div></div>
-{{end}}
+<p class="text-secondary">What the cells broadcast to the handsets, the DECT system identity, is set on its own page: <a href="/network-identity">Network identity</a>.</p>
 {{template "foot" .}}{{end}}

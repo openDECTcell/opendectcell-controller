@@ -4,10 +4,8 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,10 +27,6 @@ func (s *Server) cellRoutes() {
 		return
 	}
 	s.mux.Handle("GET /cells", s.requireAdmin(s.cellList))
-	s.mux.Handle("POST /cells/identity", s.requireAdmin(s.identityPropose))
-	s.mux.Handle("POST /cells/identity/save", s.requireAdmin(s.identitySave))
-	s.mux.Handle("POST /cells/identity/apply", s.requireAdmin(s.identityApply))
-	s.mux.Handle("POST /cells/{id}/identity-donor", s.requireAdmin(s.identityDonor))
 	s.mux.Handle("GET /cells/{id}", s.requireAdmin(s.cellPage))
 	s.mux.Handle("POST /cells/{id}", s.requireAdmin(s.cellUpdate))
 	s.mux.Handle("POST /cells/{id}/state", s.requireAdmin(s.cellState))
@@ -68,171 +62,12 @@ func (s *Server) renderCells(w http.ResponseWriter, r *http.Request, u *auth.Use
 	for i, c := range cells {
 		rows[i] = cellRow{c, s.liveStatus(c.ID)}
 	}
-	id, err := s.Cells.SystemIdentity(r.Context())
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	p.Title, p.User, p.Data = "Cells", u, cellsPage{Cells: rows, Identity: id}
+	p.Title, p.User, p.Data = "Cells", u, cellsPage{Cells: rows}
 	s.render(w, status, "cells.html", p)
 }
 
 type cellsPage struct {
-	Cells    []cellRow
-	Identity *cell.SystemIdentity
-}
-
-// identityPage is the confirmation step: the identity proposed, the one it
-// would replace, and the risks (templates/identity.html).
-type identityPage struct {
-	Proposed cell.SystemIdentity
-	Current  *cell.SystemIdentity
-}
-
-// Replaces: saving the proposal would replace a different identity.
-func (p identityPage) Replaces() bool {
-	return p.Current != nil && (p.Current.EIC != p.Proposed.EIC || p.Current.FPN != p.Proposed.FPN || p.Current.FPS != p.Proposed.FPS)
-}
-
-// identityForm reads an identity from a form: EIC in hex, FPN and FPS in
-// decimal, as the page shows them.
-func identityForm(r *http.Request, source string) (cell.SystemIdentity, error) {
-	eic, err := strconv.ParseUint(r.PostFormValue("eic"), 16, 16)
-	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The EIC is four hexadecimal digits.") //nolint:staticcheck // ST1005: shown on the page as a sentence
-	}
-	fpn, err := strconv.ParseUint(r.PostFormValue("fpn"), 10, 8)
-	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The FPN is a number from 0 to 255.") //nolint:staticcheck // ST1005: as above
-	}
-	fps, err := strconv.ParseUint(r.PostFormValue("fps"), 10, 8)
-	if err != nil {
-		return cell.SystemIdentity{}, errors.New("The FPS is a number from 1 to 15.") //nolint:staticcheck // ST1005: as above
-	}
-	id := cell.SystemIdentity{EIC: uint16(eic), FPN: uint8(fpn), FPS: uint8(fps), Source: source}
-	if err := id.Validate(); err != nil {
-		return id, errors.New("EIC 0 is not used, and the FPS is 1 to 15 (EN 300 175-6 §5.2).") //nolint:staticcheck // ST1005: as above
-	}
-	return id, nil
-}
-
-// identityPropose: "Make one up" draws a random identity, "Use an EIC from
-// ETSI" takes the one typed in; either is only shown, with the risks,
-// until the admin saves it.
-func (s *Server) identityPropose(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
-	var (
-		id  cell.SystemIdentity
-		err error
-	)
-	if r.PostFormValue("action") == "random" {
-		id, err = cell.RandomIdentity(nil)
-		if err != nil {
-			s.internalError(w, r, err)
-			return
-		}
-	} else if id, err = identityForm(r, cell.IdentityAllocated); err != nil {
-		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: err.Error()})
-		return
-	}
-	cur, err := s.Cells.SystemIdentity(r.Context())
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	s.render(w, http.StatusOK, "identity.html", page{Title: "DECT system identity", User: u,
-		Data: identityPage{Proposed: id, Current: cur}})
-}
-
-func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
-	source := r.PostFormValue("source")
-	if source != cell.IdentityRandom {
-		source = cell.IdentityAllocated
-	}
-	id, err := identityForm(r, source)
-	cur, _ := s.Cells.SystemIdentity(r.Context())
-	replacing := cur != nil && (cur.EIC != id.EIC || cur.FPN != id.FPN || cur.FPS != id.FPS)
-	switch {
-	case err != nil:
-	case cur != nil && !replacing:
-		http.Redirect(w, r, "/cells?done=That+is+the+system+identity+already.", http.StatusSeeOther)
-		return
-	case r.PostFormValue("understood") != "on":
-		err = errors.New("Tick the box to confirm you read the risks.") //nolint:staticcheck // ST1005: shown on the page as a sentence
-	case replacing && r.PostFormValue("understood2") != "on":
-		err = errors.New("Tick both boxes: replacing the identity of a running system breaks it.") //nolint:staticcheck // ST1005: as above
-	case replacing && !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm_eic")), fmt.Sprintf("%04X", cur.EIC)):
-		err = errors.New("Type the EIC of the identity being replaced, exactly as shown, to confirm.") //nolint:staticcheck // ST1005: as above
-	}
-	if err != nil {
-		s.render(w, http.StatusBadRequest, "identity.html", page{Title: "DECT system identity", User: u,
-			Error: err.Error(), Data: identityPage{Proposed: id, Current: cur}})
-		return
-	}
-	if err := s.Cells.SetSystemIdentity(r.Context(), u, id); err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/cells?done=System+identity+saved.", http.StatusSeeOther)
-}
-
-// identityApply turns the cells' use of the system identity on or off. On:
-// every cell broadcasts it from its next connection, so every handset must
-// register again; the admin confirms that.
-func (s *Server) identityApply(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
-	on := r.PostFormValue("apply") == "on"
-	if on && r.PostFormValue("understood") != "on" {
-		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "Tick the box to confirm that every handset has to register again."})
-		return
-	}
-	if err := s.Cells.SetIdentityApply(r.Context(), u, on); err != nil {
-		if errors.Is(err, cell.ErrBadIdentity) {
-			s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "There is no system identity to apply: set one first."})
-			return
-		}
-		s.internalError(w, r, err)
-		return
-	}
-	msg := "The+cells+take+their+own+identity+back+when+they+next+connect."
-	if on {
-		msg = "The+cells+take+the+system+identity+when+they+next+connect."
-	}
-	http.Redirect(w, r, "/cells?done="+msg, http.StatusSeeOther)
-}
-
-// identityDonor makes a cell's own identity the system's (class A, at most 7
-// cells). Only while the system identity is not applied: until then every
-// cell still broadcasts its factory identity, which is what is taken.
-func (s *Server) identityDonor(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	c, ok := s.cellByPath(w, r, u)
-	if !ok {
-		return
-	}
-	cur, err := s.Cells.SystemIdentity(r.Context())
-	if err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	live := s.liveStatus(c.ID)
-	switch {
-	case cur != nil:
-		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "A system identity is set already. Replacing it can break every handset, so it is done on the Cells page, under \"Replace the system identity\", with confirmations."})
-		return
-	case !live.Online || !live.HasRFPI:
-		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "That cell is offline or does not report its identity (older software)."})
-		return
-	}
-	if err := s.Cells.SystemIdentityFromCell(r.Context(), u, live.RFPI); err != nil {
-		if errors.Is(err, cell.ErrBadIdentity) {
-			s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "That cell's identity is not a class A one; take another cell, or use a class B identity."})
-			return
-		}
-		s.internalError(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/cells?done=System+identity+taken+from+the+cell.", http.StatusSeeOther)
+	Cells []cellRow
 }
 
 func (s *Server) cellByPath(w http.ResponseWriter, r *http.Request, u *auth.User) (*cell.Cell, bool) {

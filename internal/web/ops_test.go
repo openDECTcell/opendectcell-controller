@@ -184,58 +184,67 @@ func TestIdentityPages(t *testing.T) {
 	a, u := e.adminBrowser(t), e.userBrowser(t)
 
 	// no identity yet: nothing to apply, and the donor needs an RFPI the cell reports
-	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}, "understood2": {"on"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("applying nothing: %d", r.StatusCode)
 	}
-	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, a, "/network-identity/donor", url.Values{"cell": {cid.String()}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("donor from a cell that reports nothing: %d", r.StatusCode)
 	}
 	// class A from the cell's own identity; a class B RFPI is not a donor
 	link.mu.Lock()
 	link.rfpi[cid] = [5]byte{0x10, 0xf4, 0x20, 0x11, 0x01}
 	link.mu.Unlock()
-	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, a, "/network-identity/donor", url.Values{"cell": {cid.String()}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("a class B RFPI as a donor: %d", r.StatusCode)
 	}
 	link.mu.Lock()
 	link.rfpi[cid] = [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x6b}
 	link.mu.Unlock()
-	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusSeeOther {
+	if r := e.post(t, a, "/network-identity/donor", url.Values{"cell": {cid.String()}, "understood": {"on"}}); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("donor: %d", r.StatusCode)
 	}
-	_, page := e.get(t, a, "/cells")
-	for _, want := range []string{"class A", "02700d5e68", "Use this identity on all cells", "02700d5e6b"} {
+	_, page := e.get(t, a, "/network-identity")
+	for _, want := range []string{"class A", "02700d5e68", "Use this identity on all cells"} {
 		if !strings.Contains(page, want) {
-			t.Errorf("cells page lacks %q", want)
+			t.Errorf("identity page lacks %q", want)
 		}
 	}
+	if _, cells := e.get(t, a, "/cells"); !strings.Contains(cells, "02700d5e6b") {
+		t.Error("cells page lacks the cell's own identity")
+	}
 	// applying needs the tick for "every handset registers again"
-	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}}); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"on"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("applied without the confirmation: %d", r.StatusCode)
 	}
-	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}}); r.StatusCode != http.StatusSeeOther {
+	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("applied with one confirmation: %d", r.StatusCode)
+	}
+	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"on"}, "understood": {"on"}, "understood2": {"on"}}); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("apply: %d", r.StatusCode)
 	}
 	if w, err := e.cells.Want(ctx, cid); err != nil || !w.Set || w.RFPI != [5]byte{0x02, 0x70, 0x0d, 0x5e, 0x69} {
 		t.Fatalf("the cell is to get number 1: %+v %v", w, err)
 	}
 	// a donor cannot be named while applied
-	if r := e.post(t, a, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, a, "/network-identity/donor", url.Values{"cell": {cid.String()}, "understood": {"on"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("donor while applied: %d", r.StatusCode)
 	}
-	if _, page := e.get(t, a, "/cells"); !strings.Contains(page, "Give the cells their own identity back") || !strings.Contains(page, "no. 1") {
-		t.Error("the page does not show it applied, with the cell's number")
+	if _, page := e.get(t, a, "/network-identity"); !strings.Contains(page, "Give the cells their own identity back") {
+		t.Error("the page does not show it applied")
 	}
-	if r := e.post(t, a, "/cells/identity/apply", url.Values{"apply": {"off"}}); r.StatusCode != http.StatusSeeOther {
+	if _, page := e.get(t, a, "/cells"); !strings.Contains(page, "no. 1") {
+		t.Error("the cells page does not show the cell's number")
+	}
+	if r := e.post(t, a, "/network-identity/apply", url.Values{"apply": {"off"}}); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("turning off: %d", r.StatusCode)
 	}
 	// users see none of it
-	for _, p := range []string{"/cells/identity/apply"} {
+	for _, p := range []string{"/network-identity/apply"} {
 		if r := e.post(t, u, p, url.Values{"apply": {"on"}}); r.StatusCode != http.StatusNotFound {
 			t.Errorf("a user on %s: %d", p, r.StatusCode)
 		}
 	}
-	if r := e.post(t, u, "/cells/"+cid.String()+"/identity-donor", nil); r.StatusCode != http.StatusNotFound {
+	if r := e.post(t, u, "/network-identity/donor", url.Values{"cell": {cid.String()}, "understood": {"on"}}); r.StatusCode != http.StatusNotFound {
 		t.Errorf("a user took a donor: %d", r.StatusCode)
 	}
 }

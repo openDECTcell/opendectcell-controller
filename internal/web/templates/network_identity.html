@@ -1,0 +1,60 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "network_identity.html"}}{{template "head" .}}
+<div class="alert alert-warning" role="alert">
+  <h4 class="alert-title">Handle with care</h4>
+  <p class="mb-0">The cells broadcast this identity, and every handset knows the network by it. Changing it can make the whole network unreachable until each handset has registered again, one by one. Nothing on this page changes anything without a confirmation.</p>
+</div>
+
+<h3 class="mt-4 mb-2">DECT system identity</h3>
+{{with .Data.Identity}}
+<dl class="kv">
+  <dt>Identity</dt><dd>{{.String}} · {{if eq .Source "random"}}made up on this controller{{else if eq .Source "donor"}}the factory identity of one of the cells{{else}}an EIC allocated by ETSI{{end}}</dd>
+  <dt>Set</dt><dd>by {{.SetBy}}, {{fmtTime .SetAt}}</dd>
+  <dt>Cells use it</dt><dd>{{if .Apply}}<span class="badge bg-success-lt">yes</span> each cell broadcasts it with its own number; handsets register once and move between cells by themselves{{else}}<span class="badge bg-secondary-lt">no</span> every cell still broadcasts its box's factory identity{{end}}</dd>
+</dl>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity/apply" class="narrow">
+  {{if .Apply}}<input type="hidden" name="apply" value="off">
+  <p class="text-secondary">Taking it away gives every cell its own identity back when it next connects. Handsets registered under the system identity must then register again.</p>
+  <button type="submit" class="btn btn-outline-danger">Give the cells their own identity back</button>
+  {{else}}<input type="hidden" name="apply" value="on">
+  <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood"><span class="form-check-label">Every cell reloads its chip with this identity when it next connects.</span></label>
+  <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood2"><span class="form-check-label">Every handset registered so far stops finding its base and has to register again.</span></label>
+  <button type="submit" class="btn btn-primary">Use this identity on all cells</button>{{end}}
+</form></div></div>
+
+<details class="card mb-3 border-danger"><summary class="card-body text-danger">Replace the system identity…</summary>
+<div class="card-body border-top">
+  <div class="alert alert-danger">Handsets know the cells by this identity. Replacing it can break the whole network: every handset may have to register again. The next page asks you to confirm, more than once.</div>
+  <div class="mb-3"><form method="post" action="/network-identity" class="narrow">
+    <input type="hidden" name="action" value="random">
+    <button type="submit" class="btn btn-primary">Make one up…</button>
+  </form></div>
+  <div class="mb-3"><form method="post" action="/network-identity" class="narrow">
+    <label class="form-label">EIC from ETSI, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
+    <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
+    <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
+    <button type="submit" class="btn btn-primary">Use this EIC…</button>
+  </form></div>
+</div></details>
+{{else}}
+<p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity makes the cells one system: class B (an EIC, up to 256 cells), or class A taken from one cell's own identity (up to 7 cells, no EIC needed).</p>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity" class="narrow">
+  <input type="hidden" name="action" value="random">
+  <button type="submit" class="btn btn-primary">Make one up…</button>
+</form></div></div>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity" class="narrow">
+  <label class="form-label">EIC from ETSI, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
+  <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
+  <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
+  <button type="submit" class="btn btn-primary">Use this EIC…</button>
+</form></div></div>
+{{if .Data.Donors}}
+<div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity/donor" class="narrow">
+  <p class="text-secondary">Or make one box's own identity the identity of the whole system (class A, at most 7 cells, no EIC needed). Until the system identity is applied, every cell still broadcasts its factory one.</p>
+  <label class="form-label">Cell <select class="form-select" name="cell">{{range .Data.Donors}}<option value="{{.ID}}">{{.Name}} · {{printf "%x" .Live.RFPI}}</option>{{end}}</select></label>
+  <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="understood"><span class="form-check-label">I know that the other cells will take this identity once it is applied.</span></label>
+  <button type="submit" class="btn btn-outline-primary">Take this cell's identity as the system's</button>
+</form></div></div>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

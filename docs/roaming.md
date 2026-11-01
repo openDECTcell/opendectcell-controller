@@ -36,7 +36,7 @@ have nothing like it for the handsets we serve.)
 
 Today **handsets do not roam between our boxes**. Every cell broadcasts its box's factory RFPI, so every
 box is a separate DECT system (ADR 0004 "Identity across sites": "with factory identities, handsets do not
-roam between boxes"). The controller can already make up a class B identity (Cells page, `cell.SystemIdentity`,
+roam between boxes"). The controller can already make up a class B identity (Network identity page, `cell.SystemIdentity`,
 `RFPI(rpn)`), but the cells do not take it:
 
 | Need | State |
@@ -104,7 +104,7 @@ In order; 1 and 2 are the preconditions, 3 to 5 are what the user feels.
 | 5 UI | Handset page: "every cell" or "home cell only", the last ten cell changes. Statistics: cell changes in 24 h and 7 days. Cell changes are location data: retention erases them with the call details. |
 
 What is not built: the controller does not choose the location area size (class A or B, LAL 31 + j) for any cell; the
-maintainer sets the identity per cell on the cells page. IPUI O for class B cross-site subscription (needs a window
+maintainer sets the identity per cell on the Network identity page. IPUI O for class B cross-site subscription (needs a window
 option). Records numbered 8 to 32 have a names-list entry and a call list like the first seven (libopendectcell API 147,
 decision 21); not yet seen on a real handset with more than eight entries.
 

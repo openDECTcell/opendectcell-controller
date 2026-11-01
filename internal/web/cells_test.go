@@ -126,11 +126,11 @@ func TestSystemIdentityPages(t *testing.T) {
 	})
 	admin := e.browser()
 	e.login(t, admin, "admin", "admin password")
-	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "factory identity") {
+	if _, page := e.get(t, admin, "/network-identity"); !strings.Contains(page, "factory identity") {
 		t.Fatal("no identity: the page does not say so")
 	}
 
-	r := e.post(t, admin, "/cells/identity", url.Values{"action": {"random"}})
+	r := e.post(t, admin, "/network-identity", url.Values{"action": {"random"}})
 	page := readBody(r)
 	if r.StatusCode != http.StatusOK || !strings.Contains(page, "This EIC is made up") ||
 		!strings.Contains(page, "https://www.etsi.org/security-algorithms-and-codes/codes") {
@@ -143,21 +143,21 @@ func TestSystemIdentityPages(t *testing.T) {
 	if form.Get("source") != cell.IdentityRandom || len(form.Get("eic")) != 4 {
 		t.Fatalf("hidden fields %v", form)
 	}
-	if r := e.post(t, admin, "/cells/identity/save", form); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, admin, "/network-identity/save", form); r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("saved without the box ticked: %d", r.StatusCode)
 	}
 	if id, _ := e.cells.SystemIdentity(ctx); id != nil {
 		t.Fatal("stored without the box ticked")
 	}
 	form.Set("understood", "on")
-	if r := e.post(t, admin, "/cells/identity/save", form); r.StatusCode != http.StatusSeeOther {
+	if r := e.post(t, admin, "/network-identity/save", form); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("save: %d", r.StatusCode)
 	}
 	id, err := e.cells.SystemIdentity(ctx)
 	if err != nil || id == nil || id.Source != cell.IdentityRandom || fmt.Sprintf("%04X", id.EIC) != form.Get("eic") {
 		t.Fatalf("stored %+v, %v", id, err)
 	}
-	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "made up on this controller") {
+	if _, page := e.get(t, admin, "/network-identity"); !strings.Contains(page, "made up on this controller") {
 		t.Fatal("the list does not show the identity")
 	}
 
@@ -167,11 +167,11 @@ func TestSystemIdentityPages(t *testing.T) {
 		{"eic": {"12G4"}, "fpn": {"1"}, "fps": {"1"}},
 		{"eic": {"1234"}, "fpn": {"1"}, "fps": {"0"}},
 	} {
-		if r := e.post(t, admin, "/cells/identity", bad); r.StatusCode != http.StatusBadRequest {
+		if r := e.post(t, admin, "/network-identity", bad); r.StatusCode != http.StatusBadRequest {
 			t.Errorf("%v: %d", bad, r.StatusCode)
 		}
 	}
-	r = e.post(t, admin, "/cells/identity", url.Values{"eic": {"beef"}, "fpn": {"7"}, "fps": {"2"}})
+	r = e.post(t, admin, "/network-identity", url.Values{"eic": {"beef"}, "fpn": {"7"}, "fps": {"2"}})
 	if page = readBody(r); r.StatusCode != http.StatusOK || strings.Contains(page, "This EIC is made up") ||
 		!strings.Contains(page, `value="BEEF"`) {
 		t.Fatalf("allocated EIC: %d", r.StatusCode)
@@ -182,32 +182,56 @@ func TestSystemIdentityPages(t *testing.T) {
 		t.Error("the proposal does not warn that it replaces the identity")
 	}
 	rep := url.Values{"eic": {"BEEF"}, "fpn": {"7"}, "fps": {"2"}, "source": {"allocated"}, "understood": {"on"}}
-	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, admin, "/network-identity/save", rep); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("replaced with one box: %d", r.StatusCode)
 	}
 	rep.Set("understood2", "on")
-	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, admin, "/network-identity/save", rep); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("replaced without typing the old EIC: %d", r.StatusCode)
 	}
 	rep.Set("confirm_eic", "0000")
-	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+	if r := e.post(t, admin, "/network-identity/save", rep); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("replaced with the wrong EIC typed: %d", r.StatusCode)
 	}
 	if now, _ := e.cells.SystemIdentity(ctx); now == nil || fmt.Sprintf("%04X", now.EIC) != form.Get("eic") {
 		t.Fatal("the identity changed without every confirmation")
 	}
 	rep.Set("confirm_eic", strings.ToLower(form.Get("eic")))
-	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusSeeOther {
+	if r := e.post(t, admin, "/network-identity/save", rep); r.StatusCode != http.StatusSeeOther {
 		t.Errorf("replace with every confirmation: %d", r.StatusCode)
 	}
 	if now, _ := e.cells.SystemIdentity(ctx); now == nil || now.EIC != 0xBEEF {
 		t.Errorf("not replaced: %+v", now)
 	}
 
+	// The cells use it only after both boxes are ticked.
+	ap := url.Values{"apply": {"on"}, "understood": {"on"}}
+	if r := e.post(t, admin, "/network-identity/apply", ap); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("applied with one box: %d", r.StatusCode)
+	}
+	if now, _ := e.cells.SystemIdentity(ctx); now == nil || now.Apply {
+		t.Fatalf("applied with one box: %+v", now)
+	}
+	ap.Set("understood2", "on")
+	if r := e.post(t, admin, "/network-identity/apply", ap); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("apply with both boxes: %d", r.StatusCode)
+	}
+	if now, _ := e.cells.SystemIdentity(ctx); now == nil || !now.Apply {
+		t.Errorf("not applied: %+v", now)
+	}
+	// None of it is on the Cells page any more; the menu has its own entry.
+	if _, page := e.get(t, admin, "/cells"); strings.Contains(page, "Use this identity on all cells") ||
+		strings.Contains(page, "Replace the system identity") || !strings.Contains(page, `href="/network-identity"`) {
+		t.Error("the Cells page still carries the identity buttons, or does not point to the new page")
+	}
+
 	// Not for users.
 	user := e.browser()
 	e.login(t, user, "user", "user password")
-	for _, p := range []string{"/cells/identity", "/cells/identity/save"} {
+	if resp, _ := e.get(t, user, "/network-identity"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("user GET /network-identity: %d", resp.StatusCode)
+	}
+	for _, p := range []string{"/network-identity", "/network-identity/save", "/network-identity/apply", "/network-identity/donor"} {
 		if r := e.post(t, user, p, url.Values{"action": {"random"}}); r.StatusCode != http.StatusNotFound {
 			t.Errorf("user POST %s: %d", p, r.StatusCode)
 		}

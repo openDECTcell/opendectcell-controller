@@ -52,6 +52,7 @@ var menu = []navEntry{
 	{group: "Insight", navItem: navItem{Label: "Logging", Href: "/logging", Icon: "list-details"}},
 	{group: "Administration", navItem: navItem{Label: "Dashboard", Href: "/admin", Icon: "activity-heartbeat"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Cells", Href: "/cells", Icon: "building-broadcast-tower"}, admin: true},
+	{group: "Administration", navItem: navItem{Label: "Network identity", Href: "/network-identity", Icon: "fingerprint"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Users", Href: "/admin/users", Icon: "users"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "All calls", Href: "/admin/calls", Icon: "phone-call"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Statistics", Href: "/admin/statistics", Icon: "report-analytics"}, admin: true},

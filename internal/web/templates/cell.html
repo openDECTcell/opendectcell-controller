@@ -22,14 +22,6 @@
 <form method="post" action="/cells/{{.ID}}/state"><input type="hidden" name="state" value="active"><button type="submit" class="btn btn-primary">Enable</button></form>
 {{end}}
 
-{{if and .Live.Online .Live.HasRFPI}}
-<h3 class="mt-4 mb-2">Identity</h3>
-<div class="card mb-3"><div class="card-body"><form method="post" action="/cells/{{.ID}}/identity-donor" class="narrow">
-  <p class="text-secondary">Make this box's own identity the identity of the whole system (class A, at most 7 cells, no EIC needed). Only while the system identity is not applied: until then this cell still broadcasts its factory one.</p>
-  <button type="submit" class="btn btn-outline-primary">Take this cell's identity as the system's</button>
-</form></div></div>
-{{end}}
-
 {{if ne .State "revoked"}}
 <h3 class="mt-4 mb-2">Settings</h3>
 <div class="card mb-3"><div class="card-body"><form method="post" action="/cells/{{.ID}}" class="narrow">
