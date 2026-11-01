@@ -229,6 +229,21 @@ func (x *Host) Recycle(i int, tpui [3]byte) Recycled {
 // being set up.
 func (x *Host) Quiet() bool { return C.cdect_host_quiet(x.c) != 0 }
 
+// SetRFPI sets the RFPI the chip broadcasts (what the library takes from the
+// chip's 0xF601 when it sees one: the first one wins, as there).
+func (x *Host) SetRFPI(rfpi [5]byte) {
+	if x.c.b.have_rfpi != 0 {
+		return
+	}
+	for k := range rfpi {
+		x.c.b.rfpi[k] = C.uint8_t(rfpi[k])
+	}
+	x.c.b.have_rfpi = 1
+}
+
+// HasRFPI: the stack knows what the chip broadcasts.
+func (x *Host) HasRFPI() bool { return x.c.b.have_rfpi != 0 }
+
 // SetName sets record i's name in the Internal Names List; false: the library
 // refuses it (empty, or longer than 15 octets).
 func (x *Host) SetName(i int, name string) bool {

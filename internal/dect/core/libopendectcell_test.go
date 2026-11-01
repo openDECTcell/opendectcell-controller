@@ -25,7 +25,7 @@ func TestCellUpWithLibopendectcell(t *testing.T) {
 	}
 	g := newRig(t, &fakeRecords{hs: []Handset{h}}, nil)
 	g.core.New = cdect.NewStack
-	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", CapSubRecords: 6, HasRFPI: true, RFPI: [5]byte{0x03, 0x69, 0x0e, 0x24, 0xb8}})
 	waitFor(t, "the read-backs, held back 50 ms on 08.25", func() bool {
 		n := 0
 		for _, s := range g.link.all() {

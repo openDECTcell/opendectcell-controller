@@ -208,3 +208,24 @@ func TestRecycleLeavesAKeyInTheChip(t *testing.T) {
 		t.Error("the chip's table was left empty after the recycle")
 	}
 }
+
+// The stack's RFPI is what a registering handset gets as its base's PARK: it must
+// be settable by the host (the chip's contact answer does not reach the
+// controller in cell mode), and the first one stays, as with the chip's own.
+func TestSetRFPI(t *testing.T) {
+	e := fetchEnv(t) // its chip answered 0xF601 already
+	if !e.host.HasRFPI() {
+		t.Fatal("the chip's answer was not taken")
+	}
+	e2 := &traceEnv{t: t, now: 1000, wall: 1793350800, pps: map[uint8]*PP{}}
+	h := NewHost(e2, Config{PIN: "12345678", UAKTable: 0x9518, Stub: "dectfw_secondlevel_441.hex"})
+	t.Cleanup(h.Close)
+	if h.HasRFPI() {
+		t.Fatal("a stack that was told nothing knows an RFPI")
+	}
+	h.SetRFPI([5]byte{0x03, 0x69, 0x0e, 0x24, 0xb8})
+	h.SetRFPI([5]byte{1, 2, 3, 4, 5})
+	if !h.HasRFPI() {
+		t.Error("not known after SetRFPI")
+	}
+}

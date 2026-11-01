@@ -174,6 +174,13 @@ type Stack interface {
 	// Quiet reports whether the stack is idle: no link, no call, nothing
 	// being set up.
 	Quiet() bool
+	// SetRFPI gives the stack the RFPI its chip broadcasts. A registering
+	// handset is given it as its base's PARK, and ringing a handset names the
+	// base with it: without it a handset registers against an all-zero base
+	// and can never find the base again after a reboot.
+	SetRFPI(rfpi [5]byte)
+	// HasRFPI: the stack knows the RFPI (SetRFPI, or the chip's 0xF601).
+	HasRFPI() bool
 	// SetName sets record i's name in the Internal Names List. False: the
 	// stack refuses it (empty, or longer than 15 octets).
 	SetName(i int, name string) bool

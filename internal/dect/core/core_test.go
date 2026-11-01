@@ -55,6 +55,9 @@ type fakeStack struct {
 	dropped  []int
 	busy     bool
 	validity []uint
+	// the RFPI the core gave the stack
+	rfpi    [5]byte
+	hasRFPI bool
 	// names and profiles the core gave the records
 	names map[int]string
 	profs map[int][2]string
@@ -177,6 +180,20 @@ func (f *fakeStack) Quiet() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return !f.busy
+}
+
+func (f *fakeStack) SetRFPI(rfpi [5]byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.hasRFPI {
+		f.rfpi, f.hasRFPI = rfpi, true
+	}
+}
+
+func (f *fakeStack) HasRFPI() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.hasRFPI
 }
 
 func (f *fakeStack) SetName(i int, name string) bool {
@@ -532,7 +549,7 @@ func TestBringUpAndRecords(t *testing.T) {
 	recs := &fakeRecords{hs: []Handset{handset(2, owner), handset(5, owner)}}
 	g := newRig(t, recs, nil)
 	id := uuid.New()
-	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", CapSubRecords: 6})
+	g.core.CellUp(id, cell.CellUp{StubVersion: "06.88", CapSubRecords: 6, HasRFPI: true, RFPI: testRFPI})
 	waitFor(t, "radio on", radioOn(g))
 	waitFor(t, "slots recorded", func() bool {
 		n := 0
@@ -775,6 +792,56 @@ func TestForcedRemovalForgetsTheHandset(t *testing.T) {
 	})
 }
 
+var testRFPI = [5]byte{0x03, 0x69, 0x0e, 0x24, 0xb8}
+
+// The stack must know what the chip broadcasts before a handset registers: it is
+// the base's PARK in the registration, and a zero one leaves the handset without
+// a base after its first reboot (found 2026-11-01).
+func TestStackKnowsTheRFPI(t *testing.T) {
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, &fakeRecords{}, nil)
+	g.core.Reg = reg
+	rfpiAskEvery = 10 * time.Millisecond
+	t.Cleanup(func() { rfpiAskEvery = 2 * time.Second })
+	a := uuid.New()
+	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25", HasRFPI: true, RFPI: testRFPI})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) {
+		if !f.hasRFPI || f.rfpi != testRFPI {
+			t.Errorf("the stack was not told: %v %x", f.hasRFPI, f.rfpi)
+		}
+	})
+	// a cell that does not say (older software): registration stays closed, the chip is asked
+	b := uuid.New()
+	g.core.CellUp(b, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "the second stack", func() bool { return g.stack(1) != nil })
+	reg.Open(uuid.New(), uuid.New(), 8)
+	waitFor(t, "the contact asked for", func() bool {
+		n := 0
+		g.link.mu.Lock()
+		for _, m := range g.link.mails {
+			if m.m.Prim == 0xF600 {
+				n++
+			}
+		}
+		g.link.mu.Unlock()
+		return n > 0
+	})
+	time.Sleep(100 * time.Millisecond)
+	g.stack(1).get(func(f *fakeStack) {
+		if f.regOpen || f.hasRFPI {
+			t.Errorf("registration open without an RFPI: open %v has %v", f.regOpen, f.hasRFPI)
+		}
+	})
+	// the chip answers (the library takes it from the 0xF601): registration opens
+	g.stack(1).get(func(f *fakeStack) { f.hasRFPI = true })
+	waitFor(t, "registration open", func() bool {
+		ok := false
+		g.stack(1).get(func(f *fakeStack) { ok = f.regOpen })
+		return ok
+	})
+}
+
 func TestListName(t *testing.T) {
 	for in, want := range map[string]string{
 		"Kitchen":                      "Kitchen",
@@ -876,7 +943,7 @@ func TestRegistrationWindow(t *testing.T) {
 	g := newRig(t, &fakeRecords{}, func(f *fakeStack) { f.notFree = full })
 	g.core.Reg = reg
 	id := uuid.New()
-	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", HasRFPI: true, RFPI: testRFPI})
 	waitFor(t, "radio on", radioOn(g))
 	g.stack(0).get(func(f *fakeStack) {
 		if f.regOpen || len(f.regPINs) != 0 {
@@ -942,7 +1009,7 @@ func TestRegistrationFailures(t *testing.T) {
 	g.core.Reg = reg
 	reg.Open(uuid.New(), uuid.New(), 8)
 	id := uuid.New()
-	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", HasRFPI: true, RFPI: testRFPI})
 	waitFor(t, "radio on", radioOn(g))
 	for range regwin.FailLimit {
 		g.core.MailUp(id, wire.MailUpMsg{Prim: 1})

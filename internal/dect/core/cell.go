@@ -49,7 +49,9 @@ type cellRun struct {
 	reloadAt    time.Time
 	recycleDue  []recycleDue // pooled enrolments whose chip slot is to be freed
 	forgetDue   []uuid.UUID  // handsets the user removes without asking them
-	bridge      bool         // this stack has been told it carries external calls (route.go)
+	rfpiAskAt   time.Time    // when the chip was last asked for its RFPI
+	rfpiWarned  bool
+	bridge      bool // this stack has been told it carries external calls (route.go)
 	// what the router reads from other goroutines (route.go): the handsets
 	// this stack holds by record number, and whether its radio is on
 	pub   sync.Mutex
@@ -469,6 +471,7 @@ func (r *cellRun) tick() {
 	if r.st == nil {
 		return
 	}
+	r.syncRFPI(now)
 	r.recycle(now)
 	r.forgetNow()
 	if r.st == nil {
@@ -542,6 +545,49 @@ func (r *cellRun) seen(now time.Time) {
 	}
 }
 
+// rfpiAskEvery is how often a chip is asked for its RFPI while the stack does not
+// know it.
+var rfpiAskEvery = 2 * time.Second
+
+// syncRFPI makes sure the stack knows the RFPI the chip broadcasts: a handset
+// that registers is given it as its base's PARK. A cell in this mode does the chip's
+// contact itself, before the controller is there, so the stack never sees the
+// chip's answer on its own. The cell says it in its HELLO or STATUS; a cell that
+// does not (older software) is asked, with the contact mail, whose answer
+// the stack takes. True: the stack knows it.
+func (r *cellRun) syncRFPI(now time.Time) bool {
+	if r.st == nil {
+		return false
+	}
+	if r.st.HasRFPI() {
+		return true
+	}
+	rfpi, ok := r.up.RFPI, r.up.HasRFPI
+	if !ok {
+		if ls, is := r.core.Link.(interface {
+			CellStatus(uuid.UUID) cell.Status
+		}); is {
+			if st := ls.CellStatus(r.id); st.HasRFPI {
+				rfpi, ok = st.RFPI, true
+			}
+		}
+	}
+	if ok {
+		r.st.SetRFPI(rfpi)
+		r.log.Info("the stack knows what the chip broadcasts", "rfpi", hex.EncodeToString(rfpi[:]))
+		return true
+	}
+	// after the radio bring-up: the contact is not one of its mails
+	if r.linkUp && r.radioOn && len(r.bring) == 0 && now.Sub(r.rfpiAskAt) >= rfpiAskEvery {
+		r.rfpiAskAt = now
+		if err := r.send(0, stack.Mail{Src: 0x14, Dst: 0x02, Prim: 0xF600}); err != nil && !r.rfpiWarned {
+			r.rfpiWarned = true
+			r.log.Warn("the chip could not be asked for its RFPI", "err", err)
+		}
+	}
+	return false
+}
+
 // registration keeps the stack's PIN list and window in step with the
 // registry: open while any PIN is live, on a cell with a free record, until
 // 60 s after the latest opening (ADR 0005). The stack closes the window
@@ -550,6 +596,14 @@ func (r *cellRun) seen(now time.Time) {
 func (r *cellRun) registration(now time.Time) {
 	reg := r.core.Reg
 	if reg == nil || !r.radioOn || !r.linkUp {
+		return
+	}
+	if !r.st.HasRFPI() {
+		// a handset registering now would be given an empty base identity
+		if !r.rfpiWarned {
+			r.rfpiWarned = true
+			r.log.Warn("registration stays closed: the stack does not know what the chip broadcasts yet")
+		}
 		return
 	}
 	ver, pins, until := reg.PINs(r.id)
@@ -669,6 +723,7 @@ func (r *cellRun) drop() {
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.reloadAt = time.Time{}
 	r.recycleDue, r.forgetDue = nil, nil
+	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false
 	for _, t := range r.offered {
 		r.core.Records.ReleaseTPUI(t)
 	}
