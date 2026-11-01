@@ -171,7 +171,7 @@ func (id SystemIdentity) ARI() uint32 {
 //
 // Class B: every cell has an ARI of its own and RPN 0. Cell 1 is the identity
 // itself, cell n has the FPN counted up by n-1 (it wraps at 256, so 255 cells
-// differ). The handsets' PARK covers ARC and EIC only (IdentityPLI), so one
+// differ) and the FPS going round 1..15. The handsets' PARK covers ARC and EIC only (IdentityPLI), so one
 // registration serves every cell, and a handset that moves from one cell to the
 // next sees another PARI and locates again, which the controller serves from the
 // store. Not "one PARI and the cell number in the RPN": the 08.25 STUB of the
@@ -191,6 +191,11 @@ func (id SystemIdentity) RFPI(n uint8) [5]byte {
 	cid := id
 	if n > 1 {
 		cid.FPN += n - 1
+		// The FMID, which the chip checks in every burst, is the RPN and the FPS
+		// (the low 12 bits of the RFPI): with RPN 0 only the FPS tells cells
+		// apart, so it goes round 1..15 (FPS 0 is reserved). Cells a handset hears
+		// at once need different ones; 15 colours, reused out of range (A-0145).
+		cid.FPS = uint8((int(id.FPS)-1+int(n)-1)%15 + 1)
 	}
 	v := uint64(cid.ARI()) << 8
 	var out [5]byte

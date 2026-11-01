@@ -20,7 +20,7 @@ import (
 func TestRFPILayout(t *testing.T) {
 	id := cell.SystemIdentity{EIC: 0x1234, FPN: 0x56, FPS: 0x7, Source: cell.IdentityRandom}
 	bits := "0" + "001" + fmt.Sprintf("%016b", 0x1234) + fmt.Sprintf("%08b", 0x58) +
-		fmt.Sprintf("%04b", 0x7) + fmt.Sprintf("%08b", 0)
+		fmt.Sprintf("%04b", 0x9) + fmt.Sprintf("%08b", 0)
 	if len(bits) != 40 {
 		t.Fatalf("test vector has %d bits", len(bits))
 	}
@@ -29,7 +29,7 @@ func TestRFPILayout(t *testing.T) {
 		v, _ := strconv.ParseUint(bits[i*8:i*8+8], 2, 8)
 		want[i] = byte(v)
 	}
-	// cell 3: the FPN counted up by two, the RPN 0
+	// cell 3: the FPN counted up by two, the FPS by two, the RPN 0
 	if got := id.RFPI(3); got != want {
 		t.Fatalf("RFPI = % x, want % x", got, want)
 	}
@@ -38,17 +38,27 @@ func TestRFPILayout(t *testing.T) {
 	if one := id.RFPI(1); fpn(one) != 0x56 || one[4] != 0 || id.RFPI(0) != one {
 		t.Fatalf("cell 1 is % x", one)
 	}
-	// no cell has an RPN, and no two cells share an ARI
+	// no cell has an RPN, no two cells share an ARI, and 15 neighbours differ in
+	// the FMID (the RPN and the FPS: the low 12 bits)
+	fps := func(r [5]byte) uint8 { return r[3] & 0x0f }
 	seen := map[[5]byte]bool{}
+	fmid := map[uint16]bool{}
 	for n := 1; n <= 255; n++ {
 		r := id.RFPI(uint8(n))
-		if r[4] != 0 || r[3]&0x0f != 0x7 {
+		if r[4] != 0 || fps(r) < 1 {
 			t.Fatalf("cell %d: % x", n, r)
 		}
 		if seen[r] {
 			t.Fatalf("cell %d repeats an RFPI", n)
 		}
 		seen[r] = true
+		if n <= 15 {
+			f := uint16(fps(r))<<8 | uint16(r[4])
+			if fmid[f] {
+				t.Fatalf("cell %d repeats an FMID", n)
+			}
+			fmid[f] = true
+		}
 	}
 	if got := id.ARI(); got>>28 != 1 || got>>31 != 0 {
 		t.Fatalf("ARC of %08x is not class B", got)
