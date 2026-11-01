@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -198,6 +199,9 @@ func (r *cellRun) handle(ev event) {
 		r.drop()
 	case evMail:
 		r.log.Debug("chip mail", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "len", len(ev.mail.Param))
+		if ev.mail.Prim == 0xF601 { // the chip's answer to the contact: its RFPI, which is public
+			r.log.Debug("the chip names its RFPI", "mail", hex.EncodeToString(ev.mail.Param))
+		}
 		if r.st != nil {
 			r.st.Mail(ev.mail, r.core.now())
 		}
@@ -652,7 +656,7 @@ func (r *cellRun) restart() {
 	}
 	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1, r.resumed)
 	r.nextAt = time.Now()
-	r.log.Info("DECT stack started", "records", len(hs), "free", free, "validity", r.units, "stub", r.up.StubVersion)
+	r.log.Info("DECT stack started", "records", len(hs), "free", free, "validity", r.units, "stub", r.up.StubVersion, "rfpi", rfpiText(r.up))
 }
 
 // drop closes the stack. The fields are cleared first, so a panic in
@@ -976,4 +980,12 @@ func (g *gen) Clock() (time.Time, bool) { return time.Now(), true }
 func (g *gen) Media(handle, channel uint8, wideband, up bool) {
 	// MEDIA_OPEN and MEDIA_CLOSE are step 6 of C3.
 	g.r.log.Debug("audio", "handle", handle, "channel", channel, "wideband", wideband, "up", up)
+}
+
+// rfpiText is what the cell's chip broadcasts, for the log ("" when the cell does not say).
+func rfpiText(up cell.CellUp) string {
+	if !up.HasRFPI {
+		return ""
+	}
+	return hex.EncodeToString(up.RFPI[:])
 }
