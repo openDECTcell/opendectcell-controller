@@ -47,9 +47,11 @@ type cellRun struct {
 	next        int       // the next free record index in the stack
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
-	recycleDue  []recycleDue // pooled enrolments whose chip slot is to be freed
-	forgetDue   []uuid.UUID  // handsets the user removes without asking them
-	rfpiAskAt   time.Time    // when the chip was last asked for its RFPI
+	recycleDue  []recycleDue      // pooled enrolments whose chip slot is to be freed
+	forgetDue   []uuid.UUID       // handsets the user removes without asking them
+	rfpiAskAt   time.Time         // when the chip was last asked for its RFPI
+	sigAt       map[int]time.Time // when each record's field strength was last written
+	sigMs       map[int]uint64    // the stack's clock of the one written
 	rfpiWarned  bool
 	bridge      bool // this stack has been told it carries external calls (route.go)
 	// what the router reads from other goroutines (route.go): the handsets
@@ -523,6 +525,9 @@ func (r *cellRun) seen(now time.Time) {
 	if r.seenAt == nil {
 		r.seenAt, r.seenMs, r.seenPend = map[int]time.Time{}, map[int]uint64{}, map[int]time.Time{}
 	}
+	if r.sigAt == nil {
+		r.sigAt, r.sigMs = map[int]time.Time{}, map[int]uint64{}
+	}
 	for i := range r.gen.slotOf {
 		if ms := r.st.Seen(i); ms != 0 && ms != r.seenMs[i] {
 			r.seenMs[i] = ms
@@ -541,6 +546,12 @@ func (r *cellRun) seen(now time.Time) {
 			r.seenAt[i] = now
 			delete(r.seenPend, i)
 			r.gen.job(job{kind: jobSeen, i: i, at: at})
+		}
+		// and the field strength the chip measured on its link, as rarely
+		if dbm, ms, ok := r.st.Signal(i); ok && ms != r.sigMs[i] && now.Sub(r.sigAt[i]) >= seenEvery {
+			r.sigMs[i], r.sigAt[i] = ms, now
+			at := now.Add(-time.Duration(r.core.now()-ms) * time.Millisecond)
+			r.gen.job(job{kind: jobSignal, i: i, dbm: dbm, at: at})
 		}
 	}
 }
@@ -660,7 +671,7 @@ func (r *cellRun) restart() {
 	}()
 	// r.st and r.gen are set as soon as they exist, so a panic from here
 	// on leaves them for guard's drop: the keys are wiped, the writer ends.
-	st := r.core.New(g, stack.Config{NamesRO: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion, ParkPLI: r.parkPLI,
+	st := r.core.New(g, stack.Config{NamesRO: true, PollSignal: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion, ParkPLI: r.parkPLI,
 		DeferUnknown: true, LocateValidity: r.core.roaming().Units()})
 	r.st = st
 	r.units = r.core.roaming().Units()
@@ -724,6 +735,7 @@ func (r *cellRun) drop() {
 	r.reloadAt = time.Time{}
 	r.recycleDue, r.forgetDue = nil, nil
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false
+	r.sigAt, r.sigMs = nil, nil
 	for _, t := range r.offered {
 		r.core.Records.ReleaseTPUI(t)
 	}
@@ -783,6 +795,8 @@ const (
 	jobUntrack       // a record dropped from it: the handset leaves the cell's table
 	jobRelease       // a record recycled out of its chip slot: the slot is free in the store
 	jobReenrol       // a known handset enrolled again: its window's PIN is claimed
+	jobCaps          // a handset's terminal capability, for its page
+	jobSignal        // the field strength measured on a link to a handset
 	jobForgetHandset // the user removed a handset: the store forgets it, wherever it is placed
 )
 
@@ -795,9 +809,11 @@ type job struct {
 	name   string
 	slot   uint
 	slots  []uint
-	at     time.Time // jobSeen: when the handset was heard
-	hid    uuid.UUID // jobTrack
-	pin    uint      // jobReenrol: the record's reg_pin1
+	at     time.Time      // jobSeen: when the handset was heard
+	hid    uuid.UUID      // jobTrack
+	caps   map[string]any // jobCaps
+	dbm    int            // jobSignal
+	pin    uint           // jobReenrol: the record's reg_pin1
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
@@ -905,6 +921,14 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 			if err == nil && pooled {
 				core.forgotten(id, hid)
 			}
+		}
+	case jobCaps:
+		if hid, ok := ids[j.i]; ok {
+			err = core.Records.SetCapabilities(ctx, hid, j.caps)
+		}
+	case jobSignal:
+		if hid, ok := ids[j.i]; ok {
+			err = core.Records.SetSignal(ctx, hid, j.dbm, j.at)
 		}
 	case jobForgetHandset:
 		var pooled bool
@@ -1027,7 +1051,10 @@ func (g *gen) Registered(cur int) {
 		g.job(job{kind: jobReenrol, i: cur, pin: pin, owner: g.owner[g.slotOf[cur]]})
 	}
 }
-func (g *gen) CapLearned(i int) { g.r.log.Debug("handset capability learned", "record", i) }
+func (g *gen) CapLearned(i int, c stack.Capability) {
+	g.r.log.Debug("handset capability learned", "record", i)
+	g.job(job{kind: jobCaps, i: i, caps: capabilityText(c)})
+}
 
 // Clock: the controller's clock is trusted (NTP on its host).
 func (g *gen) Clock() (time.Time, bool) { return time.Now(), true }
@@ -1043,4 +1070,30 @@ func rfpiText(up cell.CellUp) string {
 		return ""
 	}
 	return hex.EncodeToString(up.RFPI[:])
+}
+
+// capabilityText is what the page shows of a terminal capability (EN 300 175-5
+// 7.7.41): the standard the handset claims, its display and tone capability,
+// and the profile indicator octets as it sent them.
+func capabilityText(c stack.Capability) map[string]any {
+	standard := "GAP (no NG-DECT)"
+	switch {
+	case c.NGPart3:
+		standard = "NG-DECT Part 3 (CAT-iq)"
+	case c.NGPart1:
+		standard = "NG-DECT Part 1 (wideband)"
+	}
+	display := map[uint8]string{0: "not applicable", 1: "no display", 2: "numeric", 3: "numeric plus", 4: "alphanumeric", 5: "full display"}
+	tone := map[uint8]string{0: "not applicable", 1: "no tones", 2: "dial tone only", 3: "ITU-T E.182 tones", 4: "complete DECT tones"}
+	name := func(m map[uint8]string, v uint8) string {
+		if s, ok := m[v]; ok {
+			return s
+		}
+		return fmt.Sprintf("code %d", v)
+	}
+	out := map[string]any{"standard": standard, "display": name(display, c.Display), "tone": name(tone, c.Tone)}
+	if len(c.Profiles) > 0 {
+		out["profiles"] = hex.EncodeToString(c.Profiles)
+	}
+	return out
 }

@@ -135,6 +135,31 @@ func TestHandsetPages(t *testing.T) {
 	if _, pg := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(pg, `value="gigaset-c430a" selected`) {
 		t.Error("the profile is not selected on the page")
 	}
+	// phone lines are the owner's: an admin sees the handset, not its lines
+	e.store.Pool.Exec(ctx, "INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, 1, $2) ON CONFLICT DO NOTHING", mine, acct)
+	if _, ap := e.get(t, a, "/handsets/"+mine.String()); strings.Contains(ap, "Line 1") || strings.Contains(ap, ">Home<") || !strings.Contains(ap, "private to the handset") {
+		t.Errorf("an admin sees the owner's lines: %s", ap)
+	}
+	if _, al := e.get(t, a, "/handsets"); strings.Contains(al, "1: Home") || !strings.Contains(al, "private") {
+		t.Error("the admin's list shows the owner's lines")
+	}
+	if r := e.post(t, a, "/handsets/"+mine.String()+"/lines/1", url.Values{"account": {""}}); r.StatusCode != http.StatusNotFound {
+		t.Errorf("an admin changed the owner's line: %d", r.StatusCode)
+	}
+	// saving the name as an admin leaves the owner's default line alone
+	e.store.Pool.Exec(ctx, "UPDATE handset SET default_line = 1 WHERE id = $1", mine)
+	if r := e.post(t, a, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen phone"}, "dual_ring": {"busy"}}); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("admin save: %d", r.StatusCode)
+	}
+	var kept *int
+	e.store.Pool.QueryRow(ctx, "SELECT default_line FROM handset WHERE id = $1", mine).Scan(&kept)
+	if kept == nil || *kept != 1 {
+		t.Error("an admin's save cleared the owner's default line")
+	}
+	// the IPEI is on the list and the page
+	if _, al := e.get(t, u, "/handsets"); !strings.Contains(al, "<th>IPEI</th>") {
+		t.Error("no IPEI column")
+	}
 	// removing: the owner's handset only; the cells are asked, the row goes
 	if r := e.post(t, u, "/handsets/"+theirs.String()+"/deregister", nil); r.StatusCode != http.StatusNotFound {
 		t.Errorf("removing someone else's handset: %d", r.StatusCode)

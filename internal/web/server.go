@@ -9,6 +9,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -105,6 +106,18 @@ func (s *Server) Handler() (http.Handler, error) {
 		"icon":       s.iconFunc(),
 		"callsChart": callsChart, "hms": hms, "hours": hours, "pct": pct,
 		"deref": func(b *bool) bool { return b != nil && *b },
+		"ipei": func(h *handset.Handset) string {
+			t, _, _ := h.IPEI()
+			return t
+		},
+		"hexb": func(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) },
+		"tpui": func(t int) string { return fmt.Sprintf("%05X", t) },
+		"emc": func(h *handset.Handset) string {
+			if _, e, ok := h.IPEI(); ok {
+				return fmt.Sprintf("%d (0x%04X)", e, e)
+			}
+			return ""
+		},
 		"deref2": func(n *int) int {
 			if n == nil {
 				return 0

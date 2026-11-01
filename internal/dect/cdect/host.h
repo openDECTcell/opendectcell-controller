@@ -83,6 +83,12 @@ struct cdect_host {
 	uint8_t  fetch_id[DECT_MM_PORTID_MAX];
 	size_t   fetch_len;
 
+	/* The field strength the chip last reported on a link to each record (dBm), and when (0: never). */
+	int      sig_dbm[DECT_BASE_HS_MAX];
+	uint64_t sig_ms[DECT_BASE_HS_MAX];
+	uint64_t sig_poll_ms;		/* when the chip was last asked */
+	int      poll_signal;		/* ask at all (Config.PollSignal) */
+
 	/* Go stages here. */
 	struct dect_mail     in;
 	struct cdect_rec_in  rec;
@@ -114,6 +120,14 @@ void cdect_host_resume(struct cdect_host *c, uint64_t now);
 int cdect_host_drop(struct cdect_host *c, unsigned i);
 int cdect_host_recycle(struct cdect_host *c, unsigned i);
 int cdect_host_quiet(const struct cdect_host *c);
+/* The last field strength measured for record i: 1 and dBm and the clock it was taken at; 0 if none. */
+int cdect_host_signal(const struct cdect_host *c, unsigned i, int *dbm, uint64_t *at);
+/*
+ * What record i's handset said of itself in <<TERMINAL-CAPABILITY>>, from the link it
+ * is on: 1 and the values, 0 if there is no such report.
+ */
+int cdect_host_capability(const struct cdect_host *c, unsigned i, uint8_t *ng_part1, uint8_t *ng_part3,
+			  uint8_t *display, uint8_t *tone, uint8_t *profiles, size_t cap, size_t *n_profiles);
 /* Record i's name in the Internal Names List: 0, or -1 if the library refuses it. */
 int cdect_host_set_name(struct cdect_host *c, unsigned i, const char *name);
 /*

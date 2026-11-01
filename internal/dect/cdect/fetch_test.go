@@ -12,7 +12,9 @@ import (
 
 // fetchEnv is a base with defer_unknown and nothing but a free store, and a link
 // up on handle 1.
-func fetchEnv(t *testing.T) *traceEnv {
+func fetchEnv(t *testing.T) *traceEnv { return fetchEnvWith(t, func(*Config) {}) }
+
+func fetchEnvWith(t *testing.T, tune func(*Config)) *traceEnv {
 	t.Helper()
 	e := &traceEnv{t: t, now: 1000, wall: 1793350800, pps: map[uint8]*PP{}}
 	t.Cleanup(func() {
@@ -22,6 +24,7 @@ func fetchEnv(t *testing.T) *traceEnv {
 	})
 	cfg := Config{PIN: "12345678", UAKTable: 0x9518, CheckDelayMs: 50, Stub: "dectfw_secondlevel_441.hex",
 		NoDummyKey: true, NoLocAuth: true, DeferUnknown: true}
+	tune(&cfg)
 	e.host = NewHost(e, cfg)
 	t.Cleanup(e.host.Close)
 	e.host.AddFreeStore(0, [3]byte{})
@@ -227,5 +230,43 @@ func TestSetRFPI(t *testing.T) {
 	h.SetRFPI([5]byte{1, 2, 3, 4, 5})
 	if !h.HasRFPI() {
 		t.Error("not known after SetRFPI")
+	}
+}
+
+// While a handset is connected the chip is asked once a second for the link's row (0xF624),
+// and the level of the carrier the link is on, in dBm as FRITZ!OS shows it, is kept for the
+// handset (clean room A-0121).
+func TestSignalFromTheChipsRow(t *testing.T) {
+	e := fetchEnvWith(t, func(c *Config) { c.PollSignal = true }) // a link is up on handle 1, the current record is 0
+	if _, _, ok := e.host.Signal(0); ok {
+		t.Fatal("a signal before any was measured")
+	}
+	e.sent = nil
+	e.now += 1500
+	e.host.Tick(e.now)
+	var polled bool
+	for _, m := range e.sent {
+		polled = polled || (m.Prim == 0xF624 && len(m.Param) == 2 && m.Param[0] == 1 && m.Param[1] == 0x0A)
+	}
+	if !polled {
+		t.Fatalf("the chip was not asked: %v", e.sent)
+	}
+	row := make([]byte, 16)
+	row[0], row[2], row[3] = 1, 2, 3 // link 1, slot 2, carrier 3
+	for k := 0; k < 10; k++ {
+		row[6+k] = 0x20
+	}
+	row[6+3] = 0x2c // the level on carrier 3
+	e.chip(0xF625, row)
+	dbm, at, ok := e.host.Signal(0)
+	if !ok || dbm != -59 || at == 0 {
+		t.Errorf("signal %d dBm at %d, ok %v: want -59", dbm, at, ok)
+	}
+	// a row for another link says nothing about this handset
+	row[0] = 5
+	row[6+3] = 0x30
+	e.chip(0xF625, row)
+	if dbm, _, _ := e.host.Signal(0); dbm != -59 {
+		t.Errorf("another link's row was taken: %d", dbm)
 	}
 }

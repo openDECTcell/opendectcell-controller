@@ -103,7 +103,7 @@ func (e *traceEnv) Named(int, string)           {}
 func (e *traceEnv) NameVisible(_, _ uint) bool  { return true }
 func (e *traceEnv) Switched(int, string)        {}
 func (e *traceEnv) Registered(int)              {}
-func (e *traceEnv) CapLearned(int)              {}
+func (e *traceEnv) CapLearned(int, Capability)  {}
 func (e *traceEnv) Media(_, _ uint8, _, _ bool) {}
 
 func (e *traceEnv) Clock() (time.Time, bool) {

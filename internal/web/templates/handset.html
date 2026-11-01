@@ -12,18 +12,20 @@
             <div class="form-hint">Shown on this controller and in the other handsets' name lists (the first 15 characters).</div></div>
           <div class="mb-3"><label class="form-label" for="profile">Device profile</label>
             <select class="form-select" id="profile" name="profile">
-              <option value="">Not listed (standard behaviour)</option>
+              <option value="">Generic DECT GAP/CAT-iq Handset</option>
               {{range .Makers}}<optgroup label="{{.Name}}">
                 <option value="{{.ID}}" {{if eq $.Data.H.Profile .ID}}selected{{end}}>Another {{.Name}} model</option>
                 {{range .Models}}<option value="{{.ID}}" {{if eq $.Data.H.Profile .ID}}selected{{end}}>{{.Name}}</option>{{end}}
               </optgroup>{{end}}
             </select>
             <div class="form-hint">What the base knows about this model's habits (how it shows names, what it needs to ring).</div></div>
+          {{if .H.LinesPrivate}}<div class="mb-3 text-secondary small">The phone lines of this handset are private to its owner.</div>{{else}}
           <div class="mb-3"><label class="form-label" for="default_line">Default line for outgoing calls</label>
             <select class="form-select" id="default_line" name="default_line">
               <option value="">none</option>
               {{range $n, $l := .Line}}<option value="{{$n}}" {{if and $.Data.H.DefaultLine (eq (deref2 $.Data.H.DefaultLine) $n)}}selected{{end}}>Line {{$n}}: {{$l.Label}}</option>{{end}}
             </select></div>
+          {{end}}
           <div class="mb-0"><label class="form-label" for="dual_ring">When both lines ring</label>
             <select class="form-select" id="dual_ring" name="dual_ring">
               <option value="call_waiting" {{if eq .H.DualRing "call_waiting"}}selected{{end}}>The second call shows as call waiting</option>
@@ -38,6 +40,7 @@
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">{{icon "phone"}} Phone lines</h3></div>
       <div class="card-body">
+        {{if .H.LinesPrivate}}<p class="text-secondary mb-0">Phone lines are private to the handset's owner: other users, administrators included, do not see them.</p>{{else}}
         {{range $n := list "1" "2"}}
         <form method="post" action="/handsets/{{$.Data.H.ID}}/lines/{{$n}}" class="d-flex gap-2 align-items-end mb-3" data-dirty>
           <div class="flex-fill"><label class="form-label" for="acct{{$n}}">Line {{$n}}</label>
@@ -49,7 +52,25 @@
         </form>
         {{end}}
         {{if not .Accounts}}<p class="text-secondary mb-0">There is no phone line to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
+        {{end}}
       </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "antenna-bars-5"}} Technical data</h3></div>
+      <div class="card-body"><dl class="kv mb-0">
+        <dt>IPEI</dt><dd>{{with ipei .H}}<code class="kvp">{{.}}</code> <span class="text-secondary small">as on the label</span>{{else}}<span class="text-secondary">not an IPEI</span>{{end}}</dd>
+        <dt>Manufacturer code</dt><dd>{{with emc .H}}{{.}} <span class="text-secondary small">(EMC, EN 300 175-6)</span>{{else}}<span class="text-secondary">n/a</span>{{end}}</dd>
+        <dt>IPUI</dt><dd><code class="kvp">{{hexb .H.IPUI}}</code></dd>
+        <dt>Temporary identity</dt><dd><code class="kvp">{{tpui .H.TPUI}}</code>{{if .H.Pooled}} <span class="text-secondary small">the same on every cell</span>{{end}}</dd>
+        <dt>Device profile</dt><dd>{{with .H.Profile}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">generic</span>{{end}}</dd>
+        <dt>Signal</dt><dd>{{with .H.SignalDBm}}{{.}} dBm{{with $.Data.H.SignalAt}} <span class="text-secondary small">measured {{fmtTime .}}</span>{{end}}{{else}}<span class="text-secondary">not measured yet: the base reads it while the handset is connected</span>{{end}}</dd>
+        {{with .H.Capabilities}}
+        <dt>Standard</dt><dd>{{index . "standard"}}</dd>
+        <dt>Display</dt><dd>{{index . "display"}}</dd>
+        <dt>Tones</dt><dd>{{index . "tone"}}</dd>
+        {{with index . "profiles"}}<dt>Profiles</dt><dd><code class="kvp">{{.}}</code></dd>{{end}}
+        {{else}}<dt>Capabilities</dt><dd><span class="text-secondary">not reported yet: the handset tells the base when it connects</span></dd>{{end}}
+      </dl></div>
     </div>
     <div class="card">
       <div class="card-header"><h3 class="card-title">About</h3></div>

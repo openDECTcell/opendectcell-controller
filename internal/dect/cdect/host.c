@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "dect_diag.h"
 #include "host.h"
 #include "_cgo_export.h"
 
@@ -710,6 +711,80 @@ int cdect_host_start(struct cdect_host *c)
 
 /* ---- Running ------------------------------------------------------------ */
 
+/*
+ * The chip's per-link row (0xF625, the answer to 0xF624 {link, 0x0A}): the level it
+ * measures on the carrier the link is on, and in dBm as FRITZ!OS shows it on the 7520
+ * (clean room A-0121, as dect-stubd's report_conn_status()). A pure read.
+ */
+static void signal_note(struct cdect_host *c, const struct dect_mail *m)
+{
+	struct dect_diag_status st;
+	const struct dect_base_link *ml = &c->b.main_link;
+	int i;
+
+	if (dect_diag_decode_status(m->param, m->param_len, &st) < 0 || !st.valid ||
+	    !ml->active || st.link != ml->handle || st.carrier >= DECT_DIAG_CARRIERS)
+		return;
+	i = ml->link.mm.adopted >= 0 ? ml->link.mm.adopted : (int)c->b.cur;
+	if (i < 0 || (unsigned)i >= c->b.n_hs)
+		return;
+	c->sig_dbm[i] = ((int)st.rssi[st.carrier] - 20) * 80 / 37 - 110;
+	c->sig_ms[i] = c->now ? c->now : 1u;
+}
+
+/* One poll a second while a handset is connected. */
+static void signal_poll(struct cdect_host *c, uint64_t now)
+{
+	struct dect_mail m;
+
+	if (!c->poll_signal || !c->radio_up || !c->b.main_link.active || now - c->sig_poll_ms < 1000u)
+		return;
+	c->sig_poll_ms = now;
+	memset(&m, 0, sizeof(m));
+	m.src = DECT_TASK_PCM;
+	m.dst = DECT_TASK_CONTACT_DST;
+	m.prim = 0xF624u;
+	m.param[0] = c->b.main_link.handle;
+	m.param[1] = 0x0Au;
+	m.param_len = 2;
+	(void)cdectSend(c->h, &m);
+}
+
+int cdect_host_signal(const struct cdect_host *c, unsigned i, int *dbm, uint64_t *at)
+{
+	if (i >= c->b.n_hs || !c->sig_ms[i])
+		return 0;
+	*dbm = c->sig_dbm[i];
+	*at = c->sig_ms[i];
+	return 1;
+}
+
+int cdect_host_capability(const struct cdect_host *c, unsigned i, uint8_t *ng_part1, uint8_t *ng_part3,
+			  uint8_t *display, uint8_t *tone, uint8_t *profiles, size_t cap, size_t *n_profiles)
+{
+	const struct dect_term_cap *tc = NULL;
+	unsigned k, n;
+
+	if (c->b.main_link.active && c->b.main_link.link.mm.peer_cap.present &&
+	    (c->b.main_link.link.mm.adopted == (int)i ||
+	     (c->b.main_link.link.mm.adopted < 0 && c->b.cur == i)))
+		tc = &c->b.main_link.link.mm.peer_cap;
+	for (k = 0; !tc && k < DECT_BASE_SIDES; k++)
+		if (c->b.side[k].active && c->b.side[k].link.mm.adopted == (int)i &&
+		    c->b.side[k].link.mm.peer_cap.present)
+			tc = &c->b.side[k].link.mm.peer_cap;
+	if (!tc)
+		return 0;
+	*ng_part1 = tc->ng_part1;
+	*ng_part3 = tc->ng_part3;
+	*display = tc->display;
+	*tone = tc->tone;
+	n = tc->n_profile < cap ? tc->n_profile : (unsigned)cap;
+	memcpy(profiles, tc->profile, n);
+	*n_profiles = n;
+	return 1;
+}
+
 /* dect-stubd's handle_reg_mail(). */
 void cdect_host_mail(struct cdect_host *c, uint64_t now)
 {
@@ -745,6 +820,9 @@ void cdect_host_mail(struct cdect_host *c, uint64_t now)
 		} else if (m->param_len >= 2 && lane_of(c, m->param[0])) {
 			lane_connect(c, lane_of(c, m->param[0]));
 		}
+		break;
+	case 0xF625u:
+		signal_note(c, m);
 		break;
 	case 0xFFF1u:
 		dect_base_mem_reply(&c->b, m);
@@ -905,6 +983,7 @@ void cdect_host_tick(struct cdect_host *c, uint64_t now)
 	connect_fallback(c, now);
 	dect_base_tick(&c->b, now, c->radio_up);
 	fetch_poll(c);
+	signal_poll(c, now);
 	/* the records into the chip once its radio is up (cell-protocol.md §7.4) */
 	if (c->radio_up && !c->sub_restored && (any_uak(c) || !c->no_dummy)) {
 		install(c);

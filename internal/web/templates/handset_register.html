@@ -21,7 +21,7 @@
         <select class="form-select" id="reg-mfr">
           <option value="" selected disabled>Choose…</option>
           {{range .Makers}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
-          <option value="-">Not listed</option>
+          <option value="-">Generic DECT GAP/CAT-iq Handset</option>
         </select>
       </div>
       <div class="mb-3 narrow" id="reg-model-box" hidden>
@@ -31,7 +31,7 @@
           {{range $m := .Makers}}{{range .Models}}<option value="{{.ID}}" data-mfr="{{$m.ID}}" hidden>{{.Name}}</option>{{end}}
           <option value="{{.ID}}" data-mfr="{{.ID}}" hidden>Another {{.Name}} model</option>{{end}}
         </select>
-        <div class="form-hint">The profile tells the base how this model behaves. A model that is not listed works with the standard behaviour; ask for it to be added.</div>
+        <div class="form-hint">The profile tells the base how this model behaves. A handset that is not listed works as a generic DECT GAP/CAT-iq handset; ask for it to be added.</div>
       </div>
       <button type="button" id="reg-go" class="btn btn-primary" disabled>Start registration</button>
       <noscript><p class="text-secondary mt-3">This page needs JavaScript to show the PIN and wait for the handset.</p></noscript>

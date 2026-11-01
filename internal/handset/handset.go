@@ -8,7 +8,9 @@ package handset
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,22 +38,58 @@ type Line struct {
 
 // Handset is a handset as the UI lists it.
 type Handset struct {
-	ID            uuid.UUID
-	OwnerID       uuid.UUID
-	Owner         string
-	Name          string
-	Model         string
-	Profile       string // the id of its device profile; "" is the standard behaviour
-	RegisteredAt  time.Time
-	LastSeenAt    *time.Time
-	LastSeenCell  string
-	DefaultLine   *int
-	DualRing      string // call_waiting or busy
-	Lines         []Line
+	ID           uuid.UUID
+	OwnerID      uuid.UUID
+	Owner        string
+	Name         string
+	Model        string
+	Profile      string // the id of its device profile; "" is the standard behaviour
+	RegisteredAt time.Time
+	LastSeenAt   *time.Time
+	LastSeenCell string
+	DefaultLine  *int
+	DualRing     string // call_waiting or busy
+	Lines        []Line
+	// LinesPrivate: the viewer is not the owner (an admin): the lines are not shown
+	// to them, they hold the owner's accounts.
+	LinesPrivate  bool
+	IPUI          []byte         // the identity it registered with (an IPEI for a type N)
+	TPUI          int            // its temporary identity
+	Capabilities  map[string]any // what it said of itself (TERMINAL-CAPABILITY), as the DECT core stored it
+	SignalDBm     *int           // the last field strength measured on a link to it
+	SignalAt      *time.Time
 	CellsHoldingN int // cells that hold its record (a slot)
 	// Pooled: every cell holds it, host-only, under a TPUI of its own
 	// (docs/roaming.md); otherwise it sits in chip slots of its home cells.
 	Pooled bool
+}
+
+// IPEI is the handset's IPEI as printed on its label, "EEEEE PPPPPPP C" (EN
+// 300 175-6 annex C), with the manufacturer code (EMC) alone; ok is false for
+// an identity that is not an IPEI (another type of IPUI).
+func (h Handset) IPEI() (text string, emc int, ok bool) {
+	p := h.IPUI
+	// IPUI type (octet 3: 1 000 0000), 40 bits (octet 4), PUT N (0000), then
+	// the 36-bit IPEI: EMC 16 bits and PSN 20 bits.
+	if len(p) != 7 || p[0] != 0x80 || p[1] != 0x80|40 || p[2]>>4 != 0 {
+		return "", 0, false
+	}
+	var v uint64
+	for _, b := range p[2:] {
+		v = v<<8 | uint64(b)
+	}
+	emc, psn := int(v>>20&0xffff), int(v&0xfffff)
+	digits := fmt.Sprintf("%05d%07d", emc, psn)
+	sum := 0
+	for i, d := range digits {
+		sum += int(d-'0') * (i + 1)
+	}
+	sum %= 11
+	check := byte('0' + sum)
+	if sum == 10 {
+		check = '*'
+	}
+	return fmt.Sprintf("%05d %07d %c", emc, psn, check), emc, true
 }
 
 // Move is a handset heard on another cell than the time before.
@@ -78,17 +116,31 @@ type Store struct {
 
 const cols = `h.id, h.owner_user_id, coalesce(nullif(u.display_name, ''), u.username), h.display_name, coalesce(h.model, ''), h.registered_at,
 	h.last_seen_at, coalesce(c.name, ''), h.default_line, h.dual_ring_policy,
-	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled, coalesce(h.profile, '')`
+	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled, coalesce(h.profile, ''),
+	h.ipui, h.tpui, h.capabilities, h.signal_dbm, h.signal_at`
 
 const from = ` FROM handset h JOIN app_user u ON u.id = h.owner_user_id LEFT JOIN cell c ON c.id = h.last_seen_cell_id`
 
 func scan(r pgx.Row) (*Handset, error) {
 	var h Handset
-	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled, &h.Profile)
+	var caps []byte
+	var dbm *int16
+	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled, &h.Profile,
+		&h.IPUI, &h.TPUI, &caps, &dbm, &h.SignalAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &h, err
+	if err != nil {
+		return nil, err
+	}
+	if len(caps) > 0 {
+		_ = json.Unmarshal(caps, &h.Capabilities) // a value we did not write is shown as nothing
+	}
+	if dbm != nil {
+		v := int(*dbm)
+		h.SignalDBm = &v
+	}
+	return &h, nil
 }
 
 // List returns the handsets u may see: their own, or every handset for an
@@ -125,9 +177,12 @@ func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
 		if err := lr.Scan(&hid, &l.Line, &l.AccountID, &l.Label, &l.Address, &l.Enabled); err != nil {
 			return nil, err
 		}
-		if h := byID[hid]; h != nil {
+		if h := byID[hid]; h != nil && h.OwnerID == u.ID {
 			h.Lines = append(h.Lines, l)
 		}
+	}
+	for _, h := range out {
+		h.LinesPrivate = h.OwnerID != u.ID
 	}
 	return out, lr.Err()
 }
@@ -150,6 +205,7 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Handset, 
 			return x, nil
 		}
 	}
+	h.LinesPrivate = h.OwnerID != u.ID
 	return h, nil
 }
 
@@ -178,6 +234,9 @@ type Update struct {
 	// Model the name the pages show for it; nil keeps both as they are.
 	Profile *string
 	Model   string
+	// KeepDefaultLine leaves the default line as it is: the editor is not the
+	// owner and does not see the lines.
+	KeepDefaultLine bool
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -200,7 +259,9 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 		if auth.RequireAccess(u, &owner) != nil {
 			return ErrNotFound
 		}
-		if up.DefaultLine != nil {
+		if up.KeepDefaultLine {
+			up.DefaultLine = nil
+		} else if up.DefaultLine != nil {
 			var has bool
 			if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM handset_line WHERE handset_id = $1 AND line = $2)", id, *up.DefaultLine).Scan(&has); err != nil {
 				return err
@@ -209,7 +270,11 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 				return ErrInvalid
 			}
 		}
-		if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
+		if up.KeepDefaultLine {
+			if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, dual_ring_policy = $3 WHERE id = $1", id, up.Name, up.DualRing); err != nil {
+				return err
+			}
+		} else if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
 			return err
 		}
 		if up.Profile != nil {
@@ -287,7 +352,7 @@ func (s *Store) SetLine(ctx context.Context, u *auth.User, id uuid.UUID, line in
 			}
 			return err
 		}
-		if auth.RequireAccess(u, &owner) != nil {
+		if owner != u.ID {
 			return ErrNotFound
 		}
 		if account == uuid.Nil {

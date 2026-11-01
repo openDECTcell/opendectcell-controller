@@ -55,6 +55,11 @@ type fakeStack struct {
 	dropped  []int
 	busy     bool
 	validity []uint
+	// the field strength the chip reported per record
+	signal map[int]struct {
+		dbm int
+		at  uint64
+	}
 	// the RFPI the core gave the stack
 	rfpi    [5]byte
 	hasRFPI bool
@@ -182,6 +187,13 @@ func (f *fakeStack) Quiet() bool {
 	return !f.busy
 }
 
+func (f *fakeStack) Signal(i int) (int, uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.signal[i]
+	return s.dbm, s.at, ok
+}
+
 func (f *fakeStack) SetRFPI(rfpi [5]byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -298,12 +310,34 @@ type fakeRecords struct {
 	unplaceHook  func()
 	chipFreed    []uuid.UUID             // ReleaseChipSlot
 	info         map[uuid.UUID][2]string // HandsetInfo: name, profile
-	full         bool                    // PlaceHandset says the cell is full
+	caps         map[uuid.UUID]map[string]any
+	sig          map[uuid.UUID]int
+	full         bool // PlaceHandset says the cell is full
 	known        map[uuid.UUID]bool
 	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
 	saved        []stack.Record
 	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
+}
+
+func (r *fakeRecords) SetCapabilities(_ context.Context, id uuid.UUID, caps map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.caps == nil {
+		r.caps = map[uuid.UUID]map[string]any{}
+	}
+	r.caps[id] = caps
+	return nil
+}
+
+func (r *fakeRecords) SetSignal(_ context.Context, id uuid.UUID, dbm int, _ time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.sig == nil {
+		r.sig = map[uuid.UUID]int{}
+	}
+	r.sig[id] = dbm
+	return nil
 }
 
 func (r *fakeRecords) HandsetInfo(_ context.Context, id uuid.UUID) (string, string, bool, error) {
@@ -838,6 +872,32 @@ func TestStackKnowsTheRFPI(t *testing.T) {
 	waitFor(t, "registration open", func() bool {
 		ok := false
 		g.stack(1).get(func(f *fakeStack) { ok = f.regOpen })
+		return ok
+	})
+}
+
+// What the chip measures and what a handset says of itself reach the store, for the page.
+func TestSignalAndCapabilityAreStored(t *testing.T) {
+	hid := uuid.New()
+	recs := &fakeRecords{hs: []Handset{{ID: hid, Owner: uuid.New(), Rec: stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}}}}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", HasRFPI: true, RFPI: testRFPI})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) {
+		f.signal = map[int]struct {
+			dbm int
+			at  uint64
+		}{0: {-71, 1}}
+		f.env.CapLearned(0, stack.Capability{NGPart3: true, Display: 4, Tone: 4, Profiles: []byte{0x40, 0x31}})
+	})
+	waitFor(t, "the signal and the capability stored", func() bool {
+		ok := false
+		recs.get(func(r *fakeRecords) {
+			c := r.caps[hid]
+			ok = r.sig[hid] == -71 && c["standard"] == "NG-DECT Part 3 (CAT-iq)" && c["display"] == "alphanumeric" &&
+				c["tone"] == "complete DECT tones" && c["profiles"] == "4031"
+		})
 		return ok
 	})
 }

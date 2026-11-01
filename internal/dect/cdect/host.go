@@ -29,11 +29,12 @@ import (
 // The types that cross the boundary are package stack's, so the DECT core
 // builds without cgo.
 type (
-	Mail   = stack.Mail
-	Record = stack.Record
-	To     = stack.To
-	Env    = stack.Env
-	Config = stack.Config
+	Mail       = stack.Mail
+	Record     = stack.Record
+	To         = stack.To
+	Env        = stack.Env
+	Config     = stack.Config
+	Capability = stack.Capability
 
 	Recycled = stack.Recycled
 )
@@ -126,6 +127,7 @@ func NewHost(env Env, cfg Config) *Host {
 	b.cfg.narrowband = cbool(cfg.Narrowband)
 	b.cfg.two_calls = cbool(cfg.TwoCalls)
 	b.cfg.names_readonly = cbool(cfg.NamesRO)
+	x.c.poll_signal = cbool(cfg.PollSignal)
 	b.cfg.no_cipher = cbool(cfg.NoCipher)
 	b.cfg.locauth = cbool(!cfg.NoLocAuth)
 	b.cfg.bind_first = cbool(cfg.BindFirst)
@@ -228,6 +230,17 @@ func (x *Host) Recycle(i int, tpui [3]byte) Recycled {
 // Quiet reports whether nothing is going on: no link, no call, nothing
 // being set up.
 func (x *Host) Quiet() bool { return C.cdect_host_quiet(x.c) != 0 }
+
+// Signal is the field strength the chip last measured on a link to record i
+// (dBm), and when, on the clock the host was given.
+func (x *Host) Signal(i int) (dbm int, at uint64, ok bool) {
+	var d C.int
+	var t C.uint64_t
+	if C.cdect_host_signal(x.c, C.unsigned(i), &d, &t) == 0 {
+		return 0, 0, false
+	}
+	return int(d), uint64(t), true
+}
 
 // SetRFPI sets the RFPI the chip broadcasts (what the library takes from the
 // chip's 0xF601 when it sees one: the first one wins, as there).
@@ -490,7 +503,18 @@ func cdectRegistered(h C.uintptr_t, cur C.unsigned) {
 //export cdectCapLearned
 func cdectCapLearned(h C.uintptr_t, i C.unsigned) {
 	defer catch(h, "caplearned")
-	hostOf(h).env.CapLearned(int(i))
+	x := hostOf(h)
+	var ng1, ng3, disp, tone C.uint8_t
+	var prof [16]C.uint8_t
+	var n C.size_t
+	var c Capability
+	if C.cdect_host_capability(x.c, i, &ng1, &ng3, &disp, &tone, &prof[0], C.size_t(len(prof)), &n) != 0 {
+		c = Capability{NGPart1: ng1 != 0, NGPart3: ng3 != 0, Display: uint8(disp), Tone: uint8(tone)}
+		for k := C.size_t(0); k < n; k++ {
+			c.Profiles = append(c.Profiles, byte(prof[k]))
+		}
+	}
+	x.env.CapLearned(int(i), c)
 }
 
 //export cdectClock

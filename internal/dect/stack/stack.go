@@ -37,6 +37,14 @@ type Record struct {
 	RegPIN1 uint
 }
 
+// Capability is what a handset said of itself in <<TERMINAL-CAPABILITY>> (EN 300
+// 175-5 7.7.41), as received.
+type Capability struct {
+	NGPart1, NGPart3 bool   // NG-DECT Part 1 (wideband), Part 3 (CAT-iq)
+	Display, Tone    uint8  // the codes of the display and tone capabilities
+	Profiles         []byte // the profile indicator octets
+}
+
 // Recycled is what Stack.Recycle came to.
 type Recycled int
 
@@ -89,8 +97,9 @@ type Env interface {
 	Switched(cur int, why string)
 	// Registered: record cur enrolled and is in the chip.
 	Registered(cur int)
-	// CapLearned: record i's capability is known.
-	CapLearned(i int)
+	// CapLearned: record i's handset has said what it is (its terminal
+	// capability).
+	CapLearned(i int, c Capability)
 	// Clock is the time now and whether it is known to be right (NTP).
 	Clock() (t time.Time, ok bool)
 	// Media: the audio of the call on handle is bound to channel (up), or
@@ -101,10 +110,13 @@ type Env interface {
 // Config is a cell's stack settings (libopendectcell's struct dect_base_cfg and
 // struct dect_base_chip). The zero value is dect-stubd's default.
 type Config struct {
-	PIN          string // 4 to 8 decimal digits
-	Narrowband   bool
-	TwoCalls     bool
-	NamesRO      bool // no handset renames (list-access.md §1.1)
+	PIN        string // 4 to 8 decimal digits
+	Narrowband bool
+	TwoCalls   bool
+	NamesRO    bool // no handset renames (list-access.md §1.1)
+	// PollSignal asks the chip once a second for the field strength of a link
+	// while a handset is connected (Stack.Signal).
+	PollSignal   bool
 	NoCipher     bool // a lab option: never in production
 	NoLocAuth    bool
 	BindFirst    bool
@@ -174,6 +186,9 @@ type Stack interface {
 	// Quiet reports whether the stack is idle: no link, no call, nothing
 	// being set up.
 	Quiet() bool
+	// Signal is the field strength the chip last measured on a link to record
+	// i, in dBm, and when (the clock Tick is given); ok is false if none was.
+	Signal(i int) (dbm int, at uint64, ok bool)
 	// SetRFPI gives the stack the RFPI its chip broadcasts. A registering
 	// handset is given it as its base's PARK, and ringing a handset names the
 	// base with it: without it a handset registers against an all-zero base

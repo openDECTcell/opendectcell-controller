@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -66,6 +67,10 @@ type Records interface {
 	Forget(ctx context.Context, cell, id uuid.UUID) (pooled bool, err error)
 	// Rename sets a handset's name.
 	Rename(ctx context.Context, id uuid.UUID, name string) error
+	// SetCapabilities keeps what a handset said of itself, for its page.
+	SetCapabilities(ctx context.Context, id uuid.UUID, caps map[string]any) error
+	// SetSignal keeps the last field strength measured on a link to the handset.
+	SetSignal(ctx context.Context, id uuid.UUID, dbm int, at time.Time) error
 	// HandsetInfo is what the stacks show of a handset: its name and the id of
 	// its device profile ("" for none). ok is false for a handset that is gone.
 	HandsetInfo(ctx context.Context, id uuid.UUID) (name, profile string, ok bool, err error)
@@ -597,6 +602,20 @@ func (s *Store) Forget(ctx context.Context, cell, id uuid.UUID) (bool, error) {
 
 func (s *Store) Rename(ctx context.Context, id uuid.UUID, name string) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE handset SET display_name = $2 WHERE id = $1", id, name)
+	return err
+}
+
+func (s *Store) SetCapabilities(ctx context.Context, id uuid.UUID, caps map[string]any) error {
+	b, err := json.Marshal(caps)
+	if err != nil {
+		return err
+	}
+	_, err = s.Pool.Exec(ctx, "UPDATE handset SET capabilities = $2 WHERE id = $1", id, b)
+	return err
+}
+
+func (s *Store) SetSignal(ctx context.Context, id uuid.UUID, dbm int, at time.Time) error {
+	_, err := s.Pool.Exec(ctx, "UPDATE handset SET signal_dbm = $2, signal_at = $3 WHERE id = $1", id, int16(dbm), at)
 	return err
 }
 
