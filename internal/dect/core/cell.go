@@ -844,6 +844,9 @@ func (r *cellRun) send(corr uint16, m stack.Mail) error {
 	if m.Prim == 0x0300 { // a page: whom it names is public, no key travels in it
 		r.log.Debug("chip mail down: page", "param", hex.EncodeToString(m.Param))
 	}
+	if m.Prim == 0x0244 { // the C-plane going out (APPEND_CONNECTION_DATA): signalling, no key in it
+		r.log.Debug("chip mail down", "prim", fmt.Sprintf("%04x", m.Prim), "param", hex.EncodeToString(m.Param))
+	}
 	if corr == 0 && (m.Prim == 0x0247 || m.Prim == 0x020A) && len(m.Param) > 0 {
 		r.corr++
 		if r.corr == 0 {
