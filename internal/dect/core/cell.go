@@ -49,6 +49,7 @@ type cellRun struct {
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
 	recycleDue  []recycleDue      // pooled enrolments whose chip slot is to be freed
+	nudgeDue    []nudgeDue        // freshly enrolled handsets to tell their names to once more
 	releases    int               // links the chip reported released, since the stack started
 	forgetDue   []uuid.UUID       // handsets the user removes without asking them
 	rfpiAskAt   time.Time         // when the chip was last asked for its RFPI
@@ -202,6 +203,7 @@ func (r *cellRun) handle(ev event) {
 			// finds it, its name and profile reach the stack, its contacts are noted
 			r.idxOf[ev.hid], r.hidOf[ev.idx] = ev.idx, ev.hid
 			r.applyStored(ev.hid, ev.idx)
+			r.nudgeDue = append(r.nudgeDue, nudgeDue{idx: ev.idx, hid: ev.hid, at: time.Now().Add(nudgeAfter)})
 		}
 		// a handset that enrolled again may sit in this cell's working set with its old key
 		if t := r.trans[ev.hid]; t != nil {
@@ -216,7 +218,7 @@ func (r *cellRun) handle(ev event) {
 	case evMail:
 		r.log.Debug("chip mail", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "len", len(ev.mail.Param))
 		switch ev.mail.Prim { // the link's own mails, with what they carry: no memory reads, so no keys
-		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242, 0xF601, 0xF602: // F601/F602: the chip's RFPI and its broadcast report
+		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242, 0xF601, 0xF602, 0xF623: // F601/F602/F623: the chip's RFPI, its broadcast report, the scan report (the beacon carrier and bearer)
 			r.log.Debug("chip mail content", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "param", hex.EncodeToString(ev.mail.Param))
 		}
 		if ev.mail.Prim == 0x0201 {
@@ -261,6 +263,35 @@ func (r *cellRun) handle(ev event) {
 		if r.gen != nil {
 			r.gen.job(job{kind: jobUnknown, slot: slot})
 		}
+	}
+}
+
+// nudgeAfter is how long after a pooled handset enrolled its name is given to the
+// stack once more (a variable for the tests): the notice that goes out with the
+// registration reaches the handset while it is still registering, and an A540
+// does not act on it; a moment later, in the link it holds open for a few seconds,
+// it may.
+var nudgeAfter = 2 * time.Second
+
+// nudgeDue is a handset whose name is to be given to record idx again.
+type nudgeDue struct {
+	idx int
+	hid uuid.UUID
+	at  time.Time
+}
+
+// nudge gives the names of freshly enrolled handsets to the stack again, which tells
+// the handsets in a link that the Internal Names List changed. Only while a link is up:
+// without one the notice has nobody to reach.
+func (r *cellRun) nudge(now time.Time) {
+	for len(r.nudgeDue) > 0 && !now.Before(r.nudgeDue[0].at) {
+		n := r.nudgeDue[0]
+		r.nudgeDue = r.nudgeDue[1:]
+		if r.st == nil || r.gen == nil || r.hidOf[n.idx] != n.hid || r.st.Quiet() {
+			continue
+		}
+		r.applyStored(n.hid, n.idx)
+		r.log.Info("a handset's name is told again", "handset", n.hid, "record", n.idx)
 	}
 }
 
@@ -529,6 +560,7 @@ func (r *cellRun) tick() {
 	}
 	r.syncRFPI(now)
 	r.recycle(now)
+	r.nudge(now)
 	r.forgetNow()
 	if r.st == nil {
 		return
@@ -787,7 +819,7 @@ func (r *cellRun) drop() {
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.reloadAt = time.Time{}
-	r.recycleDue, r.forgetDue = nil, nil
+	r.recycleDue, r.nudgeDue, r.forgetDue = nil, nil, nil
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false
 	r.sigAt, r.sigMs = nil, nil
 	for _, t := range r.offered {

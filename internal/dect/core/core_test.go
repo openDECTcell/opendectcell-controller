@@ -64,8 +64,9 @@ type fakeStack struct {
 	rfpi    [5]byte
 	hasRFPI bool
 	// names and profiles the core gave the records
-	names map[int]string
-	profs map[int][2]string
+	names     map[int]string
+	nameCalls int // how often SetName was called
+	profs     map[int][2]string
 	// recycled records, and what Recycle answers when the stack is quiet
 	recycled []int
 	recycle  stack.Recycled
@@ -215,6 +216,7 @@ func (f *fakeStack) SetName(i int, name string) bool {
 		f.names = map[int]string{}
 	}
 	f.names[i] = name
+	f.nameCalls++
 	return true
 }
 
