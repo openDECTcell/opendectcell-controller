@@ -4,6 +4,7 @@ package cdect
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -269,4 +270,85 @@ func TestSignalFromTheChipsRow(t *testing.T) {
 	if dbm, _, _ := e.host.Signal(0); dbm != -59 {
 		t.Errorf("another link's row was taken: %d", dbm)
 	}
+}
+
+// A record that was recycled out of its chip slot (the pool's way) is a free store
+// like the others: a handset the base knows nothing of that locates next is asked
+// about, with the cell's own settings (the dummy key on, locate authentication on).
+func TestLocateAfterRecycle(t *testing.T) {
+	for _, noAuth := range []bool{true, false} {
+		e := &traceEnv{t: t, now: 1000, wall: 1793350800, pps: map[uint8]*PP{}}
+		cfg := Config{PIN: "12345678", UAKTable: 0x9518, CheckDelayMs: 50, Stub: "dectfw_secondlevel_441.hex",
+			NoLocAuth: noAuth, DeferUnknown: true}
+		e.host = NewHost(e, cfg)
+		e.host.AddRecord(0, subRecord(1, []byte{0x80, 0xa8, 0x03, 0x11, 0x22, 0x33, 0x44}))
+		e.host.AddFreeStore(1, [3]byte{0, 0x11, 0x08})
+		if err := e.host.Start(); err != nil {
+			t.Fatal(err)
+		}
+		e.chip(0xF601, []byte{0x00, 0x01, 0x23, 0x45, 0x60})
+		e.host.RadioUp(true)
+		e.host.Hello()
+		e.settle()
+		if got := e.host.Recycle(0, [3]byte{0, 0x11, 0x2A}); got != RecycleDone {
+			t.Fatalf("Recycle: %v", got)
+		}
+		e.out, e.sent, e.fetched = nil, nil, nil
+		e.pps[1] = NewPP()
+		e.chip(0x0200, []byte{1})
+		e.settle()
+		send(t, e, locateRequest)
+		for range 10 {
+			e.now += 10
+			e.settle()
+		}
+		if len(e.fetched) != 1 {
+			t.Errorf("NoLocAuth %v: asked %d times about the locating handset, want once; answered %v", noAuth, len(e.fetched), answered(e))
+		}
+		e.host.Close()
+		for _, p := range e.pps {
+			p.Close()
+		}
+	}
+}
+
+// The same after a real enrolment (the golden registration trace), with the cell's
+// way of holding unknown handsets: the handset that enrolled into a chip slot and was
+// recycled out of it is asked about when it locates.
+func TestLocateAfterEnrolmentAndRecycle(t *testing.T) {
+	replayTune = func(c *Config) { c.DeferUnknown = true }
+	replayHook = func(e *traceEnv) {
+		if len(e.saves) == 0 {
+			t.Fatal("no record saved")
+		}
+		rec := e.saves[0]
+		var done bool
+		for i := 0; i < 8 && !done; i++ {
+			done = e.host.Recycle(i, [3]byte{0, 0x11, 0x2A}) == RecycleDone
+		}
+		if !done {
+			t.Fatal("no record could be recycled")
+		}
+		for h := uint8(0); h < 8; h++ {
+			e.chip(0x0201, []byte{h})
+		}
+		e.settle()
+		e.out, e.sent, e.fetched = nil, nil, nil
+		e.pps[1] = NewPP()
+		e.chip(0x0200, []byte{1})
+		e.settle()
+		nwk := append([]byte{0x05, 0x54, 0x05, 0x07}, rec.PortID...)
+		nwk = append(nwk, locateRequest[11:]...)
+		send(t, e, nwk)
+		for range 10 {
+			e.now += 10
+			e.settle()
+		}
+		t.Logf("portid %x fetched %x answered %v", rec.PortID, e.fetched, answered(e))
+		if len(e.fetched) != 1 {
+			t.Errorf("asked %d times about the locating handset, want once", len(e.fetched))
+		}
+	}
+	defer func() { replayHook, replayTune = nil, nil }()
+	replay(t, filepath.Join(traceDir, "register.trace"), nil)
 }

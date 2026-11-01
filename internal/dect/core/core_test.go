@@ -1523,6 +1523,52 @@ func TestPooledEnrolmentRecyclesTheChipSlot(t *testing.T) {
 	}
 }
 
+// After its chip slot was freed in place, the handset locates again: the table
+// takes it, above the chip's slots, instead of believing it is held in the freed
+// record (the A540 on the 7412 stayed on "Synchronisiere" until a restart).
+func TestRecycledHandsetIsTakenWhenItLocates(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 20 * time.Millisecond
+	defer func() { reloadDelay = old }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	a := uuid.New()
+	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "a's radio on", radioOnAt(g, 0))
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "a's record recycled", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
+		return n == 1
+	})
+	waitFor(t, "the slot freed in the store", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.chipFreed) })
+		return n == 1
+	})
+	// the store now has it as a pooled handset above the chip's slots
+	recs.get(func(r *fakeRecords) {
+		r.place = map[uuid.UUID]Handset{newID: {ID: newID, Owner: anna,
+			Rec: stack.Record{Slot: 7, PortID: []byte{0x80, 0x01}, TPUI: [3]byte{0, 0x11, 0x2a}}}}
+	})
+	g.stack(0).env.Fetch([]byte{0x80, 0x01})
+	waitFor(t, "the stack resumed", func() bool { return resumes(g) == 1 })
+	g.stack(0).get(func(f *fakeStack) {
+		r, ok := f.records[6]
+		if !ok || r.Slot != 7 || string(r.PortID) != "\x80\x01" {
+			t.Errorf("records %+v: the handset that locates should be in the table at index 6", f.records)
+		}
+	})
+}
+
 // The recycle ends nothing: it waits until the stack is quiet.
 func TestRecycleWaitsForAQuietStack(t *testing.T) {
 	old := reloadDelay

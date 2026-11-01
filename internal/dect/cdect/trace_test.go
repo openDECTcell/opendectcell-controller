@@ -327,6 +327,9 @@ func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 		}
 	}
 	cfg := Config{PIN: "12345678", UAKTable: 0x9518, CheckDelayMs: 50, Stub: "dectfw_secondlevel_441.hex", NoDummyKey: true}
+	if replayTune != nil {
+		replayTune(&cfg)
+	}
 	type rec struct {
 		free bool
 		r    Record
@@ -448,6 +451,9 @@ func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 	}
 	return e
 }
+
+// replayTune, when set, changes the host's configuration before a replay.
+var replayTune func(*Config)
 
 // replayHook, when set, runs at the end of replay, with the host still open.
 var replayHook func(e *traceEnv)
