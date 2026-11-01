@@ -166,15 +166,33 @@ func (id SystemIdentity) ARI() uint32 {
 	return 1<<28 | uint32(id.EIC)<<12 | uint32(id.FPN)<<4 | uint32(id.FPS)
 }
 
-// RFPI is the 40-bit RFPI of the cell with this RPN, most significant
-// byte first: E = 0 (no SARIs), the ARI, the RPN (figure 5.8).
-func (id SystemIdentity) RFPI(rpn uint8) [5]byte {
+// RFPI is the 40-bit RFPI of cell number n, most significant byte first: E = 0
+// (no SARIs), the ARI, the RPN (figure 5.8).
+//
+// Class B: every cell has an ARI of its own and RPN 0. Cell 1 is the identity
+// itself, cell n has the FPN counted up by n-1 (it wraps at 256, so 255 cells
+// differ). The handsets' PARK covers ARC and EIC only (IdentityPLI), so one
+// registration serves every cell, and a handset that moves from one cell to the
+// next sees another PARI and locates again, which the controller serves from the
+// store. Not "one PARI and the cell number in the RPN": the 08.25 STUB of the
+// FRITZ!Box 7520 refuses every handset's access under a non-zero RPN (bench
+// 2026-11-01, 10 of 10 failed with RPN 1 and 2, 5 of 5 attached with RPN 0;
+// the 7412's 06.88 does not mind).
+//
+// Class A: the donor's ARI with n in the RPN (3 bits). That is the 7520's gate
+// again for every cell but the first: a class A system of more than one cell
+// is for 06.88 boxes.
+func (id SystemIdentity) RFPI(n uint8) [5]byte {
 	if id.IsA() {
 		d, _ := id.donorBytes()
-		d[4] = d[4]&^0x07 | rpn&0x07
+		d[4] = d[4]&^0x07 | n&0x07
 		return d
 	}
-	v := uint64(id.ARI())<<8 | uint64(rpn)
+	cid := id
+	if n > 1 {
+		cid.FPN += n - 1
+	}
+	v := uint64(cid.ARI()) << 8
 	var out [5]byte
 	for i := 4; i >= 0; i-- {
 		out[i] = byte(v)

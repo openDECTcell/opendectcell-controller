@@ -47,7 +47,7 @@
   {{end}}{{end}}
 </div></details>
 {{else}}
-<p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity makes the cells one system: class B (an EIC, up to 256 cells), or class A taken from one cell's own identity (up to 7 cells, no EIC needed).</p>
+<p class="text-secondary">None. Each cell keeps its box's factory identity, so every cell is a DECT system of its own and handsets do not roam between cells. A shared identity makes the cells one system: class B (an EIC; every cell gets an identity of its own under it, up to 255 cells, and one registration serves them all), or class A taken from one cell's own identity (up to 7 cells, no EIC needed).</p>
 <div class="card mb-3"><div class="card-body"><form method="post" action="/network-identity" class="narrow">
   <input type="hidden" name="action" value="random">
   <button type="submit" class="btn btn-primary">Make one up…</button>
