@@ -63,6 +63,7 @@ type traceEnv struct {
 	pps     map[uint8]*PP
 	sent    []Mail   // mails the host sent, not yet looked at
 	events  []string // lines the host wrote, not yet read
+	audio   []string // its `audio` and `audio-down` events
 	out     []string // the current action's output
 	saves   []Record // the records the host saved
 	fetched [][]byte // the identities the stack asked the host about
@@ -94,6 +95,12 @@ func (e *traceEnv) Event(to To, line string) {
 		return // no bridge client: dect-stubd drops call traffic
 	}
 	line = strings.TrimSuffix(line, "\n")
+	if strings.HasPrefix(line, "audio ") || strings.HasPrefix(line, "audio-down ") {
+		// the host's own events (which call the speech belongs to), not
+		// dect-stubd's: kept apart, so the golden traces still compare
+		e.audio = append(e.audio, line)
+		return
+	}
 	e.events = append(e.events, "ev "+apiRE.ReplaceAllString(line, " api=N"))
 }
 
@@ -535,4 +542,20 @@ func allZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+// The host tells the bridge which call the speech belongs to: `audio` with the
+// call's number when the lane is bound, `audio-down` with the link when it is
+// released (the controller's media session follows them).
+func TestAudioEventsNameTheCall(t *testing.T) {
+	e := replay(t, filepath.Join(traceDir, "call-out.trace"), nil)
+	if len(e.audio) < 2 {
+		t.Fatalf("audio events: %q", e.audio)
+	}
+	if want := "audio call=1 handle=1 channel=1 wideband=0"; e.audio[0] != want {
+		t.Errorf("first event %q, want %q", e.audio[0], want)
+	}
+	if last := e.audio[len(e.audio)-1]; !strings.HasPrefix(last, "audio-down handle=1") {
+		t.Errorf("last event %q, want audio-down for handle 1", last)
+	}
 }

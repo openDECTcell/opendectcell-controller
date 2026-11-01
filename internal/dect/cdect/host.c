@@ -191,6 +191,44 @@ static int any_uak(const struct cdect_host *c)
 /* ---- Audio: dect-stubd's send_audio_*(), xlane_*() --------------------- */
 
 /*
+ * The bridge is told which call the speech belongs to: `audio call=N
+ * handle=H channel=C wideband=W` when the lane is connected, `audio-down
+ * handle=H` when it is released. call=0: the link carries no bridged call.
+ */
+static void audio_event(struct cdect_host *c, uint8_t handle, uint8_t chan, int wb)
+{
+	struct dect_ctl_out o;
+	struct dect_base_call *call = NULL;
+	int p;
+
+	for (p = -1; p < (int)DECT_BASE_SIDES; p++) {
+		struct dect_base_link *bl = dect_base_party_link(&c->b, p);
+
+		if (bl && bl->active && bl->handle == handle) {
+			call = dect_base_call_active(&c->b, p);
+			if (!call)
+				call = dect_base_call_on(&c->b, p);
+			break;
+		}
+	}
+	dect_ctl_begin(&o, "audio");
+	dect_ctl_add_uint(&o, "call", call ? call->id : 0u);
+	dect_ctl_add_uint(&o, "handle", handle);
+	dect_ctl_add_uint(&o, "channel", chan);
+	dect_ctl_add_uint(&o, "wideband", wb ? 1u : 0u);
+	line_to(c, CDECT_TO_BRIDGE, &o);
+}
+
+static void audio_down_event(struct cdect_host *c, uint8_t handle)
+{
+	struct dect_ctl_out o;
+
+	dect_ctl_begin(&o, "audio-down");
+	dect_ctl_add_uint(&o, "handle", handle);
+	line_to(c, CDECT_TO_BRIDGE, &o);
+}
+
+/*
  * The controller sends the bind's mails over the tunnel (the maintainer,
  * 2026-10-30; cell-protocol.md §8.1): 0x0251 and 0x0230 here, 0x022D on the
  * chip's 0x0242, and cdectMedia() for MEDIA_OPEN/MEDIA_CLOSE.
@@ -211,12 +249,14 @@ static void main_connect(struct cdect_host *c, uint8_t handle, uint8_t chan)
 		return;
 	c->b.main_link.path_on = 1;
 	dect_base_audio_path(&c->b, handle);
+	audio_event(c, handle, chan, c->call_wideband);
 	cdectMedia(c->h, handle, chan, c->call_wideband, 1);
 }
 
 static void audio_release(struct cdect_host *c, uint8_t handle)
 {
 	dect_base_audio_release(&c->b, handle);
+	audio_down_event(c, handle);
 	cdectMedia(c->h, handle, 0, 0, 0);
 }
 
@@ -300,6 +340,7 @@ static void lane_connect(struct cdect_host *c, struct cdect_lane *x)
 		return;
 	x->connected = 1;
 	dect_base_audio_path(&c->b, x->handle);
+	audio_event(c, x->handle, x->channel, x->wideband);
 	cdectMedia(c->h, x->handle, x->channel, x->wideband, 1);
 }
 

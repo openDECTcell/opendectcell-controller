@@ -27,7 +27,7 @@ That links libopendectcell statically with cgo (`-tags libopendectcell`); the lo
 |---|---|
 | `init` | One-shot: `init-secrets` creates `master_key`, `db_password` and `database_url` in the `secrets` volume if they are missing. It never overwrites |
 | `db` | PostgreSQL 18; data in the `pgdata` volume |
-| `controller` | Applies migrations, then serves on `127.0.0.1:8080` (web), `:7300` (cells), `:5060` UDP/TCP (SIP) and `41000-41099/udp` (RTP). Non-root, read-only root filesystem, no capabilities |
+| `controller` | Applies migrations, then serves on `127.0.0.1:8080` (web), `:7300` (cells), `:5060` UDP/TCP (SIP), `41000-41099/udp` (SIP RTP) and `41100-41199/udp` (the cells' speech). Non-root, read-only root filesystem, no capabilities |
 
 **Back up the master key now**, separately from the database. Without it,
 every UAK and SIP password in a database backup is unrecoverable
@@ -43,6 +43,16 @@ docker compose cp controller:/secrets/master_key ./master_key.backup
   Docker's userland proxy and NAT add latency and rewrite source addresses.
   For production, run the controller with `network_mode: host` and set
   `OPENDECTCELL_SIP_RTP_PORTS` to the range you open in the firewall.
+
+- **Calls need two addresses.** The speech of a call crosses the controller
+  twice: cell to controller (UDP `OPENDECTCELL_CELLS_MEDIA_PORTS`, to the address in
+  `OPENDECTCELL_CELLS_MEDIA_IP`) and controller to the SIP peer (UDP
+  `OPENDECTCELL_SIP_RTP_PORTS`, advertised as `OPENDECTCELL_SIP_MEDIA_IP`). Behind
+  Docker's port mapping both must be this host's LAN address, because the
+  container's own address is unreachable from outside; with
+  `network_mode: host` the SIP one defaults right and the cells' one is the host
+  of `OPENDECTCELL_CELLS_PUBLIC_ADDRESS`. Without a valid cells address calls have
+  no audio (the log says so at start).
 
 - Put a TLS-terminating reverse proxy in front of port 8080, set
   `OPENDECTCELL_HTTP_BASE_URL=https://…` and `OPENDECTCELL_HTTP_TRUSTED_PROXIES` to the

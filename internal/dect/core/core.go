@@ -80,6 +80,11 @@ type Core struct {
 	// before the others are (route.go); 0 is DefaultPageDelay.
 	PageDelay time.Duration
 
+	// Originate takes a call a handset placed to the SIP side (outgoing.go);
+	// it runs on its own goroutine and answers through the Outgoing. nil: a
+	// handset's call is released as unreachable.
+	Originate func(*Outgoing)
+
 	calls routes
 
 	// Roaming gives the admin's roaming settings; nil: the defaults. Read at

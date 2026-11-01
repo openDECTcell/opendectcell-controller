@@ -148,6 +148,35 @@ type Cells struct {
 	// TPUI of its own (docs/roaming.md), not by one cell's chip. Off: it
 	// is a chip-slot handset of the cell it enrolled on, as before.
 	HandsetPool bool `yaml:"handset_pool"`
+	// MediaIP is the address cells send a call's speech to (docs/cell-protocol.md
+	// §8), MediaPorts the UDP range the controller listens on for it ("min-max",
+	// published like the SIP RTP range). Default MediaIP: the host of
+	// PublicAddress, when that is an IP address.
+	MediaIP    string `yaml:"media_ip"`
+	MediaPorts string `yaml:"media_ports"`
+}
+
+// MediaRange parses MediaPorts; Validate has checked it.
+func (c Cells) MediaRange() (lo, hi int) {
+	a, b, _ := strings.Cut(c.MediaPorts, "-")
+	lo, _ = strconv.Atoi(strings.TrimSpace(a))
+	hi, _ = strconv.Atoi(strings.TrimSpace(b))
+	return lo, hi
+}
+
+// CellMediaIP returns MediaIP, or the host of the public address if that is an
+// IP address; invalid when neither is.
+func (c Config) CellMediaIP() netip.Addr {
+	if c.Cells.MediaIP != "" {
+		a, _ := netip.ParseAddr(c.Cells.MediaIP)
+		return a
+	}
+	h, _, err := net.SplitHostPort(c.CellPublicAddress())
+	if err != nil {
+		return netip.Addr{}
+	}
+	a, _ := netip.ParseAddr(h)
+	return a
 }
 
 // CellPublicAddress returns PublicAddress or its default.
@@ -179,7 +208,7 @@ func Default() Config {
 			SessionMaxAge:  7 * 24 * time.Hour,
 			LoginRateLimit: 10,
 		},
-		Cells: Cells{Listen: ":7300", HandsetPool: true},
+		Cells: Cells{Listen: ":7300", HandsetPool: true, MediaPorts: "41100-41199"},
 		SIP:   SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
 		SMTP:  SMTP{Port: "587", Security: "starttls"},
 	}
@@ -278,6 +307,8 @@ func vars(c *Config) []envVar {
 		{"CELLS_LISTEN", false, str(&c.Cells.Listen)},
 		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
 		{"CELLS_HANDSET_POOL", false, boolean(&c.Cells.HandsetPool)},
+		{"CELLS_MEDIA_IP", false, str(&c.Cells.MediaIP)},
+		{"CELLS_MEDIA_PORTS", false, str(&c.Cells.MediaPorts)},
 		{"SIP_UDP_LISTEN", false, str(&c.SIP.UDPListen)},
 		{"SIP_TCP_LISTEN", false, str(&c.SIP.TCPListen)},
 		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},
@@ -410,6 +441,14 @@ func (c Config) Validate() error {
 	}
 	if lo, hi := c.SIP.RTPRange(); lo < 1024 || hi > 65535 || hi-lo < 3 {
 		add("SIP RTP ports %q must be a range like 41000-41999 above 1023", c.SIP.RTPPorts)
+	}
+	if lo, hi := c.Cells.MediaRange(); lo < 1024 || hi > 65535 || hi-lo < 3 {
+		add("cells media ports %q must be a range like 41100-41199 above 1023", c.Cells.MediaPorts)
+	}
+	if c.Cells.MediaIP != "" {
+		if _, err := netip.ParseAddr(c.Cells.MediaIP); err != nil {
+			add("cells media IP %q is not an IP address", c.Cells.MediaIP)
+		}
 	}
 	if c.SIP.MediaIP != "" {
 		if _, err := netip.ParseAddr(c.SIP.MediaIP); err != nil {

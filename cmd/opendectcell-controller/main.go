@@ -44,6 +44,8 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/bridge"
+	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
@@ -267,11 +269,22 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
 	var windows *regwin.Registry
 	var dectCore *dectcore.Core
+	// The calls between the handsets and SIP (internal/bridge): the SIP side
+	// is set below, once it exists.
+	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log},
+		Log: log.With("component", "calls"), MediaIP: cfg.CellMediaIP()}
+	calls.MediaPorts[0], calls.MediaPorts[1] = cfg.Cells.MediaRange()
+	link.Media = calls
+	if !calls.MediaIP.IsValid() {
+		log.Warn("no address for the cells' speech: set OPENDECTCELL_CELLS_MEDIA_IP (the controller's address as the cells reach it); calls have no audio until then")
+	}
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
 		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dectCore = dect
+		calls.DECT = bridge.RouterOf(dect)
+		dect.Originate = calls.HandsetCall
 		windows.Done = func(w regwin.Window) {
 			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
@@ -299,10 +312,11 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	cellErr := make(chan error, 1)
 	go func() { cellErr <- link.Serve(ctx, cln) }()
 
-	sipMgr, sipAccts, err := startSIP(ctx, cfg, pool, kr, log)
+	sipMgr, sipAccts, err := startSIP(ctx, cfg, pool, kr, log, calls)
 	if err != nil {
 		return err
 	}
+	calls.SIP = bridge.DialerOf(sipMgr)
 	defer sipMgr.Close()
 
 	store := authStore(cfg, pool)
@@ -392,9 +406,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 }
 
 // startSIP opens the SIP transports and starts every account's user agent.
-// Until the DECT core exists (C3) there is no endpoint, so incoming calls
-// are answered 480.
-func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *secret.Keyring, log *slog.Logger) (*sip.Manager, *sipaccount.Store, error) {
+// The endpoint takes the incoming calls (internal/bridge).
+func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *secret.Keyring, log *slog.Logger, endpoint sip.Endpoint) (*sip.Manager, *sipaccount.Store, error) {
 	lc := net.ListenConfig{}
 	udp, err := lc.ListenPacket(ctx, "udp", cfg.SIP.UDPListen)
 	if err != nil {
@@ -413,7 +426,7 @@ func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *se
 	if cfg.SIP.MediaIP != "" {
 		sc.MediaIP = netip.MustParseAddr(cfg.SIP.MediaIP) // validated
 	}
-	m, err := sip.New(sc, nil)
+	m, err := sip.New(sc, endpoint)
 	if err != nil {
 		return nil, nil, err
 	}

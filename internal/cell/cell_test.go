@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +268,80 @@ func (m *mailSink) MailUp(_ uuid.UUID, u wire.MailUpMsg) {
 }
 
 func (m *mailSink) MailReject(_ uuid.UUID, r wire.MailRejectMsg) { m.rej <- r }
+
+type mediaSink struct {
+	opened chan wire.MediaOpenAckMsg
+	closed chan wire.MediaClosedMsg
+}
+
+func (m *mediaSink) MediaOpened(_ uuid.UUID, a wire.MediaOpenAckMsg) { m.opened <- a }
+func (m *mediaSink) MediaClosed(_ uuid.UUID, c wire.MediaClosedMsg)  { m.closed <- c }
+
+// MEDIA_OPEN and MEDIA_CLOSE go to an active cell; its answers and a flow it
+// ends come back to Server.Media.
+func TestMediaMessages(t *testing.T) {
+	e := newEnv(t)
+	sink := &mediaSink{opened: make(chan wire.MediaOpenAckMsg, 4), closed: make(chan wire.MediaClosedMsg, 4)}
+	e.srv.Media = sink
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	expectState(t, cn, wire.StateActive)
+
+	mo := wire.MediaOpenMsg{MediaID: 9, AudioChannel: 1, Format: wire.FormatL16_8k, PayloadType: 96,
+		CtlAddr: netip.MustParseAddrPort("192.0.2.1:41100"), SSRCUp: 1, SSRCDown: 2, SRTPProfile: wire.SRTPAES128SHA80,
+		KeyUp: make([]byte, 30), KeyDown: make([]byte, 30)}
+	if err := e.srv.OpenMedia(c.ID, mo); err != nil {
+		t.Fatal(err)
+	}
+	f, err := cn.Expect(wire.MediaOpen, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := wire.DecodeMediaOpen(f.Body); err != nil || got.MediaID != 9 || got.CtlAddr != mo.CtlAddr || got.AudioChannel != 1 {
+		t.Errorf("MEDIA_OPEN %+v %v", got, err)
+	}
+	cn.Send(wire.Frame{Type: wire.MediaOpenAck, Body: wire.MediaOpenAckMsg{MediaID: 9, Status: wire.MediaOK}.Encode()})
+	select {
+	case a := <-sink.opened:
+		if a.MediaID != 9 || a.Status != wire.MediaOK {
+			t.Errorf("ack %+v", a)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no MEDIA_OPEN_ACK at the sink")
+	}
+	if err := e.srv.CloseMedia(c.ID, 9); err != nil {
+		t.Fatal(err)
+	}
+	f, err = cn.Expect(wire.MediaClose, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, err := wire.DecodeMediaClose(f.Body); err != nil || id != 9 {
+		t.Errorf("MEDIA_CLOSE %d %v", id, err)
+	}
+	cn.Send(wire.Frame{Type: wire.MediaClosed, Body: wire.MediaClosedMsg{MediaID: 9, Reason: wire.MediaClosedRequested}.Encode()})
+	select {
+	case m := <-sink.closed:
+		if m.MediaID != 9 || m.Reason != wire.MediaClosedRequested {
+			t.Errorf("closed %+v", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no MEDIA_CLOSED at the sink")
+	}
+	// a malformed answer is an ERROR
+	cn.Send(wire.Frame{Type: wire.MediaOpenAck, Body: []byte{1, 2}})
+	if _, err := cn.Expect(wire.Error, 2*time.Second); err != nil {
+		t.Error("no ERROR for a malformed MEDIA_OPEN_ACK")
+	}
+	// no session: no media
+	if err := e.srv.OpenMedia(uuid.New(), mo); !errors.Is(err, cell.ErrNoCell) {
+		t.Errorf("OpenMedia to an unknown cell: %v", err)
+	}
+}
 
 func TestMailTunnel(t *testing.T) {
 	e := newEnv(t)

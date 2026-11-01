@@ -800,6 +800,10 @@ func (r *cellRun) restart() {
 		r.log.Error("DECT stack did not start", "err", err)
 		return
 	}
+	// Calls of the handsets go to the SIP side, not to a local connect: the
+	// stack is told it has a bridge, from the start (route.go told it only at
+	// the first call-in).
+	r.bridge = st.Ctl("bridge", r.core.now(), false)
 	// Start gives every record the standard behaviour: names and device
 	// profiles go on top of that.
 	for k, h := range hs {
@@ -814,6 +818,9 @@ func (r *cellRun) restart() {
 // Close cannot close anything twice.
 func (r *cellRun) drop() {
 	st, g := r.st, r.gen
+	if st != nil {
+		r.core.cellGone(r.id) // its calls end with it
+	}
 	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
@@ -1076,7 +1083,25 @@ func (g *gen) Log(line string) {
 func (g *gen) Event(to stack.To, line string) {
 	line = strings.TrimSpace(line)
 	g.r.log.Debug("bridge line", "line", line)
+	if verb, kv := parseBridgeLine(line); verb == "call-out" {
+		g.r.core.callOut(g.r.id, kv, g.r.handsetBySlot(kv["hs"]))
+		return
+	}
 	g.r.core.bridgeLine(g.r.id, line)
+}
+
+// handsetBySlot is the handset whose record number on this cell is slot.
+func (r *cellRun) handsetBySlot(slot string) uuid.UUID {
+	n, err := strconv.ParseUint(slot, 10, 8)
+	if err != nil || r.gen == nil {
+		return uuid.Nil
+	}
+	for i, s := range r.gen.slotOf {
+		if s == uint(n) {
+			return r.hidOf[i]
+		}
+	}
+	return uuid.Nil
 }
 
 func (g *gen) Save(i int, rec stack.Record) {

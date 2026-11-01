@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -20,11 +21,11 @@ import (
 // released. A cell that does not hold the handset in its table takes it in from
 // the database when its leg is offered (roaming.go, ensure).
 //
-// There is no SIP side yet: this is the interface it will use. Ring starts an
-// offer, the events come back on the returned Offer, Cancel is the caller
-// hanging up. Each leg is one `call-in` on one cell's stack
-// (openDECTcell docs/bridge-interface.md §2.2); a cell's stack is told it carries
-// external calls (`bridge`) when its first leg is offered.
+// The SIP side (internal/bridge) uses it: Ring starts an offer, the events
+// come back on the returned Offer, Cancel is the caller hanging up. Each leg is
+// one `call-in` on one cell's stack (openDECTcell docs/bridge-interface.md §2.2). A
+// stack is told it carries external calls (`bridge`) when it starts, so a
+// number a handset dials is a `call-out` (outgoing.go), not a local connect.
 
 // Errors of Ring.
 var (
@@ -61,6 +62,17 @@ const (
 	CallBusy     CallEventKind = "busy"
 )
 
+// The events of a call that is on: the handset's keys and holds, and the
+// speech. CallMediaUp says the call's audio channel on the chip is bound
+// (Handle, Channel and Wideband say how); CallMediaDown that it is released.
+const (
+	CallDigit     CallEventKind = "digit"
+	CallHold      CallEventKind = "hold"
+	CallResume    CallEventKind = "resume"
+	CallMediaUp   CallEventKind = "media-up"
+	CallMediaDown CallEventKind = "media-down"
+)
+
 // CallEvent is one event of an offer. Cell and Call (the stack's call number)
 // say which leg it is, when it is one.
 type CallEvent struct {
@@ -68,6 +80,12 @@ type CallEvent struct {
 	Cell   uuid.UUID
 	Call   string
 	Reason string
+	// CallDigit: the key; CallMediaUp: the link handle, the chip's audio
+	// channel and whether the air codec is G.722.
+	Digit    rune
+	Handle   uint8
+	Channel  uint8
+	Wideband bool
 }
 
 // Offer is a call offered to a handset. Events closes after Released or Busy.
@@ -120,6 +138,9 @@ func (rt *route) pending() bool {
 type routes struct {
 	mu   sync.Mutex
 	live map[string]*route
+	out  map[outKey]*Outgoing // handsets' calls (outgoing.go)
+	// media: where a link's `audio` events go, by cell and link handle
+	media map[mediaKey]callSink
 }
 
 func (c *Core) pageDelay() time.Duration {
@@ -318,6 +339,33 @@ func (c *Core) bridgeLine(cell uuid.UUID, line string) {
 	rs := &c.calls
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
+	switch verb {
+	case "audio":
+		rs.audioUp(c, cell, kv)
+		return
+	case "audio-down":
+		rs.audioDown(c, cell, kv)
+		return
+	case "digit", "hold", "resume":
+		if sink := rs.find(cell, kv["call"]); sink != nil {
+			ev := CallEvent{Cell: cell, Call: kv["call"]}
+			switch verb {
+			case "digit":
+				ev.Kind = CallDigit
+				ev.Digit, _ = utf8.DecodeRuneInString(kv["d"])
+			case "hold":
+				ev.Kind = CallHold
+			default:
+				ev.Kind = CallResume
+			}
+			sink.emit(c, ev)
+		}
+		return
+	}
+	if o := rs.out[outKey{cell, kv["call"]}]; o != nil && verb != "" {
+		rs.outgoingLine(c, o, verb, kv)
+		return
+	}
 	var rt *route
 	var l *leg
 	if sip := kv["sip"]; sip != "" {

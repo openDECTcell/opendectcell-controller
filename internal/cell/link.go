@@ -60,6 +60,9 @@ type Server struct {
 	// Mails receives the STUB mail tunnel of every active cell (§7); nil
 	// drops the mails. Set before Serve.
 	Mails MailSink
+	// Media is told of the cell's answers about media flows (§8.1); nil
+	// ignores them. Set before Serve.
+	Media MediaSink
 
 	mu       sync.Mutex
 	cells    map[uuid.UUID]*record
@@ -76,6 +79,14 @@ type Server struct {
 type MailSink interface {
 	MailUp(cell uuid.UUID, m wire.MailUpMsg)
 	MailReject(cell uuid.UUID, m wire.MailRejectMsg)
+}
+
+// MediaSink is told what the cell says about a media flow (§8.1): its answer
+// to MEDIA_OPEN and a flow that ended. The methods run on the cell's session
+// goroutine and must not block or call back into the Server.
+type MediaSink interface {
+	MediaOpened(cell uuid.UUID, a wire.MediaOpenAckMsg)
+	MediaClosed(cell uuid.UUID, c wire.MediaClosedMsg)
 }
 
 // StatusWatcher is also told of the cell's STATUS (radio and chip state), if
@@ -159,6 +170,32 @@ func (s *Server) SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error {
 	}
 	ss.send(wire.Frame{Type: wire.MailDown, Corr: corr, Body: m.Encode()})
 	s.updateStatus(id, func(st *Status) { st.MailsDown++ })
+	return nil
+}
+
+// OpenMedia asks an active cell to tie a chip channel to a UDP flow
+// (MEDIA_OPEN, §8.1). The answer comes to Server.Media.
+func (s *Server) OpenMedia(id uuid.UUID, m wire.MediaOpenMsg) error {
+	return s.sendFrame(id, wire.Frame{Type: wire.MediaOpen, Body: m.Encode()})
+}
+
+// CloseMedia asks the cell to end a flow (MEDIA_CLOSE); it answers
+// MEDIA_CLOSED.
+func (s *Server) CloseMedia(id uuid.UUID, mediaID uint32) error {
+	return s.sendFrame(id, wire.Frame{Type: wire.MediaClose, Body: wire.EncodeMediaClose(mediaID)})
+}
+
+func (s *Server) sendFrame(id uuid.UUID, f wire.Frame) error {
+	s.mu.Lock()
+	var ss *session
+	if rec := s.cells[id]; rec != nil {
+		ss = rec.sess
+	}
+	s.mu.Unlock()
+	if ss == nil || !ss.active.Load() {
+		return ErrNoCell
+	}
+	ss.send(f)
 	return nil
 }
 
@@ -779,8 +816,24 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			return malformed(err)
 		}
 		ss.log.Info("cell answered CONFIG_SET", "status", st)
-	case wire.TrustAck, wire.MediaOpenAck, wire.MediaClosed:
-		// Answers to requests the controller does not send yet.
+	case wire.MediaOpenAck:
+		a, err := wire.DecodeMediaOpenAck(f.Body)
+		if err != nil {
+			return malformed(err)
+		}
+		if ss.srv.Media != nil {
+			ss.srv.Media.MediaOpened(ss.cell.ID, a)
+		}
+	case wire.MediaClosed:
+		c, err := wire.DecodeMediaClosed(f.Body)
+		if err != nil {
+			return malformed(err)
+		}
+		if ss.srv.Media != nil {
+			ss.srv.Media.MediaClosed(ss.cell.ID, c)
+		}
+	case wire.TrustAck:
+		// An answer to a request the controller does not send yet.
 	case wire.Hello, wire.EnrollRequest:
 		ss.errorReply(f, wire.ErrNotAllowed, "already established")
 	default:

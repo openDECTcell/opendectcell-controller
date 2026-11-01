@@ -205,11 +205,11 @@ func (d *direction) produce(now time.Time) {
 			d.plc.Good(pcm)
 		case jitter.Lost:
 			pcm = d.plc.Conceal(d.pcm[:0], d.samples(n))
-			d.stats.Concealed++
+			d.count(func(s *DirStats) { s.Concealed++ })
 		default:
 			pcm = append(d.pcm[:0], make([]int16, d.samples(n))...)
 			d.plc.Good(pcm)
-			d.stats.Silence++
+			d.count(func(s *DirStats) { s.Silence++ })
 		}
 		d.pcm = pcm
 		d.fifo = d.toInt.Process(d.fifo, pcm)
@@ -258,9 +258,9 @@ func (d *direction) passOne(now time.Time) {
 			d.send(d.payload, n)
 		}
 		if st == jitter.Lost {
-			d.stats.Concealed++
+			d.count(func(s *DirStats) { s.Concealed++ })
 		} else {
-			d.stats.Silence++
+			d.count(func(s *DirStats) { s.Silence++ })
 		}
 	}
 	d.carry -= d.outUnits
@@ -268,11 +268,18 @@ func (d *direction) passOne(now time.Time) {
 
 func (d *direction) send(payload []byte, units uint32) {
 	if err := d.outLeg.WritePacket(d.outPT, payload, units, d.marker); err != nil {
-		d.stats.SendErrs++
+		d.count(func(s *DirStats) { s.SendErrs++ })
 		return
 	}
 	d.marker = false
-	d.stats.Sent++
+	d.count(func(s *DirStats) { s.Sent++ })
+}
+
+// count changes a counter under the lock Stats reads them with.
+func (d *direction) count(fn func(*DirStats)) {
+	d.mu.Lock()
+	fn(&d.stats)
+	d.mu.Unlock()
 }
 
 func (d *direction) snapshot(now time.Time) DirStats {

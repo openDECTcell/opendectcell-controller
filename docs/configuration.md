@@ -42,6 +42,8 @@ echoed in error messages or logs.
 | `OPENDECTCELL_SIP_MEDIA_IP` | `sip.media_ip` | local address | Advertise this IP in SDP, for a controller behind a static NAT |
 | `OPENDECTCELL_CELLS_PUBLIC_ADDRESS` | `cells.public_address` | base URL host + listen port | `host:port` as cells reach the control port; written into enrollment strings. Set it when cells connect through NAT or another name |
 | `OPENDECTCELL_CELLS_HANDSET_POOL` | `cells.handset_pool` | `true` | A handset that enrols is given a TPUI from a shared pool, the same on every cell (`roaming.md` §4.2); `false`: it gets the TPUI derived from its record number, as before. Handsets enrolled earlier keep theirs either way. Every handset can be heard on every cell in both cases |
+| `OPENDECTCELL_CELLS_MEDIA_IP` | `cells.media_ip` | host of `cells.public_address`, if that is an IP | The address cells send a call's speech to (MEDIA_OPEN `ctl_addr`, `cell-protocol.md` §8). Behind Docker's port mapping: the host's LAN address the cells reach. Without a valid address calls have no audio |
+| `OPENDECTCELL_CELLS_MEDIA_PORTS` | `cells.media_ports` | `41100-41199` | UDP ports the controller listens on for the cells' speech, one per call; publish the range like the SIP RTP range |
 | `OPENDECTCELL_SMTP_HOST` | `smtp.host` | none | Outgoing mail server. Without it the controller sends no mail (log-level change notices, sign-up mails) and the settings page says so |
 | `OPENDECTCELL_SMTP_PORT` | `smtp.port` | `587` | |
 | `OPENDECTCELL_SMTP_USER` | `smtp.user` | none | Empty: no authentication |

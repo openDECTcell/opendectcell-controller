@@ -45,6 +45,10 @@ services:
       # Docker maps big UDP ranges slowly; 100 ports = 50 calls. For more,
       # widen both, or use network_mode: host (docs/deployment.md).
       OPENDECTCELL_SIP_RTP_PORTS: 41000-41099
+      # The cells' speech (a call's audio from the cell to the controller): one
+      # UDP port per call. Set OPENDECTCELL_CELLS_MEDIA_IP to this host's address as
+      # the cells reach it (docs/deployment.md), or calls have no audio.
+      OPENDECTCELL_CELLS_MEDIA_PORTS: 41100-41199
     volumes:
       - secrets:/secrets:ro
     ports:
@@ -53,6 +57,7 @@ services:
       - "5060:5060/udp"
       - "5060:5060/tcp"
       - "41000-41099:41000-41099/udp"
+      - "41100-41199:41100-41199/udp"
     depends_on:
       db:
         condition: service_healthy

@@ -810,6 +810,80 @@ func DecodeMediaOpen(b []byte) (MediaOpenMsg, error) {
 	return m, nil
 }
 
+// MEDIA_OPEN_ACK status values (§8.1).
+const (
+	MediaOK            uint16 = 0
+	MediaUnknownChan   uint16 = 1
+	MediaFormatNoGood  uint16 = 2
+	MediaNoCapacity    uint16 = 3
+	MediaInternalError uint16 = 4
+)
+
+// MEDIA_CLOSED reasons (§8.1).
+const (
+	MediaClosedRequested uint8 = 0
+	MediaClosedByChip    uint8 = 1
+	MediaClosedLocal     uint8 = 2
+)
+
+// MediaOpenAckMsg is MEDIA_OPEN_ACK: the cell's answer to MEDIA_OPEN.
+type MediaOpenAckMsg struct {
+	MediaID uint32
+	Status  uint16
+}
+
+func (m MediaOpenAckMsg) Encode() []byte {
+	return new(Builder).U32(1, m.MediaID).U16(2, m.Status).Build()
+}
+
+func DecodeMediaOpenAck(b []byte) (MediaOpenAckMsg, error) {
+	var m MediaOpenAckMsg
+	t, err := ParseTLV(b)
+	if err != nil {
+		return m, err
+	}
+	if m.MediaID, err = t.U32(1); err != nil {
+		return m, err
+	}
+	m.Status, err = t.U16(2)
+	return m, err
+}
+
+// EncodeMediaClose is MEDIA_CLOSE's body.
+func EncodeMediaClose(mediaID uint32) []byte { return new(Builder).U32(1, mediaID).Build() }
+
+// DecodeMediaClose reads MEDIA_CLOSE's media_id.
+func DecodeMediaClose(b []byte) (uint32, error) {
+	t, err := ParseTLV(b)
+	if err != nil {
+		return 0, err
+	}
+	return t.U32(1)
+}
+
+// MediaClosedMsg is MEDIA_CLOSED: a flow ended, asked for or not.
+type MediaClosedMsg struct {
+	MediaID uint32
+	Reason  uint8
+}
+
+func (m MediaClosedMsg) Encode() []byte {
+	return new(Builder).U32(1, m.MediaID).U8(2, m.Reason).Build()
+}
+
+func DecodeMediaClosed(b []byte) (MediaClosedMsg, error) {
+	var m MediaClosedMsg
+	t, err := ParseTLV(b)
+	if err != nil {
+		return m, err
+	}
+	if m.MediaID, err = t.U32(1); err != nil {
+		return m, err
+	}
+	m.Reason, err = t.U8(2)
+	return m, err
+}
+
 // MailParamMax is the largest STUB mail parameter block (§7.1,
 // libopendectcell's DECT_MAIL_PARAM_MAX).
 const MailParamMax = 249
