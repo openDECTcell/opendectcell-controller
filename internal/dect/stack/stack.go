@@ -133,6 +133,13 @@ type Config struct {
 	// ParkPLI is the PARK length handsets are given (class B: 19, ARC and
 	// EIC); 0 is the class's whole ARI.
 	ParkPLI uint
+	// AudioMask and AudioCodec are the audio bind's TDM slot mask and its
+	// narrowband bind byte (0x0230): what the daemon's init script gives it
+	// on a box (mask=0x0002, codec=3), because the daemon has no defaults for
+	// them. The golden traces replay it without: 0 and 0. A bind with mask 0
+	// is echoed by the chip with mask 0, and the cell finds no lane for it.
+	AudioMask  uint16
+	AudioCodec uint8
 
 	UAKTable     uint32 // from the cell's stub_version (hosting-dect-base.md §6)
 	CheckDelayMs uint32

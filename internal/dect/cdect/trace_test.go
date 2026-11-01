@@ -465,8 +465,19 @@ var replayTune func(*Config)
 // replayHook, when set, runs at the end of replay, with the host still open.
 var replayHook func(e *traceEnv)
 
+// gotFilter, when set, rewrites each produced line before it is compared (a test
+// that changes the configuration maps the changed lines back to the golden ones
+// and checks them on the way).
+var gotFilter func(string) string
+
 func compare(t *testing.T, path string, st traceStep, got []string) {
 	t.Helper()
+	if gotFilter != nil {
+		got = append([]string(nil), got...)
+		for i := range got {
+			got[i] = gotFilter(got[i])
+		}
+	}
 	var want []string
 	for _, w := range st.want {
 		if !skipLine(w, st.action == "start") {
@@ -557,5 +568,27 @@ func TestAudioEventsNameTheCall(t *testing.T) {
 	}
 	if last := e.audio[len(e.audio)-1]; !strings.HasPrefix(last, "audio-down handle=1") {
 		t.Errorf("last event %q, want audio-down for handle 1", last)
+	}
+}
+
+// The audio bind carries the mask and the narrowband bind byte the daemon's init
+// script gives a box (mask 0x0002, codec 3), which the cell needs to find the
+// call's lane: the chip echoes the mask in its long 0x0242, and a mask of 0
+// names no lane ("its bind's mask names none", first call on air, 2026-11-01).
+// Everything else of the golden trace stays as it was.
+func TestAudioBindCarriesTheConfiguredMask(t *testing.T) {
+	binds := 0
+	replayTune = func(c *Config) { c.AudioMask, c.AudioCodec = 0x0002, 3 }
+	gotFilter = func(l string) string {
+		if l == "mail 0230 01 01 02 00 00 03" {
+			binds++
+			return "mail 0230 01 01 00 00 00 00"
+		}
+		return l
+	}
+	defer func() { replayTune, gotFilter = nil, nil }()
+	replay(t, filepath.Join(traceDir, "call-out.trace"), nil)
+	if binds != 1 {
+		t.Errorf("%d binds with mask 0x0002 and codec 3, want 1", binds)
 	}
 }

@@ -141,6 +141,8 @@ func NewHost(env Env, cfg Config) *Host {
 		b.cfg.ipuio = C.uint32_t(*cfg.IPUIO)
 	}
 	b.cfg.park_pli = C.uint(cfg.ParkPLI)
+	x.c.mask = C.uint16_t(cfg.AudioMask)
+	x.c.codec = C.uint8_t(cfg.AudioCodec)
 	b.cfg.defer_unknown = cbool(cfg.DeferUnknown)
 	b.cfg.locate_validity = C.unsigned(cfg.LocateValidity)
 	b.chip.uak_table = C.uint32_t(cfg.UAKTable)

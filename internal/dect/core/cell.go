@@ -758,7 +758,11 @@ func (r *cellRun) restart() {
 	// r.st and r.gen are set as soon as they exist, so a panic from here
 	// on leaves them for guard's drop: the keys are wiped, the writer ends.
 	st := r.core.New(g, stack.Config{NamesRO: true, PollSignal: true, UAKTable: table, CheckDelayMs: delay, Stub: r.up.StubVersion, ParkPLI: r.parkPLI,
-		DeferUnknown: true, LocateValidity: r.core.roaming().Units()})
+		DeferUnknown: true, LocateValidity: r.core.roaming().Units(),
+		// what the daemon's init script gives a box (opendectcell.init): the audio bind's
+		// slot mask and bind byte, calls on side links, and a date and time update
+		// every 24 hours
+		AudioMask: 0x0002, AudioCodec: 3, TwoCalls: true, TimeEveryMin: 24 * 60})
 	r.st = st
 	r.units = r.core.roaming().Units()
 	ids := map[int]uuid.UUID{}
