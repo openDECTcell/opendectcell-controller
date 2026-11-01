@@ -200,10 +200,11 @@ const (
 	evCtl     // a bridge command for the stack (route.go)
 	evHome    // a handset enrolled into a chip slot of this cell and stays there: record idx is its
 	evInfo    // a handset's name or device profile changed: tell the stack that holds it
+	evDereg   // the user asks for the handset to be deregistered
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg"}[k]
 }
 
 type event struct {
@@ -270,6 +271,19 @@ func (c *Core) HandsetChanged(hid uuid.UUID) {
 	}
 	for _, id := range c.cellIDs() {
 		c.post(id, event{kind: evInfo, hid: hid, name: name, profile: profile})
+	}
+}
+
+// Deregister asks for the handset to be deregistered: the cell it was heard on
+// last (every cell when none is known) tells it to forget the base, whether it
+// answers or not the cell forgets the handset, and the store follows (Forget).
+func (c *Core) Deregister(hid uuid.UUID) {
+	if h, ok := c.lastHeard(hid); ok {
+		c.post(h.cell, event{kind: evDereg, hid: hid})
+		return
+	}
+	for _, id := range c.cellIDs() {
+		c.post(id, event{kind: evDereg, hid: hid})
 	}
 }
 

@@ -74,14 +74,16 @@ type Server struct {
 	// HandsetChanged, if set, is told when a handset's name or device profile
 	// was changed, so the DECT stacks that hold it follow.
 	HandsetChanged func(id uuid.UUID)
-	Settings       *settings.Store // nil: the default instance name, no settings pages
-	Stats          *stats.Store    // nil: no statistics pages
-	Handsets       *handset.Store  // nil: no handset pages
-	LogCtl         *logctl.Controller
-	Mailer         Mailer // nil: no mail
-	SMTPHost       string
-	StartedAt      time.Time
-	MetricsToken   string // empty: no /metrics
+	// HandsetDeregister, if set, asks the DECT cells to deregister the handset.
+	HandsetDeregister func(id uuid.UUID)
+	Settings          *settings.Store // nil: the default instance name, no settings pages
+	Stats             *stats.Store    // nil: no statistics pages
+	Handsets          *handset.Store  // nil: no handset pages
+	LogCtl            *logctl.Controller
+	Mailer            Mailer // nil: no mail
+	SMTPHost          string
+	StartedAt         time.Time
+	MetricsToken      string // empty: no /metrics
 
 	brands brandCache
 	tmpl   *template.Template

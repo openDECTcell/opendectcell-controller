@@ -717,6 +717,28 @@ func TestNameAndProfileReachTheStack(t *testing.T) {
 	})
 }
 
+// A request to deregister a handset reaches the stack that holds it, as the
+// library's control verb with the handset's record number on that cell.
+func TestDeregisterReachesTheStack(t *testing.T) {
+	hid := uuid.New()
+	recs := &fakeRecords{hs: []Handset{{ID: hid, Owner: uuid.New(), Rec: stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}}}}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.core.Deregister(uuid.New()) // a handset no cell holds: nothing happens
+	g.core.Deregister(hid)
+	waitFor(t, "the deregister line", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) {
+			for _, c := range f.ctls {
+				ok = ok || c.line == "deregister hs=1"
+			}
+		})
+		return ok
+	})
+}
+
 func TestListName(t *testing.T) {
 	for in, want := range map[string]string{
 		"Kitchen":                      "Kitchen",

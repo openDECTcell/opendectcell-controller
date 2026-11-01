@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -155,6 +156,16 @@ func (r *cellRun) handle(ev event) {
 	case evHome:
 		if r.st != nil && r.idxOf != nil {
 			r.idxOf[ev.hid], r.hidOf[ev.idx] = ev.idx, ev.hid
+		}
+	case evDereg:
+		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil && r.gen != nil {
+			if slot, ok := r.gen.slotOf[i]; ok {
+				r.log.Info("deregistering a handset on request", "handset", ev.hid, "record", slot)
+				if !r.bridge {
+					r.bridge = r.st.Ctl("bridge", r.core.now(), false)
+				}
+				r.st.Ctl("deregister hs="+strconv.FormatUint(uint64(slot), 10), r.core.now(), r.bridge)
+			}
 		}
 	case evInfo:
 		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil {

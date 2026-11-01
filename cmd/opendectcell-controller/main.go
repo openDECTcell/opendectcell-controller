@@ -319,6 +319,11 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 				dectCore.HandsetChanged(id)
 			}
 		},
+		HandsetDeregister: func(id uuid.UUID) {
+			if dectCore != nil {
+				dectCore.Deregister(id)
+			}
+		},
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}

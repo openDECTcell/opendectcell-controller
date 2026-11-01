@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
@@ -24,6 +25,7 @@ func (s *Server) handsetRoutes() {
 	s.mux.Handle("GET /handsets/{id}", s.requireUser(s.handsetPage))
 	s.mux.Handle("POST /handsets/{id}", s.requireUser(s.handsetSave))
 	s.mux.Handle("POST /handsets/{id}/lines/{line}", s.requireUser(s.handsetLine))
+	s.mux.Handle("POST /handsets/{id}/deregister", s.requireUser(s.handsetDeregister))
 }
 
 func (s *Server) handsetList(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -183,4 +185,21 @@ func (s *Server) handsetLine(w http.ResponseWriter, r *http.Request, u *auth.Use
 		return
 	}
 	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
+}
+
+// handsetDeregister asks the cells to deregister the handset: it forgets the
+// base and the base its record; the name, lines and history stay, so that
+// registering it again through the assistant makes it a handset of every cell.
+func (s *Server) handsetDeregister(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	h, ok := s.handsetByPath(w, r, u)
+	if !ok {
+		return
+	}
+	if s.HandsetDeregister == nil {
+		s.render(w, http.StatusServiceUnavailable, "handset.html", page{Title: h.Display(), User: u, Error: "Deregistering needs the DECT core."})
+		return
+	}
+	s.HandsetDeregister(h.ID)
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "handset.deregister", ObjectType: "handset", ObjectID: h.ID.String()})
+	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done=The+cells+are+deregistering+the+handset.+Register+it+again+when+it+says+so.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
 }

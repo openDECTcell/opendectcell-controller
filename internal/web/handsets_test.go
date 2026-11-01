@@ -14,11 +14,16 @@ import (
 
 func TestHandsetPages(t *testing.T) {
 	var changedMu sync.Mutex
-	var changed []uuid.UUID
+	var changed, deregistered []uuid.UUID
 	e := newEnvWith(t, func(s *Server) {
 		s.HandsetChanged = func(id uuid.UUID) {
 			changedMu.Lock()
 			changed = append(changed, id)
+			changedMu.Unlock()
+		}
+		s.HandsetDeregister = func(id uuid.UUID) {
+			changedMu.Lock()
+			deregistered = append(deregistered, id)
 			changedMu.Unlock()
 		}
 	})
@@ -123,6 +128,18 @@ func TestHandsetPages(t *testing.T) {
 	if _, pg := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(pg, `value="gigaset-c430a" selected`) {
 		t.Error("the profile is not selected on the page")
 	}
+	// deregistering: the owner's, not someone else's
+	if r := e.post(t, u, "/handsets/"+theirs.String()+"/deregister", nil); r.StatusCode != http.StatusNotFound {
+		t.Errorf("deregistering someone else's handset: %d", r.StatusCode)
+	}
+	if r := e.post(t, u, "/handsets/"+mine.String()+"/deregister", nil); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("deregister: %d", r.StatusCode)
+	}
+	changedMu.Lock()
+	if len(deregistered) != 1 || deregistered[0] != mine {
+		t.Errorf("the cells were asked for %v", deregistered)
+	}
+	changedMu.Unlock()
 	var name, ring string
 	var def *int
 	e.store.Pool.QueryRow(ctx, "SELECT display_name, dual_ring_policy, default_line FROM handset WHERE id = $1", mine).Scan(&name, &ring, &def)
