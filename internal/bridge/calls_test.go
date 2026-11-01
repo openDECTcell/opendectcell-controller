@@ -609,3 +609,12 @@ func TestMediaClosedByTheCell(t *testing.T) {
 	}
 	h.events <- core.CallEvent{Kind: core.CallReleased}
 }
+
+func TestSIPPtime(t *testing.T) {
+	for ms, want := range map[int]time.Duration{0: 0, 10: 10 * time.Millisecond, 20: 20 * time.Millisecond, 30: 30 * time.Millisecond,
+		40: 40 * time.Millisecond, 25: 0, 60: 0, 15: 0, -1: 0} {
+		if got := sipPtime(ms); got != want {
+			t.Errorf("%d ms: %v, want %v", ms, got, want)
+		}
+	}
+}

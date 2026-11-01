@@ -151,7 +151,7 @@ func (m *Manager) openMedia(ctx context.Context, ev core.CallEvent, c SIPCall) (
 		return nil, ctx.Err()
 	}
 	cfg := media.Config{Plan: plan, SIP: media.SIPLeg(c.Media()), SIPPayloadType: neg.Codec.PT,
-		SIPPtime: time.Duration(neg.PTime) * time.Millisecond, Cell: leg, CellPayload: cellPayloadType(plan), Log: m.log()}
+		SIPPtime: sipPtime(neg.PTime), Cell: leg, CellPayload: cellPayloadType(plan), Log: m.log()}
 	if neg.TelEventPT != 0 {
 		cfg.Events = c.Media()
 	}
@@ -174,6 +174,17 @@ func (m *Manager) openMedia(ctx context.Context, ev core.CallEvent, c SIPCall) (
 	}()
 	m.log().Info("a call's speech is open", "cell", ev.Cell, "media", id, "plan", plan.String(), "channel", ev.Channel)
 	return s, nil
+}
+
+// sipPtime is the packet time the SIP side negotiated, or 0 (20 ms) for one the
+// media pipeline cannot run on (it clocks 10, 20, 30 or 40 ms): the call then
+// carries speech at the usual 20 ms rather than none.
+func sipPtime(ms int) time.Duration {
+	switch ms {
+	case 10, 20, 30, 40:
+		return time.Duration(ms) * time.Millisecond
+	}
+	return 0
 }
 
 // closeMedia ends a call's speech: the pipeline, then the cell's flow.
