@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
@@ -187,26 +186,26 @@ func (s *Server) handsetLine(w http.ResponseWriter, r *http.Request, u *auth.Use
 	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
 }
 
-// handsetDeregister asks the cells to deregister the handset: it forgets the
-// base and the base its record; the name, lines and history stay, so that
-// registering it again through the assistant makes it a handset of every cell.
-// force does not ask the handset (it may be out of range).
+// handsetDeregister removes the handset: the cells are told to drop its record
+// (the one that holds it asks the handset first, unless force: it may be out of
+// range), then its row, lines and history go. The handset is registered again
+// as a new one, which makes it a handset of every cell.
 func (s *Server) handsetDeregister(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	h, ok := s.handsetByPath(w, r, u)
 	if !ok {
 		return
 	}
-	if s.HandsetDeregister == nil {
-		s.render(w, http.StatusServiceUnavailable, "handset.html", page{Title: h.Display(), User: u, Error: "Deregistering needs the DECT core."})
+	force := r.PostFormValue("force") == "1"
+	if s.HandsetDeregister != nil {
+		s.HandsetDeregister(h.ID, force)
+	}
+	if err := s.Handsets.Delete(r.Context(), u, h.ID); err != nil {
+		s.handsetFail(w, r, u, h, err)
 		return
 	}
-	force := r.PostFormValue("force") == "1"
-	s.HandsetDeregister(h.ID, force)
-	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "handset.deregister", ObjectType: "handset", ObjectID: h.ID.String(),
-		Details: map[string]any{"force": force}})
-	msg := "The+cells+are+asking+the+handset+to+deregister.+If+it+does+not+answer+(out+of+range,+switched+off)+they+forget+it+after+about+30+seconds;+reload+to+see+it."
+	msg := "The+handset+is+removed.+The+cells+ask+it+to+deregister;+one+that+is+out+of+range+is+forgotten+after+about+30+seconds.+Delete+the+base+on+the+handset+too."
 	if force {
-		msg = "The+cells+forget+the+handset+now,+without+asking+it.+Delete+the+base+on+the+handset+too."
+		msg = "The+handset+is+removed+and+the+cells+forget+it+now.+Delete+the+base+on+the+handset+too."
 	}
-	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done="+msg, http.StatusSeeOther) //nolint:gosec // G710: our UUID
+	http.Redirect(w, r, "/handsets?done="+msg, http.StatusSeeOther)
 }

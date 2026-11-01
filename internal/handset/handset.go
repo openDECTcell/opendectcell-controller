@@ -222,6 +222,31 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 	})
 }
 
+// Delete removes the handset: its row, lines and history (the call log keeps
+// its entries without it). The cells' records are the DECT core's to drop; this
+// leaves their slots empty in the store.
+func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var owner uuid.UUID
+		if err := tx.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1 FOR UPDATE", id).Scan(&owner); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if auth.RequireAccess(u, &owner) != nil {
+			return ErrNotFound
+		}
+		if _, err := tx.Exec(ctx, "UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now() WHERE handset_id = $1", id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM handset WHERE id = $1", id); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Action: "handset.delete", ObjectType: "handset", ObjectID: id.String()})
+	})
+}
+
 // Account is a phone line account a handset line may use.
 type Account struct {
 	ID    uuid.UUID

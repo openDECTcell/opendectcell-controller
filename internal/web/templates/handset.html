@@ -66,11 +66,11 @@
         {{else}}<tr><td colspan="3" class="text-secondary">The handset has not changed cell since this was recorded.</td></tr>{{end}}
       </tbody></table></div>
       <div class="card-footer">
-        <p class="text-secondary small">Deregistering makes the handset forget the base and the cells forget the handset. Its name and lines stay.{{if not .H.Pooled}} Register it again afterwards and it works on every cell.{{end}}</p>
+        <p class="text-secondary small">Removing deletes the handset here: its name, lines and history. Register it again afterwards{{if not .H.Pooled}} and it works on every cell{{end}}.</p>
         <div class="d-flex flex-wrap gap-2">
-          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Ask the handset to deregister? If it is out of range the cells forget it after about 30 seconds.">
-            <button type="submit" class="btn btn-outline-danger btn-sm">Deregister</button></form>
-          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Remove this handset from the cells without asking it? Use this when it is out of range or switched off. Delete the base on the handset yourself.">
+          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Remove this handset? It is asked to deregister, and its name, lines and history are deleted here.">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button></form>
+          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Remove this handset without asking it? Use this when it is out of range or switched off. Its name, lines and history are deleted here; delete the base on the handset yourself.">
             <input type="hidden" name="force" value="1">
             <button type="submit" class="btn btn-outline-danger btn-sm">Remove without the handset</button></form>
         </div>

@@ -135,26 +135,36 @@ func TestHandsetPages(t *testing.T) {
 	if _, pg := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(pg, `value="gigaset-c430a" selected`) {
 		t.Error("the profile is not selected on the page")
 	}
-	// deregistering: the owner's, not someone else's
+	// removing: the owner's handset only; the cells are asked, the row goes
 	if r := e.post(t, u, "/handsets/"+theirs.String()+"/deregister", nil); r.StatusCode != http.StatusNotFound {
-		t.Errorf("deregistering someone else's handset: %d", r.StatusCode)
+		t.Errorf("removing someone else's handset: %d", r.StatusCode)
 	}
-	if r := e.post(t, u, "/handsets/"+mine.String()+"/deregister", nil); r.StatusCode != http.StatusSeeOther {
-		t.Errorf("deregister: %d", r.StatusCode)
+	old, older := ins(uid, 3, "Old phone"), ins(uid, 4, "Older phone")
+	e.store.Pool.Exec(ctx, "INSERT INTO cell_slot (cell_id, slot, handset_id, state) VALUES ($1, 2, $2, 'present')", hall, old)
+	if r := e.post(t, u, "/handsets/"+old.String()+"/deregister", nil); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("remove: %d", r.StatusCode)
+	}
+	if r := e.post(t, u, "/handsets/"+older.String()+"/deregister", url.Values{"force": {"1"}}); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("forced remove: %d", r.StatusCode)
 	}
 	changedMu.Lock()
-	if len(deregistered) != 1 || deregistered[0] != mine || forced[0] {
+	if len(deregistered) != 2 || deregistered[0] != old || deregistered[1] != older || forced[0] || !forced[1] {
 		t.Errorf("the cells were asked for %v %v", deregistered, forced)
 	}
 	changedMu.Unlock()
-	if r := e.post(t, u, "/handsets/"+mine.String()+"/deregister", url.Values{"force": {"1"}}); r.StatusCode != http.StatusSeeOther {
-		t.Errorf("forced deregister: %d", r.StatusCode)
+	var n int
+	e.store.Pool.QueryRow(ctx, "SELECT count(*) FROM handset WHERE id = ANY($1)", []uuid.UUID{old, older}).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d removed handsets are still in the list", n)
 	}
-	changedMu.Lock()
-	if len(forced) != 2 || !forced[1] {
-		t.Errorf("the force was not passed on: %v", forced)
+	var state string
+	e.store.Pool.QueryRow(ctx, "SELECT state FROM cell_slot WHERE cell_id = $1 AND slot = 2", hall).Scan(&state)
+	if state != "empty" {
+		t.Errorf("the slot of a removed handset is %q", state)
 	}
-	changedMu.Unlock()
+	if resp, _ := e.get(t, u, "/handsets/"+old.String()); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("the page of a removed handset: %d", resp.StatusCode)
+	}
 	var name, ring string
 	var def *int
 	e.store.Pool.QueryRow(ctx, "SELECT display_name, dual_ring_policy, default_line FROM handset WHERE id = $1", mine).Scan(&name, &ring, &def)
