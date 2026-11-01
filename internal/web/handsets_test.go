@@ -6,13 +6,22 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
 )
 
 func TestHandsetPages(t *testing.T) {
-	e := newEnv(t)
+	var changedMu sync.Mutex
+	var changed []uuid.UUID
+	e := newEnvWith(t, func(s *Server) {
+		s.HandsetChanged = func(id uuid.UUID) {
+			changedMu.Lock()
+			changed = append(changed, id)
+			changedMu.Unlock()
+		}
+	})
 	var uid, aid uuid.UUID
 	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
 	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'admin'").Scan(&aid)
@@ -94,6 +103,26 @@ func TestHandsetPages(t *testing.T) {
 	if r := e.post(t, u, "/handsets/"+mine.String(), url.Values{"name": {"x"}, "dual_ring": {"shout"}}); r.StatusCode != http.StatusBadRequest {
 		t.Errorf("bad ring policy: %d", r.StatusCode)
 	}
+	// the device profile: only the catalogue's, and the stacks are told
+	if r := e.post(t, u, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen phone"}, "default_line": {"1"}, "dual_ring": {"busy"}, "profile": {"nokia-3310"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("an unknown profile: %d", r.StatusCode)
+	}
+	if r := e.post(t, u, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen phone"}, "default_line": {"1"}, "dual_ring": {"busy"}, "profile": {"gigaset-c430a"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("a known profile: %d", r.StatusCode)
+	}
+	var prof, model string
+	e.store.Pool.QueryRow(ctx, "SELECT coalesce(profile, ''), coalesce(model, '') FROM handset WHERE id = $1", mine).Scan(&prof, &model)
+	if prof != "gigaset-c430a" || model != "Gigaset C430A" {
+		t.Errorf("stored profile %q model %q", prof, model)
+	}
+	changedMu.Lock()
+	if len(changed) == 0 || changed[len(changed)-1] != mine {
+		t.Errorf("the stacks were not told: %v", changed)
+	}
+	changedMu.Unlock()
+	if _, pg := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(pg, `value="gigaset-c430a" selected`) {
+		t.Error("the profile is not selected on the page")
+	}
 	var name, ring string
 	var def *int
 	e.store.Pool.QueryRow(ctx, "SELECT display_name, dual_ring_policy, default_line FROM handset WHERE id = $1", mine).Scan(&name, &ring, &def)
@@ -112,7 +141,8 @@ func TestHandsetPages(t *testing.T) {
 	if r := e.post(t, a, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen"}, "dual_ring": {"call_waiting"}}); r.StatusCode != http.StatusSeeOther {
 		t.Errorf("admin edit: %d", r.StatusCode)
 	}
-	if resp, body := e.get(t, u, "/handsets/register"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="reg-go"`) {
+	if resp, body := e.get(t, u, "/handsets/register"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="reg-go"`) ||
+		!strings.Contains(body, `id="reg-name"`) || !strings.Contains(body, "Gigaset A540") || !strings.Contains(body, "Manufacturer") {
 		t.Errorf("register page: %d", resp.StatusCode)
 	}
 }

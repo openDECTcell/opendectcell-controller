@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 )
 
@@ -34,8 +35,29 @@ func (s *Server) handsetList(w http.ResponseWriter, r *http.Request, u *auth.Use
 	s.render(w, http.StatusOK, "handsets.html", page{Title: "Handsets", User: u, Data: hs, Notice: r.FormValue("done")})
 }
 
+// profileMaker is one manufacturer with its models, for the pickers (a
+// manufacturer first, then a model, as in the LuCI app).
+type profileMaker struct {
+	ID, Name string
+	Models   []profiles.Profile
+}
+
+func profileMakers() []profileMaker {
+	var out []profileMaker
+	for _, m := range profiles.Default.Manufacturers() {
+		out = append(out, profileMaker{ID: m.ID, Name: m.Name, Models: profiles.Default.Models(m.ID)})
+	}
+	return out
+}
+
+type registerPage struct {
+	Available bool
+	Makers    []profileMaker
+}
+
 func (s *Server) handsetRegister(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	s.render(w, http.StatusOK, "handset_register.html", page{Title: "Register a handset", User: u, Data: s.Registrations != nil})
+	s.render(w, http.StatusOK, "handset_register.html", page{Title: "Register a handset", User: u,
+		Data: registerPage{Available: s.Registrations != nil, Makers: profileMakers()}})
 }
 
 type handsetPage struct {
@@ -43,11 +65,12 @@ type handsetPage struct {
 	Accounts []handset.Account
 	Line     map[int]*handset.Line
 	Moves    []handset.Move
+	Makers   []profileMaker
 }
 
 func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, error) {
 	accts, err := s.Handsets.Accounts(r.Context(), h.OwnerID)
-	d := handsetPage{H: h, Accounts: accts, Line: map[int]*handset.Line{}}
+	d := handsetPage{H: h, Accounts: accts, Line: map[int]*handset.Line{}, Makers: profileMakers()}
 	if err == nil {
 		d.Moves, err = s.Handsets.Moves(r.Context(), h.ID, 10)
 	}
@@ -120,9 +143,19 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 		}
 		up.DefaultLine = &n
 	}
+	if v, ok := r.PostForm["profile"]; ok && len(v) == 1 {
+		if v[0] != "" && !profileKnown(v[0]) {
+			s.handsetFail(w, r, u, h, handset.ErrInvalid)
+			return
+		}
+		up.Profile, up.Model = &v[0], profiles.Default.Label(v[0])
+	}
 	if err := s.Handsets.Update(r.Context(), u, h.ID, up); err != nil {
 		s.handsetFail(w, r, u, h, err)
 		return
+	}
+	if s.HandsetChanged != nil && (up.Name != h.Name || (up.Profile != nil && *up.Profile != h.Profile)) {
+		s.HandsetChanged(h.ID)
 	}
 	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
 }

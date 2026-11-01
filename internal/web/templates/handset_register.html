@@ -1,21 +1,39 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "handset_register.html"}}{{template "head" .}}
-{{if not .Data}}<div class="alert alert-warning">Registration is not available: this controller runs without the DECT core.</div>{{end}}
-<div class="card" id="reg" data-available="{{.Data}}">
+{{with .Data}}
+{{if not .Available}}<div class="alert alert-warning">Registration is not available: this controller runs without the DECT core.</div>{{end}}
+<div class="card" id="reg" data-available="{{.Available}}">
   <div class="card-body">
+    <ol class="steps steps-counter mb-4" id="reg-steps">
+      <li class="step-item active" id="step-1">Handset</li>
+      <li class="step-item" id="step-2">PIN</li>
+      <li class="step-item" id="step-3">Done</li>
+    </ol>
     <div id="reg-start">
-      <p>Registering opens a window of one minute on every base station that is online. You get a PIN to type into the handset.</p>
+      <p>Tell the controller what you are registering. Then it opens a window of one minute on every base station that is online, and you get a PIN to type into the handset.</p>
       <div class="mb-3 narrow">
-        <label class="form-label" for="reg-model">Handset model <span class="text-secondary">(optional)</span></label>
-        <input class="form-control" id="reg-model" list="reg-models" maxlength="64" autocomplete="off" placeholder="Gigaset A540">
-        <datalist id="reg-models">
-          <option value="Gigaset A540"><option value="Gigaset C430A"><option value="Gigaset AS690H">
-          <option value="Gigaset (other)"><option value="AVM FRITZ!Fon"><option value="Panasonic KX-TGxxx">
-          <option value="Siemens Gigaset"><option value="Other">
-        </datalist>
-        <div class="form-hint">Pick one or type it. The controller keeps it with the handset; some handsets need workarounds that depend on the model.</div>
+        <label class="form-label required" for="reg-name">Name</label>
+        <input class="form-control" id="reg-name" maxlength="15" autocomplete="off" placeholder="Kitchen">
+        <div class="form-hint">The name the other handsets show in their lists, at most 15 characters.</div>
       </div>
-      <button type="button" id="reg-go" class="btn btn-primary" {{if not .Data}}disabled{{end}}>Start registration</button>
+      <div class="mb-3 narrow">
+        <label class="form-label required" for="reg-mfr">Manufacturer</label>
+        <select class="form-select" id="reg-mfr">
+          <option value="" selected disabled>Choose…</option>
+          {{range .Makers}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          <option value="-">Not listed</option>
+        </select>
+      </div>
+      <div class="mb-3 narrow" id="reg-model-box" hidden>
+        <label class="form-label required" for="reg-model">Model</label>
+        <select class="form-select" id="reg-model">
+          <option value="" selected disabled>Choose…</option>
+          {{range $m := .Makers}}{{range .Models}}<option value="{{.ID}}" data-mfr="{{$m.ID}}" hidden>{{.Name}}</option>{{end}}
+          <option value="{{.ID}}" data-mfr="{{.ID}}" hidden>Another {{.Name}} model</option>{{end}}
+        </select>
+        <div class="form-hint">The profile tells the base how this model behaves. A model that is not listed works with the standard behaviour; ask for it to be added.</div>
+      </div>
+      <button type="button" id="reg-go" class="btn btn-primary" disabled>Start registration</button>
       <noscript><p class="text-secondary mt-3">This page needs JavaScript to show the PIN and wait for the handset.</p></noscript>
     </div>
     <div id="reg-open" hidden>
@@ -25,6 +43,7 @@
       <ol>
         <li>On the handset: Menu, Settings, Registration, Register handset.</li>
         <li>Choose the base station, then enter the PIN above.</li>
+        <li>Some handsets try the PIN 0000 first and fail once; then they ask for the PIN again.</li>
       </ol>
       <button type="button" id="reg-cancel" class="btn btn-outline-secondary">Cancel</button>
     </div>
@@ -32,4 +51,5 @@
     <div id="reg-err" class="alert alert-danger mt-3" hidden></div>
   </div>
 </div>
+{{end}}
 {{template "foot" .}}{{end}}

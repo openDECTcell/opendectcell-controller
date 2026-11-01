@@ -229,6 +229,31 @@ func (x *Host) Recycle(i int, tpui [3]byte) Recycled {
 // being set up.
 func (x *Host) Quiet() bool { return C.cdect_host_quiet(x.c) != 0 }
 
+// SetName sets record i's name in the Internal Names List; false: the library
+// refuses it (empty, or longer than 15 octets).
+func (x *Host) SetName(i int, name string) bool {
+	cs := C.CString(name)
+	defer C.free(unsafe.Pointer(cs))
+	ok := C.cdect_host_set_name(x.c, C.unsigned(i), cs) == 0
+	x.raise()
+	return ok
+}
+
+// SetProfile gives record i the behaviour of a handset model, from the texts of
+// its manufacturer's and its own profile file (either may be empty).
+func (x *Host) SetProfile(i int, mfr, dev string) bool {
+	var m, d *C.char
+	if mfr != "" {
+		m = C.CString(mfr)
+		defer C.free(unsafe.Pointer(m))
+	}
+	if dev != "" {
+		d = C.CString(dev)
+		defer C.free(unsafe.Pointer(d))
+	}
+	return C.cdect_host_set_profile(x.c, C.unsigned(i), m, C.size_t(len(mfr)), d, C.size_t(len(dev))) == 0
+}
+
 // SetLocateValidity changes how long a location registration holds, in units
 // of 40.96 s, for the links set up from now on; 0: no limit.
 func (x *Host) SetLocateValidity(units uint) {

@@ -54,6 +54,9 @@ type fakeStack struct {
 	dropped  []int
 	busy     bool
 	validity []uint
+	// names and profiles the core gave the records
+	names map[int]string
+	profs map[int][2]string
 	// recycled records, and what Recycle answers when the stack is quiet
 	recycled []int
 	recycle  stack.Recycled
@@ -175,6 +178,26 @@ func (f *fakeStack) Quiet() bool {
 	return !f.busy
 }
 
+func (f *fakeStack) SetName(i int, name string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.names == nil {
+		f.names = map[int]string{}
+	}
+	f.names[i] = name
+	return true
+}
+
+func (f *fakeStack) SetProfile(i int, mfr, dev string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.profs == nil {
+		f.profs = map[int][2]string{}
+	}
+	f.profs[i] = [2]string{mfr, dev}
+	return true
+}
+
 func (f *fakeStack) SetLocateValidity(u uint) {
 	f.mu.Lock()
 	f.validity = append(f.validity, u)
@@ -255,13 +278,21 @@ type fakeRecords struct {
 	placed       []uuid.UUID
 	unplaced     []uuid.UUID
 	unplaceHook  func()
-	chipFreed    []uuid.UUID // ReleaseChipSlot
-	full         bool        // PlaceHandset says the cell is full
+	chipFreed    []uuid.UUID             // ReleaseChipSlot
+	info         map[uuid.UUID][2]string // HandsetInfo: name, profile
+	full         bool                    // PlaceHandset says the cell is full
 	known        map[uuid.UUID]bool
 	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
 	saved        []stack.Record
 	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
+}
+
+func (r *fakeRecords) HandsetInfo(_ context.Context, id uuid.UUID) (string, string, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.info[id]
+	return v[0], v[1], ok, nil
 }
 
 func (r *fakeRecords) CellRecords(_ context.Context, cell uuid.UUID, _ int) ([]Handset, []uuid.UUID, error) {
@@ -648,6 +679,58 @@ func TestResumeKeepsTheStack(t *testing.T) {
 		g.stack(1).get(func(f *fakeStack) { c = f.closed })
 		return c
 	})
+}
+
+// A handset's name and device profile reach the stack: at start, when it is
+// admitted to the table, and when they change.
+func TestNameAndProfileReachTheStack(t *testing.T) {
+	hid := uuid.New()
+	recs := &fakeRecords{hs: []Handset{{ID: hid, Owner: uuid.New(), Name: "Kitchen", Profile: "gigaset-a540",
+		Rec: stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}}}},
+		info: map[uuid.UUID][2]string{hid: {"Kitchen", "gigaset-a540"}}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) {
+		if f.names[0] != "Kitchen" {
+			t.Errorf("name at start: %q", f.names[0])
+		}
+		if p := f.profs[0]; p[0] == "" || p[1] == "" {
+			t.Errorf("a device profile needs both files: %d %d", len(p[0]), len(p[1]))
+		}
+	})
+
+	recs.mu.Lock()
+	recs.info[hid] = [2]string{"Küche und Wohnzimmer Telefon", ""}
+	recs.mu.Unlock()
+	g.core.HandsetChanged(hid)
+	waitFor(t, "the new name", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = f.names[0] == "Küche und Wohn" })
+		return ok
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		if p := f.profs[0]; p != ([2]string{}) {
+			t.Errorf("no profile is the standard behaviour: %v", p)
+		}
+	})
+}
+
+func TestListName(t *testing.T) {
+	for in, want := range map[string]string{
+		"Kitchen":                      "Kitchen",
+		"  Kitchen \a ":                "Kitchen",
+		"":                             "",
+		"123456789012345":              "123456789012345",
+		"1234567890123456":             "123456789012345",
+		"Küche und Wohnzimmer Telefon": "Küche und Wohn",
+		"ääääääääää":                   "äääääää",
+	} {
+		if got := listName(in); got != want {
+			t.Errorf("listName(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 func TestEnrolmentSaves(t *testing.T) {

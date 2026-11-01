@@ -152,6 +152,14 @@ func (r *cellRun) handle(ev event) {
 		r.fetched(ev)
 	case evEvict:
 		r.evict(ev.hid)
+	case evHome:
+		if r.st != nil && r.idxOf != nil {
+			r.idxOf[ev.hid], r.hidOf[ev.idx] = ev.idx, ev.hid
+		}
+	case evInfo:
+		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil {
+			r.applyInfo(i, ev.name, ev.profile)
+		}
 	case evCtl:
 		r.ctl(ev)
 	case evReload:
@@ -572,6 +580,11 @@ func (r *cellRun) restart() {
 		r.log.Error("DECT stack did not start", "err", err)
 		return
 	}
+	// Start gives every record the standard behaviour: names and device
+	// profiles go on top of that.
+	for k, h := range hs {
+		r.applyInfo(k, h.Name, h.Profile)
+	}
 	r.bring = bringUp(r.up.StubVersion, r.up.RadioState == 1, r.resumed)
 	r.nextAt = time.Now()
 	r.log.Info("DECT stack started", "records", len(hs), "free", free, "validity", r.units, "stub", r.up.StubVersion)
@@ -724,6 +737,10 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 				log.Info("handset enrolled: record stored", "handset", hid, "record", j.rec.Slot, "pooled", saved.Pooled)
 			}
 			ids[j.i] = hid
+			if saved.Enrolled && !saved.Pooled {
+				// it stays in this chip slot: the cell's goroutine learns whose record it is
+				core.post(id, event{kind: evHome, hid: hid, idx: j.i})
+			}
 			if j.window != uuid.Nil && core.Reg != nil {
 				core.Reg.Enrolled(j.window, hid)
 			}

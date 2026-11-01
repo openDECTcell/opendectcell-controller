@@ -18,7 +18,9 @@ func TestRegistrationWindowAPI(t *testing.T) {
 	e.login(t, admin, "admin", "admin password")
 	ua, aa := newAPIClient(t, e, user), newAPIClient(t, e, admin)
 
-	w := ua.do("POST", "/registration-windows", map[string]any{}, 201)
+	ua.do("POST", "/registration-windows", map[string]any{}, 400)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Kitchen", "profile": "nokia-3310"}, 400)
+	w := ua.do("POST", "/registration-windows", map[string]any{"name": "Kitchen", "profile": "gigaset-a540"}, 201)
 	if pin, _ := w["pin"].(string); !regexp.MustCompile(`^[0-9]{8}$`).MatchString(pin) {
 		t.Errorf("pin %q", pin)
 	}
@@ -26,20 +28,20 @@ func TestRegistrationWindowAPI(t *testing.T) {
 		t.Errorf("window %v", w)
 	}
 	id := w["id"].(string)
-	ua.do("POST", "/registration-windows", map[string]any{"digits": 6}, 409)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Hall", "digits": 6}, 409)
 	if g := ua.do("GET", "/registration-windows/"+id, nil, 200); g["pin"] != nil || g["state"] != "open" {
 		t.Errorf("get %v: the PIN is shown once", g)
 	}
 	aa.do("GET", "/registration-windows/"+id, nil, 200)
 
 	me := ua.do("GET", "/me", nil, 200)
-	ua.do("POST", "/registration-windows", map[string]any{"owner_id": me["id"]}, 409)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Hall", "owner_id": me["id"]}, 409)
 	adm := aa.do("GET", "/me", nil, 200)
-	ua.do("POST", "/registration-windows", map[string]any{"owner_id": adm["id"]}, 403)
-	ua.do("POST", "/registration-windows", map[string]any{"digits": 4}, 400)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Hall", "owner_id": adm["id"]}, 403)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Hall", "digits": 4}, 400)
 
 	// an admin opens a window for the user; the user may see it
-	aw := aa.do("POST", "/registration-windows", map[string]any{"owner_id": me["id"], "digits": 6}, 201)
+	aw := aa.do("POST", "/registration-windows", map[string]any{"name": "Bedroom", "owner_id": me["id"], "digits": 6}, 201)
 	if pin, _ := aw["pin"].(string); len(pin) != 6 || aw["owner_id"] != me["id"] {
 		t.Errorf("admin's window %v", aw)
 	}
@@ -49,5 +51,6 @@ func TestRegistrationWindowAPI(t *testing.T) {
 	if g := ua.do("GET", "/registration-windows/"+id, nil, 200); g["state"] != "cancelled" {
 		t.Errorf("after cancel %v", g)
 	}
-	ua.do("POST", "/registration-windows", nil, 201)
+	ua.do("POST", "/registration-windows", nil, 400)
+	ua.do("POST", "/registration-windows", map[string]any{"name": "Hall"}, 201)
 }

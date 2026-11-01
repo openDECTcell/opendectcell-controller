@@ -4,6 +4,7 @@
  * dect-stubd function it follows (third_party/opendectcell/src/stubd/dect-stubd.c
  * at the submodule's commit); where the controller differs, it says so.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -840,6 +841,53 @@ int cdect_host_recycle(struct cdect_host *c, unsigned i)
 int cdect_host_quiet(const struct cdect_host *c)
 {
 	return dect_base_quiet(&c->b);
+}
+
+/* dect_base_ctl_admin()'s "rename", without the control line. */
+int cdect_host_set_name(struct cdect_host *c, unsigned i, const char *name)
+{
+	if (i >= c->b.n_hs || !dect_base_name_ok(name))
+		return -1;
+	snprintf(c->b.name[i], sizeof(c->b.name[i]), "%s", name);
+	if (c->started) {
+		dect_base_names_spread(&c->b, i);
+		dect_base_names_notify(&c->b);
+	}
+	return 0;
+}
+
+static void profile_report(void *ctx, unsigned line, const char *msg)
+{
+	struct cdect_host *c = ctx;
+
+	dect_base_log(&c->b, "profile: line %u: %s", line, msg);
+}
+
+/* dect-stubd's way: defaults, the manufacturer's file, the device's. */
+int cdect_host_set_profile(struct cdect_host *c, unsigned i, const char *mfr, size_t mfr_len,
+			   const char *dev, size_t dev_len)
+{
+	struct dect_profile *m = NULL, *d = NULL;
+	int rc = -1;
+
+	if (i >= c->b.n_hs)
+		return -1;
+	if (mfr_len) {
+		m = malloc(sizeof(*m));
+		if (!m || dect_profile_parse(mfr, mfr_len, m, profile_report, c))
+			goto out;
+	}
+	if (dev_len) {
+		d = malloc(sizeof(*d));
+		if (!d || dect_profile_parse(dev, dev_len, d, profile_report, c))
+			goto out;
+	}
+	dect_profile_resolve(m, d, NULL, &c->b.prof[i]);
+	rc = 0;
+out:
+	free(m);
+	free(d);
+	return rc;
 }
 
 void cdect_host_tick(struct cdect_host *c, uint64_t now)

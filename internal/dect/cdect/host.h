@@ -114,6 +114,15 @@ void cdect_host_resume(struct cdect_host *c, uint64_t now);
 int cdect_host_drop(struct cdect_host *c, unsigned i);
 int cdect_host_recycle(struct cdect_host *c, unsigned i);
 int cdect_host_quiet(const struct cdect_host *c);
+/* Record i's name in the Internal Names List: 0, or -1 if the library refuses it. */
+int cdect_host_set_name(struct cdect_host *c, unsigned i, const char *name);
+/*
+ * Record i behaves as the handset model of two profile files (either may be
+ * empty): 0, or -1 for a file the library cannot read (the record keeps the
+ * standard behaviour).
+ */
+int cdect_host_set_profile(struct cdect_host *c, unsigned i, const char *mfr, size_t mfr_len,
+			   const char *dev, size_t dev_len);
 /* One loop pass: the host's steps and dect_base_tick(). */
 void cdect_host_tick(struct cdect_host *c, uint64_t now);
 /* When record i last had C-plane traffic, on the stack's clock; 0: never. */

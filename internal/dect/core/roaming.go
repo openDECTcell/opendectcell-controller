@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 )
 
 // A cell's table above the chip's slots is a working set (docs/roaming.md
@@ -124,6 +126,7 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 		return false
 	}
 	r.st.AddRecord(i, h.Rec)
+	r.applyInfo(i, h.Name, h.Profile)
 	r.gen.place(i, h.Rec.Slot, h.Owner)
 	r.gen.job(job{kind: jobTrack, i: i, hid: h.ID})
 	r.idxOf[h.ID], r.hidOf[i] = i, h.ID
@@ -275,4 +278,46 @@ func (r *cellRun) sweep(now time.Time) {
 // withSlot puts the handset's record number on this cell into a command.
 func withSlot(line string, slot uint) string {
 	return strings.ReplaceAll(line, "{hs}", strconv.FormatUint(uint64(slot), 10))
+}
+
+// listName is a handset's name as its Internal Names List takes it: at most
+// 15 octets of UTF-8, cut at a character.
+func listName(s string) string {
+	s = strings.TrimSpace(strings.Map(func(c rune) rune {
+		if c < ' ' || c == 0x7f {
+			return -1
+		}
+		return c
+	}, s))
+	const max = 15
+	if len(s) <= max {
+		return s
+	}
+	n := 0
+	for i := range s {
+		if i > max {
+			break
+		}
+		n = i
+	}
+	return s[:n]
+}
+
+// applyInfo gives record i of the stack its name for the handsets' lists and
+// the habits of its device profile.
+func (r *cellRun) applyInfo(i int, name, profile string) {
+	if n := listName(name); n != "" && !r.st.SetName(i, n) {
+		r.log.Warn("the stack refused a handset's name", "record", i)
+	}
+	cat := r.core.Profiles
+	if cat == nil {
+		cat = profiles.Default
+	}
+	mfr, dev, ok := cat.Texts(profile)
+	switch {
+	case !ok:
+		r.log.Warn("a handset has a device profile this controller does not know: it keeps the standard behaviour", "record", i, "profile", profile)
+	case !r.st.SetProfile(i, mfr, dev):
+		r.log.Warn("the stack could not read a handset's device profile", "record", i, "profile", profile)
+	}
 }

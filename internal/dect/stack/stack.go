@@ -174,6 +174,13 @@ type Stack interface {
 	// Quiet reports whether the stack is idle: no link, no call, nothing
 	// being set up.
 	Quiet() bool
+	// SetName sets record i's name in the Internal Names List. False: the
+	// stack refuses it (empty, or longer than 15 octets).
+	SetName(i int, name string) bool
+	// SetProfile gives record i the behaviour of a handset model, from the
+	// texts of its manufacturer's and its own profile file (either may be
+	// empty: the standard behaviour). False: the stack cannot read them.
+	SetProfile(i int, mfr, dev string) bool
 	// SetLocateValidity sets the location validity in units of 40.96 s for
 	// the links from now on; 0: none.
 	SetLocateValidity(units uint)

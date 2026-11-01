@@ -70,7 +70,8 @@ type Window struct {
 	ClosedAt  time.Time
 	Cell      uuid.UUID // where the handset registered, once completed
 	Handset   uuid.UUID // once stored
-	Model     string    // what the user said the handset is, before registering
+	Name      string    // what the user called the handset, before registering
+	Profile   string    // the id of the device profile they chose ("": none)
 }
 
 // entry is one PIN index.
@@ -273,14 +274,16 @@ func (g *Registry) Claim(cell uuid.UUID, pin1 uint) (owner, window uuid.UUID, ok
 	return w.Owner, w.ID, true
 }
 
-// MaxModel is the longest model text a window takes.
-const MaxModel = 64
+// MaxName is the longest handset name a window takes.
+const MaxName = 64
 
-// SetModel notes what the handset of an open window is, as the user typed it
-// (empty: unsaid). False: no such open window, or the text is not allowed.
-func (g *Registry) SetModel(window uuid.UUID, model string) bool {
-	model = strings.TrimSpace(model)
-	if len([]rune(model)) > MaxModel || strings.ContainsFunc(model, unicode.IsControl) {
+// SetHandset notes what the handset of an open window is, as the user said
+// before registering: its name and the id of its device profile ("": none).
+// False: no such open window, or the name is empty, too long or has a control
+// character.
+func (g *Registry) SetHandset(window uuid.UUID, name, profile string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > MaxName || strings.ContainsFunc(name, unicode.IsControl) {
 		return false
 	}
 	g.mu.Lock()
@@ -289,7 +292,7 @@ func (g *Registry) SetModel(window uuid.UUID, model string) bool {
 	if !ok || w.State != Open {
 		return false
 	}
-	w.Model = model
+	w.Name, w.Profile = name, profile
 	return true
 }
 

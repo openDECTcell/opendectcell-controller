@@ -134,7 +134,36 @@
     var win = null, timer = null;
     var show = function (name) {
       ["reg-start", "reg-open", "reg-done"].forEach(function (n) { $(n).hidden = n !== name; });
+      var at = { "reg-start": 1, "reg-open": 2, "reg-done": 3 }[name];
+      [1, 2, 3].forEach(function (k) {
+        var li = $("step-" + k);
+        li.classList.toggle("active", k === at);
+      });
     };
+    // the profile the pickers stand for: a model, another model of a
+    // manufacturer, or none ("not listed"); undefined until chosen
+    var chosenProfile = function () {
+      var mfr = $("reg-mfr").value, model = $("reg-model").value;
+      if (mfr === "-") { return ""; }
+      return mfr && model ? model : undefined;
+    };
+    var ready = function () {
+      $("reg-go").disabled = !($("reg-name").value.trim() && chosenProfile() !== undefined && reg.getAttribute("data-available") === "true");
+    };
+    $("reg-mfr").addEventListener("change", function () {
+      var mfr = $("reg-mfr").value, any = false;
+      $("reg-model").value = "";
+      Array.prototype.forEach.call($("reg-model").options, function (o) {
+        if (!o.value) { return; }
+        o.hidden = o.getAttribute("data-mfr") !== mfr;
+        any = any || !o.hidden;
+      });
+      $("reg-model-box").hidden = !any;
+      ready();
+    });
+    $("reg-model").addEventListener("change", ready);
+    $("reg-name").addEventListener("input", ready);
+    ready();
     var fail = function (msg) { $("reg-err").textContent = msg; $("reg-err").hidden = false; };
     var stop = function () { if (timer) { window.clearInterval(timer); timer = null; } };
     var poll = function () {
@@ -147,10 +176,10 @@
             stop(); show("reg-done");
             $("reg-done").innerHTML = "";
             var p = document.createElement("p");
-            p.textContent = "The handset is registered. ";
+            p.textContent = "The handset is registered as " + $("reg-name").value.trim() + ". ";
             var a = document.createElement("a");
             a.href = w.handset_id ? "/handsets/" + w.handset_id : "/handsets";
-            a.textContent = "Name it and give it a line";
+            a.textContent = "Give it a phone line";
             p.appendChild(a);
             $("reg-done").appendChild(p);
           } else if (w.state !== "open") {
@@ -165,7 +194,7 @@
       window.fetch("/api/v1/registration-windows", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ digits: 8, model: $("reg-model").value.trim() })
+        body: JSON.stringify({ digits: 8, name: $("reg-name").value.trim(), profile: chosenProfile() || "" })
       }).then(function (r) {
         return r.json().then(function (j) { return r.ok ? j : Promise.reject(new Error(j.detail || j.error || ("status " + r.status))); });
       }).then(function (w) {

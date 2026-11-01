@@ -13,6 +13,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 )
 
@@ -48,7 +49,8 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 	var in struct {
 		Digits  int        `json:"digits"`
 		OwnerID *uuid.UUID `json:"owner_id"`
-		Model   string     `json:"model"`
+		Name    string     `json:"name"`
+		Profile string     `json:"profile"`
 	}
 	if r.ContentLength != 0 {
 		if !decode(w, r, &in) {
@@ -67,8 +69,13 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 		}
 		owner = *in.OwnerID
 	}
-	if len([]rune(strings.TrimSpace(in.Model))) > regwin.MaxModel || strings.ContainsFunc(in.Model, unicode.IsControl) {
-		problem(w, http.StatusBadRequest, "invalid", "", map[string]string{"model": "at most 64 characters, no control characters"})
+	name := strings.TrimSpace(in.Name)
+	switch {
+	case name == "" || len([]rune(name)) > regwin.MaxName || strings.ContainsFunc(name, unicode.IsControl):
+		problem(w, http.StatusBadRequest, "invalid", "", map[string]string{"name": "1 to 64 characters, no control characters"})
+		return
+	case in.Profile != "" && !profileKnown(in.Profile):
+		problem(w, http.StatusBadRequest, "invalid", "", map[string]string{"profile": "not a device profile of this controller"})
 		return
 	}
 	win, pin, err := s.Registrations.Open(owner, u.ID, in.Digits)
@@ -89,9 +96,7 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 		s.apiError(w, r, err)
 		return
 	}
-	if in.Model != "" {
-		_ = s.Registrations.SetModel(win.ID, in.Model)
-	}
+	_ = s.Registrations.SetHandset(win.ID, name, in.Profile)
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "registration_window.open",
 		ObjectType: "registration_window", ObjectID: win.ID.String(),
 		Details: map[string]any{"owner": owner.String()}})
@@ -131,4 +136,10 @@ func (s *Server) apiWindowCancel(w http.ResponseWriter, r *http.Request, u *auth
 			ObjectType: "registration_window", ObjectID: win.ID.String()})
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// profileKnown: id is a device profile of the catalogue.
+func profileKnown(id string) bool {
+	_, ok := profiles.Default.Get(id)
+	return ok
 }

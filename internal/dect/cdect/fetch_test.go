@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 )
 
 // fetchEnv is a base with defer_unknown and nothing but a free store, and a link
@@ -138,5 +140,30 @@ func TestDropRecordNeedsAQuietBase(t *testing.T) {
 	}
 	if e.host.Drop(1) {
 		t.Error("dropped twice")
+	}
+}
+
+// A record takes a name for the lists and a device profile; the library
+// refuses a name it cannot list and a profile file it cannot read.
+func TestSetNameAndProfile(t *testing.T) {
+	e := fetchEnv(t)
+	if !e.host.SetName(0, "Kitchen") {
+		t.Error("a plain name was refused")
+	}
+	if e.host.SetName(0, "a name of sixteen!") || e.host.SetName(5, "Kitchen") {
+		t.Error("a name that is too long, or a record that does not exist, was taken")
+	}
+	mfr, dev, _ := profiles.Default.Texts("gigaset-a540")
+	if !e.host.SetProfile(0, mfr, dev) {
+		t.Error("the A540's profile was refused")
+	}
+	if !e.host.SetProfile(0, "", "") {
+		t.Error("no profile is the standard behaviour")
+	}
+	if e.host.SetProfile(0, "this is not a profile file", "") {
+		t.Error("garbage was taken for a profile")
+	}
+	if e.host.SetProfile(5, mfr, dev) {
+		t.Error("a record that does not exist took a profile")
 	}
 }

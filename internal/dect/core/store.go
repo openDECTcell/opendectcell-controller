@@ -26,7 +26,10 @@ type Handset struct {
 	ID    uuid.UUID
 	Owner uuid.UUID // always set: there is no ownerless handset (the maintainers' notes)
 	Name  string
-	Rec   stack.Record // Rec.Slot is the cell's chip slot
+	// Profile is the id of its device profile (internal/dect/profiles); "" is
+	// the standard behaviour.
+	Profile string
+	Rec     stack.Record // Rec.Slot is the cell's chip slot
 }
 
 // Records is where the core keeps handset records (Store in production).
@@ -63,6 +66,9 @@ type Records interface {
 	Forget(ctx context.Context, cell, id uuid.UUID) (pooled bool, err error)
 	// Rename sets a handset's name.
 	Rename(ctx context.Context, id uuid.UUID, name string) error
+	// HandsetInfo is what the stacks show of a handset: its name and the id of
+	// its device profile ("" for none). ok is false for a handset that is gone.
+	HandsetInfo(ctx context.Context, id uuid.UUID) (name, profile string, ok bool, err error)
 	// Installed: the cell's chip was written: the slots listed hold their
 	// handsets, every other slot of the cell is empty.
 	Installed(ctx context.Context, cell uuid.UUID, slots []uint) error
@@ -370,7 +376,7 @@ func putSlot(ctx context.Context, tx pgx.Tx, cell uuid.UUID, slot int16, id uuid
 // (cs is cell_slot, h is handset), the UAK opened.
 func (s *Store) readRecords(ctx context.Context, tx pgx.Tx, where string, args ...any) ([]Handset, error) {
 	rows, err := tx.Query(ctx, `SELECT h.id, h.owner_user_id, h.display_name, cs.slot, h.ipui, h.uak_enc,
-			coalesce(h.cc_port_id, ''::bytea), coalesce(h.cc_fixed_id, ''::bytea), h.pooled, h.tpui
+			coalesce(h.cc_port_id, ''::bytea), coalesce(h.cc_fixed_id, ''::bytea), h.pooled, h.tpui, coalesce(h.profile, '')
 		FROM cell_slot cs JOIN handset h ON h.id = cs.handset_id `+where, args...)
 	if err != nil {
 		return nil, err
@@ -390,7 +396,7 @@ func (s *Store) readRecords(ctx context.Context, tx pgx.Tx, where string, args .
 		var pooled bool
 		var tpui int32
 		if err := rows.Scan(&h.ID, &h.Owner, &h.Name, &slot, &h.Rec.PortID, &enc,
-			&h.Rec.CCPortID, &h.Rec.CCFixedID, &pooled, &tpui); err != nil {
+			&h.Rec.CCPortID, &h.Rec.CCFixedID, &pooled, &tpui, &h.Profile); err != nil {
 			return fail(err)
 		}
 		uak, err := s.Keyring.Open(uakLoc(h.ID), enc)
@@ -592,6 +598,15 @@ func (s *Store) Forget(ctx context.Context, cell, id uuid.UUID) (bool, error) {
 func (s *Store) Rename(ctx context.Context, id uuid.UUID, name string) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE handset SET display_name = $2 WHERE id = $1", id, name)
 	return err
+}
+
+func (s *Store) HandsetInfo(ctx context.Context, id uuid.UUID) (string, string, bool, error) {
+	var name, profile string
+	err := s.Pool.QueryRow(ctx, "SELECT display_name, coalesce(profile, '') FROM handset WHERE id = $1", id).Scan(&name, &profile)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", false, nil
+	}
+	return name, profile, err == nil, err
 }
 
 func (s *Store) Installed(ctx context.Context, cell uuid.UUID, slots []uint) error {

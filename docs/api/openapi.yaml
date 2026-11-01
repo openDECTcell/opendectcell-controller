@@ -364,15 +364,17 @@ paths:
         quarantined network-wide.
       x-authz: user
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [name]
               properties:
                 digits: { type: integer, enum: [8, 6], default: 8, description: "6 for a handset that refuses 8" }
                 owner_id: { type: string, format: uuid, description: Admin only. Default the caller }
-                model: { type: string, maxLength: 64, description: "What the handset is (for example Gigaset A540); stored on the handset once it registers" }
+                name: { type: string, minLength: 1, maxLength: 64, description: "The handset's name; stored with it once it registers (handsets show the first 15 characters)" }
+                profile: { type: string, description: "Device profile id (for example gigaset-a540; gigaset for another Gigaset); empty for a model that is not listed" }
       responses:
         "400": { $ref: "#/components/responses/Invalid" }
         "403": { $ref: "#/components/responses/Forbidden" }

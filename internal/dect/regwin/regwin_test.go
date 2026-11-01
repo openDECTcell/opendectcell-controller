@@ -209,7 +209,7 @@ func TestLockout(t *testing.T) {
 	}
 }
 
-func TestModelReachesDone(t *testing.T) {
+func TestHandsetReachesDone(t *testing.T) {
 	g, _ := newReg()
 	var got Window
 	g.Done = func(w Window) { got = w }
@@ -218,20 +218,22 @@ func TestModelReachesDone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.SetModel(w.ID, "bad\x07text") || g.SetModel(w.ID, string(make([]rune, MaxModel+1))) {
-		t.Error("a model with a control character or too long was taken")
+	for _, bad := range []string{"", "  ", "bad\x07name", string(make([]rune, MaxName+1))} {
+		if g.SetHandset(w.ID, bad, "gigaset-a540") {
+			t.Errorf("the name %q was taken", bad)
+		}
 	}
-	if !g.SetModel(w.ID, "  Gigaset A540 ") {
-		t.Fatal("a model was refused")
+	if !g.SetHandset(w.ID, "  Kitchen ", "gigaset-a540") {
+		t.Fatal("a name was refused")
 	}
 	if _, _, ok := g.Claim(cell, 1); !ok {
 		t.Fatal("claim")
 	}
 	g.Enrolled(w.ID, hs)
-	if got.Handset != hs || got.Model != "Gigaset A540" {
+	if got.Handset != hs || got.Name != "Kitchen" || got.Profile != "gigaset-a540" {
 		t.Errorf("Done got %+v", got)
 	}
-	if g.SetModel(w.ID, "later") {
-		t.Error("a model was taken for a window that is no longer open")
+	if g.SetHandset(w.ID, "later", "") {
+		t.Error("a name was taken for a window that is no longer open")
 	}
 }

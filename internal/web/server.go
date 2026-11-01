@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
@@ -70,9 +71,12 @@ type Server struct {
 	Contacts       *contacts.Store   // nil: no contact API
 	SIP            SIPStatus
 	Registrations  *regwin.Registry // nil: no registration API
-	Settings       *settings.Store  // nil: the default instance name, no settings pages
-	Stats          *stats.Store     // nil: no statistics pages
-	Handsets       *handset.Store   // nil: no handset pages
+	// HandsetChanged, if set, is told when a handset's name or device profile
+	// was changed, so the DECT stacks that hold it follow.
+	HandsetChanged func(id uuid.UUID)
+	Settings       *settings.Store // nil: the default instance name, no settings pages
+	Stats          *stats.Store    // nil: no statistics pages
+	Handsets       *handset.Store  // nil: no handset pages
 	LogCtl         *logctl.Controller
 	Mailer         Mailer // nil: no mail
 	SMTPHost       string

@@ -39,6 +39,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
@@ -48,6 +49,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/db"
 	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
@@ -264,20 +266,24 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	base, _ := url.Parse(cfg.HTTP.BaseURL)
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
 	var windows *regwin.Registry
+	var dectCore *dectcore.Core
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
-		windows.Done = func(w regwin.Window) {
-			if w.Model == "" {
-				return
-			}
-			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			if _, err := pool.Exec(mctx, "UPDATE handset SET model = $2 WHERE id = $1", w.Handset, w.Model); err != nil {
-				log.Warn("the handset's model could not be stored", "handset", w.Handset, "err", err)
-			}
-		}
 		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
+		dectCore = dect
+		windows.Done = func(w regwin.Window) {
+			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			// what the assistant asked for: the handset's name, and its device profile
+			// with the model's name the pages show
+			if _, err := pool.Exec(mctx, `UPDATE handset SET display_name = $2, model = nullif($3, ''), profile = nullif($4, '')
+				WHERE id = $1`, w.Handset, w.Name, profiles.Default.Label(w.Profile), w.Profile); err != nil {
+				log.Warn("the handset's name and profile could not be stored", "handset", w.Handset, "err", err)
+				return
+			}
+			dect.HandsetChanged(w.Handset)
+		}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)
 		defer dect.Wait() // after stop: the stacks close, their records are written
@@ -308,7 +314,12 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Cells: cells, CellLink: link,
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
 		Registrations: windows,
-		Settings:      instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
+		HandsetChanged: func(id uuid.UUID) {
+			if dectCore != nil {
+				dectCore.HandsetChanged(id)
+			}
+		},
+		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {

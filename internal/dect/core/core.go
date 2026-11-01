@@ -22,6 +22,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell/wire"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 )
 
@@ -68,6 +69,8 @@ type Core struct {
 	// handset enrols only through one (the maintainers' notes point 2). nil: none is
 	// ever open.
 	Reg Registrations
+	// Profiles is the device profiles; nil: the catalogue built in.
+	Profiles *profiles.Catalogue
 
 	// Tick, BringUp and Retry default to the constants above; tests
 	// shorten them.
@@ -195,23 +198,27 @@ const (
 	evReload  // rebuild the stack soon, from the records
 	evRecycle // a pooled handset enrolled into a chip slot: free the slot in place
 	evCtl     // a bridge command for the stack (route.go)
+	evHome    // a handset enrolled into a chip slot of this cell and stays there: record idx is its
+	evInfo    // a handset's name or device profile changed: tell the stack that holds it
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info"}[k]
 }
 
 type event struct {
-	kind   evKind
-	up     cell.CellUp
-	mail   stack.Mail
-	reject wire.MailRejectMsg
-	radio  uint8 // evRadio: the cell's radio and chip state
-	chip   uint8
-	hid    uuid.UUID // evEvict, evRecycle, evCtl: the handset
-	idx    int       // evRecycle: its record in the stack
-	line   string    // evCtl: the command; {hs} is the handset's record number on the cell
-	sip    string    // evCtl: the call it belongs to
+	kind    evKind
+	up      cell.CellUp
+	mail    stack.Mail
+	reject  wire.MailRejectMsg
+	radio   uint8 // evRadio: the cell's radio and chip state
+	chip    uint8
+	hid     uuid.UUID // evEvict, evRecycle, evCtl: the handset
+	idx     int       // evRecycle: its record in the stack
+	line    string    // evCtl: the command; {hs} is the handset's record number on the cell
+	name    string    // evInfo: the handset's name
+	profile string    // evInfo: the id of its device profile
+	sip     string    // evCtl: the call it belongs to
 	// evFetched: the identity asked about, what the store said
 	ipui []byte
 	h    Handset
@@ -238,6 +245,31 @@ func (c *Core) enrolled(origin, hid uuid.UUID, i int, again bool) {
 	c.post(origin, event{kind: evRecycle, hid: hid, idx: i})
 	if again {
 		c.evictElsewhere(origin, hid)
+	}
+}
+
+// HandsetChanged: the name or the device profile of the handset was changed
+// (the web UI, a registration's wizard). Every cell that holds it tells its
+// stack, so the handsets' name lists and the model's habits follow.
+func (c *Core) HandsetChanged(hid uuid.UUID) {
+	c.mu.Lock()
+	ctx := c.ctx
+	c.mu.Unlock()
+	if ctx == nil || c.Records == nil {
+		return
+	}
+	qctx, cancel := context.WithTimeout(ctx, storeTimeout)
+	name, profile, ok, err := c.Records.HandsetInfo(qctx, hid)
+	cancel()
+	if err != nil {
+		c.Log.Warn("a handset's name and profile could not be read", "handset", hid, "err", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	for _, id := range c.cellIDs() {
+		c.post(id, event{kind: evInfo, hid: hid, name: name, profile: profile})
 	}
 }
 

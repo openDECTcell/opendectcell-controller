@@ -41,6 +41,7 @@ type Handset struct {
 	Owner         string
 	Name          string
 	Model         string
+	Profile       string // the id of its device profile; "" is the standard behaviour
 	RegisteredAt  time.Time
 	LastSeenAt    *time.Time
 	LastSeenCell  string
@@ -77,13 +78,13 @@ type Store struct {
 
 const cols = `h.id, h.owner_user_id, coalesce(nullif(u.display_name, ''), u.username), h.display_name, coalesce(h.model, ''), h.registered_at,
 	h.last_seen_at, coalesce(c.name, ''), h.default_line, h.dual_ring_policy,
-	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled`
+	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled, coalesce(h.profile, '')`
 
 const from = ` FROM handset h JOIN app_user u ON u.id = h.owner_user_id LEFT JOIN cell c ON c.id = h.last_seen_cell_id`
 
 func scan(r pgx.Row) (*Handset, error) {
 	var h Handset
-	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled)
+	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled, &h.Profile)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -173,6 +174,10 @@ type Update struct {
 	Name        string
 	DefaultLine *int // nil: none
 	DualRing    string
+	// Profile, if set, is the handset's device profile id ("" for none) and
+	// Model the name the pages show for it; nil keeps both as they are.
+	Profile *string
+	Model   string
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -206,6 +211,11 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 		}
 		if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
 			return err
+		}
+		if up.Profile != nil {
+			if _, err := tx.Exec(ctx, "UPDATE handset SET profile = nullif($2, ''), model = nullif($3, '') WHERE id = $1", id, *up.Profile, up.Model); err != nil {
+				return err
+			}
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "handset.update", ObjectType: "handset", ObjectID: id.String(),
 			Details: map[string]any{"dual_ring": up.DualRing, "default_line": up.DefaultLine}})
