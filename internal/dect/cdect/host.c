@@ -317,6 +317,15 @@ static void op_save(void *ctx, unsigned i, const struct dect_hs_rec *r)
 {
 	struct cdect_host *c = ctx;
 
+	/*
+	 * The record exists now and is no longer a free store (dect-stubd's
+	 * base_save() does the same): without it a second enrolment picks the
+	 * same store, and the record cannot be recycled.
+	 */
+	if (i < c->b.n_hs && r->port_id_len) {
+		c->b.loaded[i] = 1;
+		c->b.absent[i] = 0;
+	}
 	cdectSave(c->h, i, (struct dect_hs_rec *)r);
 }
 
@@ -814,6 +823,18 @@ void cdect_host_resume(struct cdect_host *c, uint64_t now)
 int cdect_host_drop(struct cdect_host *c, unsigned i)
 {
 	return dect_base_record_drop(&c->b, i);
+}
+
+/* dect_base_record_recycle() with the TPUI from c->rec, wiped after. */
+int cdect_host_recycle(struct cdect_host *c, unsigned i)
+{
+	uint8_t tpui[3];
+	int rc;
+
+	memcpy(tpui, c->rec.tpui, sizeof(tpui));
+	wipe(&c->rec, sizeof(c->rec));
+	rc = dect_base_record_recycle(&c->b, i, tpui);
+	return rc;
 }
 
 int cdect_host_quiet(const struct cdect_host *c)

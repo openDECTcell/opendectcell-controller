@@ -232,6 +232,50 @@ func TestStoreSeen(t *testing.T) {
 	}
 }
 
+// A pooled handset enrolled into a chip slot: ReleaseChipSlot frees the slot in the
+// store (the stack recycled the record); the handset stays, and a chip-slot handset's
+// slot is not touched.
+func TestStoreReleaseChipSlot(t *testing.T) {
+	s, ctx := newStore(t)
+	a := s.newCell(t, ctx, "a")
+	anna := s.newUser(t, ctx, "anna")
+	chip, err := s.save(ctx, a, uuid.Nil, anna, rec(1, 0x31))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := s.ReserveTPUI(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rec(2, 0x32)
+	r.TPUI = tp
+	saved, err := s.SaveRecord(ctx, a, uuid.Nil, anna, r)
+	if err != nil || !saved.Pooled {
+		t.Fatalf("pooled enrolment: %+v, %v", saved, err)
+	}
+	if err := s.ReleaseChipSlot(ctx, a, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.Pool.QueryRow(ctx, "SELECT count(*) FROM cell_slot WHERE cell_id = $1 AND handset_id = $2", a, saved.ID).Scan(&n)
+	if n != 0 {
+		t.Errorf("the pooled handset still has %d slots", n)
+	}
+	s.Pool.QueryRow(ctx, "SELECT count(*) FROM cell_slot WHERE cell_id = $1 AND handset_id = $2 AND slot = 1", a, chip).Scan(&n)
+	if n != 1 {
+		t.Errorf("the chip-slot handset lost its slot")
+	}
+	known, _ := s.HandsetKnown(ctx, saved.ID)
+	if !known {
+		t.Error("the handset itself is gone")
+	}
+	// a restart finds the same: the chip handset only
+	hs, _, err := s.CellRecords(ctx, a, 6)
+	if err != nil || len(hs) != 1 || hs[0].ID != chip {
+		t.Errorf("records after the release: %+v %v", hs, err)
+	}
+}
+
 // A pooled handset sits in no table at first: the stack that enrolled it gives its chip
 // slot up when it is rebuilt, and a cell takes it into its working set, above the chip's
 // slots and under its pool TPUI, when it is heard or called there.

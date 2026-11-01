@@ -48,6 +48,9 @@ type Records interface {
 	PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (h Handset, ok bool, err error)
 	// Unplace: the handset left cell's table; its record number is free.
 	Unplace(ctx context.Context, cell, id uuid.UUID) error
+	// ReleaseChipSlot: the handset's record left one of cell's chip slots (a
+	// pooled handset enrolled into it and was recycled out): the slot is free.
+	ReleaseChipSlot(ctx context.Context, cell, id uuid.UUID) error
 	// HandsetKnown: there is such a handset.
 	HandsetKnown(ctx context.Context, id uuid.UUID) (bool, error)
 	// ReserveTPUI takes a TPUI from the pool for an enrolment a cell may
@@ -302,6 +305,12 @@ func (s *Store) place(ctx context.Context, cell uuid.UUID, find func(pgx.Tx) (uu
 func (s *Store) Unplace(ctx context.Context, cell, id uuid.UUID) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
 		WHERE cell_id = $1 AND handset_id = $2 AND slot > $3`, cell, id, int16(maxSlot))
+	return err
+}
+
+func (s *Store) ReleaseChipSlot(ctx context.Context, cell, id uuid.UUID) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
+		WHERE cell_id = $1 AND handset_id = $2 AND slot <= $3`, cell, id, int16(maxSlot))
 	return err
 }
 

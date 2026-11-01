@@ -34,6 +34,15 @@ type (
 	To     = stack.To
 	Env    = stack.Env
 	Config = stack.Config
+
+	Recycled = stack.Recycled
+)
+
+// What Recycle came to.
+const (
+	RecycleDone = stack.RecycleDone
+	RecycleBusy = stack.RecycleBusy
+	RecycleNo   = stack.RecycleNo
 )
 
 // Where a bridge line goes; the values are host.h's enum cdect_to.
@@ -196,6 +205,24 @@ func (x *Host) Drop(i int) bool {
 	ok := C.cdect_host_drop(x.c, C.unsigned(i)) == 0
 	x.raise()
 	return ok
+}
+
+// Recycle turns record i, which holds a subscription in one of the chip's
+// slots, into a free store again, in place: the chip slot is cleared and tpui
+// is the TPUI of the next handset to enrol there.
+func (x *Host) Recycle(i int, tpui [3]byte) Recycled {
+	for k := range x.c.rec.tpui {
+		x.c.rec.tpui[k] = C.uint8_t(tpui[k])
+	}
+	rc := C.cdect_host_recycle(x.c, C.unsigned(i))
+	x.raise()
+	switch {
+	case rc == 0:
+		return RecycleDone
+	case rc > 0:
+		return RecycleBusy
+	}
+	return RecycleNo
 }
 
 // Quiet reports whether nothing is going on: no link, no call, nothing

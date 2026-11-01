@@ -45,7 +45,8 @@ type cellRun struct {
 	next        int       // the next free record index in the stack
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
-	bridge      bool // this stack has been told it carries external calls (route.go)
+	recycleDue  []recycleDue // pooled enrolments whose chip slot is to be freed
+	bridge      bool         // this stack has been told it carries external calls (route.go)
 	// what the router reads from other goroutines (route.go): the handsets
 	// this stack holds by record number, and whether its radio is on
 	pub   sync.Mutex
@@ -157,6 +158,15 @@ func (r *cellRun) handle(ev event) {
 		if r.st != nil && r.reloadAt.IsZero() {
 			r.reloadAt = time.Now().Add(reloadDelay)
 		}
+	case evRecycle:
+		if r.st == nil {
+			return
+		}
+		r.recycleDue = append(r.recycleDue, recycleDue{idx: ev.idx, hid: ev.hid, at: time.Now().Add(reloadDelay)})
+		// a handset that enrolled again may sit in this cell's working set with its old key
+		if t := r.trans[ev.hid]; t != nil {
+			t.evict = true
+		}
 	case evGone:
 		r.linkUp = false
 		if r.st != nil {
@@ -200,6 +210,65 @@ func (r *cellRun) handle(ev event) {
 		if r.gen != nil {
 			r.gen.job(job{kind: jobUnknown, slot: slot})
 		}
+	}
+}
+
+// recycleDue is a pooled handset that enrolled into record idx, a chip slot's.
+type recycleDue struct {
+	idx int
+	hid uuid.UUID
+	at  time.Time
+}
+
+// recycle frees the chip slots of pooled handsets that enrolled here: the
+// record becomes a free store again, with a fresh pool TPUI, and the handset
+// comes back into the table above the chip's slots when it is heard (or
+// called). It waits for the delay after the enrolment and for a quiet stack;
+// a record the stack will not recycle goes the old way, a rebuild.
+func (r *cellRun) recycle(now time.Time) {
+	if len(r.recycleDue) == 0 || r.gen == nil {
+		return
+	}
+	p := r.recycleDue[0]
+	if now.Before(p.at) || !r.st.Quiet() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	t, err := r.core.Records.ReserveTPUI(ctx)
+	cancel()
+	if err != nil {
+		r.log.Warn("no pool TPUI to recycle a record with: the stack is rebuilt instead", "err", err)
+		r.recycleDue = r.recycleDue[1:]
+		r.rebuild(now)
+		return
+	}
+	switch r.st.Recycle(p.idx, t) {
+	case stack.RecycleBusy:
+		r.core.Records.ReleaseTPUI(t)
+		return // the next tick
+	case stack.RecycleNo:
+		r.core.Records.ReleaseTPUI(t)
+		r.log.Warn("the stack would not recycle the enrolled record: it is rebuilt instead", "record", p.idx)
+		r.recycleDue = r.recycleDue[1:]
+		r.rebuild(now)
+		return
+	}
+	r.recycleDue = r.recycleDue[1:]
+	if t != ([3]byte{}) {
+		r.offered = append(r.offered, t)
+	}
+	r.gen.unplace(p.idx)
+	delete(r.seenMs, p.idx)
+	delete(r.seenAt, p.idx)
+	delete(r.seenPend, p.idx)
+	r.gen.job(job{kind: jobRelease, i: p.idx, hid: p.hid})
+	r.log.Info("a pooled handset left the chip slot it enrolled in", "handset", p.hid, "record", p.idx)
+}
+
+// rebuild asks for the stack to be built again from the records, at the next tick.
+func (r *cellRun) rebuild(now time.Time) {
+	if r.reloadAt.IsZero() {
+		r.reloadAt = now
 	}
 }
 
@@ -321,6 +390,10 @@ func (r *cellRun) tick() {
 		r.resumed = false // the calls went with the stack
 		r.retryAt = now
 	}
+	if r.st == nil {
+		return
+	}
+	r.recycle(now)
 	if r.st == nil {
 		return
 	}
@@ -513,6 +586,7 @@ func (r *cellRun) drop() {
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.reloadAt = time.Time{}
+	r.recycleDue = nil
 	for _, t := range r.offered {
 		r.core.Records.ReleaseTPUI(t)
 	}
@@ -566,6 +640,7 @@ const (
 	jobSeen
 	jobTrack   // a record added to the running stack: its handset
 	jobUntrack // a record dropped from it: the handset leaves the cell's table
+	jobRelease // a record recycled out of its chip slot: the slot is free in the store
 )
 
 type job struct {
@@ -646,7 +721,7 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 				core.Reg.Enrolled(j.window, hid)
 			}
 			if saved.Enrolled && saved.Pooled {
-				core.enrolled(id, hid, saved.Again)
+				core.enrolled(id, hid, j.i, saved.Again)
 			}
 		}
 	case jobTrack:
@@ -654,6 +729,9 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 	case jobUntrack:
 		delete(ids, j.i)
 		err = core.Records.Unplace(ctx, id, j.hid)
+	case jobRelease:
+		delete(ids, j.i)
+		err = core.Records.ReleaseChipSlot(ctx, id, j.hid)
 	case jobForget:
 		if hid, ok := ids[j.i]; ok {
 			var pooled bool

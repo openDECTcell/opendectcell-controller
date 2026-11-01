@@ -119,7 +119,7 @@ hand. 19 and 23 as built / informational. 20 first answered "update in place"; I
 slot the pooled handset's key sits in and clears the key from the chip, so without it a cell could enrol only six
 pooled handsets until a restart) and you chose: the rebuild stays but waits until the cell's stack is quiet, so it
 never ends a call (built: `Stack.Quiet`, libopendectcell `dect_base_quiet`). An in-place recycle (drop, free store with its
-chip slot, chip clear) is left as a possible later step; it needs a handset enrolling on the bench. 21 widen both the names list and
+chip slot, chip clear) was then asked for and is built (API 148, see the entry for 20 below); the rebuild is its fallback. 21 widen both the names list and
 the call lists in the library (records 8..31). 22 location history gets its own retention setting, default 90 days,
 separate from the call-detail retention.
 
@@ -134,8 +134,10 @@ separate from the call-detail retention.
     My additions: a full table drops the handset heard least recently; a drop waits for a quiet base; a handset
     whose key or registration changed on one cell is dropped from the others as soon as they are quiet; the
     table starts empty above the chip's slots after a restart.
-20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it, once its stack is quiet** (radio stays on;
-    a call in progress on that cell holds the rebuild back until it ends; decided, built).
+20. **A pooled handset's chip slot is freed in place, once its stack is quiet** (decided; libopendectcell API 148,
+    `dect_base_record_recycle`): the slot is cleared in the chip like a deregistration clears it, the record is a
+    free store again with a fresh pool TPUI, nothing restarts. Fallback if the stack refuses: the old rebuild.
+    Unit-tested on the real library after a traced enrolment; not on air (needs a handset enrolling on the lab 7520).
 21. **Records numbered 8 to 32 have an entry in the handsets' Internal Names list and a call list** (decided:
     widen both; built in libopendectcell API 147: names capacity 32, terminal ids 1 to 32; not seen on a real handset with
     more than eight entries).

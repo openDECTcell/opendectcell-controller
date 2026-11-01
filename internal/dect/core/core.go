@@ -193,11 +193,12 @@ const (
 	evFetched // the answer to a Fetch: the handset's record, or none
 	evEvict   // take this handset out of the cell's table (its key or registration changed)
 	evReload  // rebuild the stack soon, from the records
+	evRecycle // a pooled handset enrolled into a chip slot: free the slot in place
 	evCtl     // a bridge command for the stack (route.go)
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "ctl"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl"}[k]
 }
 
 type event struct {
@@ -207,7 +208,8 @@ type event struct {
 	reject wire.MailRejectMsg
 	radio  uint8 // evRadio: the cell's radio and chip state
 	chip   uint8
-	hid    uuid.UUID // evEvict, evCtl: the handset
+	hid    uuid.UUID // evEvict, evRecycle, evCtl: the handset
+	idx    int       // evRecycle: its record in the stack
 	line   string    // evCtl: the command; {hs} is the handset's record number on the cell
 	sip    string    // evCtl: the call it belongs to
 	// evFetched: the identity asked about, what the store said
@@ -229,11 +231,11 @@ func (c *Core) cellIDs() []uuid.UUID {
 	return ids
 }
 
-// enrolled: a pooled handset enrolled on origin, where it sits in a chip slot
-// until the stack is rebuilt, so origin rebuilds. A handset that enrolled
+// enrolled: a pooled handset enrolled on origin into record i, where it sits in
+// a chip slot until the record is recycled (cell.go, recycle). A handset that enrolled
 // again has a new key and TPUI: the cells that hold it as a roamer drop it.
-func (c *Core) enrolled(origin, hid uuid.UUID, again bool) {
-	c.post(origin, event{kind: evReload})
+func (c *Core) enrolled(origin, hid uuid.UUID, i int, again bool) {
+	c.post(origin, event{kind: evRecycle, hid: hid, idx: i})
 	if again {
 		c.evictElsewhere(origin, hid)
 	}

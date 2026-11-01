@@ -37,6 +37,15 @@ type Record struct {
 	RegPIN1 uint
 }
 
+// Recycled is what Stack.Recycle came to.
+type Recycled int
+
+const (
+	RecycleDone Recycled = iota // the record is a free store again
+	RecycleBusy                 // the stack is not quiet: try again later
+	RecycleNo                   // not a record with a chip slot
+)
+
 // To says where a bridge line goes (docs/bridge-interface.md §2).
 type To int
 
@@ -158,6 +167,10 @@ type Stack interface {
 	// Drop takes record i out of the table. False: the stack is not idle,
 	// try again later.
 	Drop(i int) bool
+	// Recycle turns record i, which holds a subscription in a chip slot, into a
+	// free store again in place: the slot is cleared in the chip and tpui is the
+	// TPUI of the next handset to enrol there.
+	Recycle(i int, tpui [3]byte) Recycled
 	// Quiet reports whether the stack is idle: no link, no call, nothing
 	// being set up.
 	Quiet() bool

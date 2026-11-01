@@ -54,6 +54,9 @@ type fakeStack struct {
 	dropped  []int
 	busy     bool
 	validity []uint
+	// recycled records, and what Recycle answers when the stack is quiet
+	recycled []int
+	recycle  stack.Recycled
 }
 
 type ctlLine struct {
@@ -153,6 +156,19 @@ func (f *fakeStack) Drop(i int) bool {
 	return true
 }
 
+// Recycle is refused while busy is set; otherwise it answers f.recycle.
+func (f *fakeStack) Recycle(i int, _ [3]byte) stack.Recycled {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.busy {
+		return stack.RecycleBusy
+	}
+	if f.recycle == stack.RecycleDone {
+		f.recycled = append(f.recycled, i)
+	}
+	return f.recycle
+}
+
 func (f *fakeStack) Quiet() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -239,7 +255,8 @@ type fakeRecords struct {
 	placed       []uuid.UUID
 	unplaced     []uuid.UUID
 	unplaceHook  func()
-	full         bool // PlaceHandset says the cell is full
+	chipFreed    []uuid.UUID // ReleaseChipSlot
+	full         bool        // PlaceHandset says the cell is full
 	known        map[uuid.UUID]bool
 	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
@@ -317,6 +334,13 @@ func (r *fakeRecords) Unplace(_ context.Context, _, id uuid.UUID) error {
 	if r.unplaceHook != nil {
 		r.unplaceHook()
 	}
+	return nil
+}
+
+func (r *fakeRecords) ReleaseChipSlot(_ context.Context, _, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.chipFreed = append(r.chipFreed, id)
 	return nil
 }
 
@@ -1148,10 +1172,9 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 	})
 }
 
-// A pooled handset that enrols on one cell: that cell rebuilds its stack so the
-// handset leaves the chip slot it enrolled in; other cells do nothing, the handset
-// comes to them when it is heard there.
-func TestPooledEnrolmentRebuildsOnlyTheCell(t *testing.T) {
+// A pooled handset that enrols on one cell: its chip slot is freed in place, with no
+// rebuild; other cells do nothing, the handset comes to them when it is heard there.
+func TestPooledEnrolmentRecyclesTheChipSlot(t *testing.T) {
 	old := reloadDelay
 	reloadDelay = 20 * time.Millisecond
 	defer func() { reloadDelay = old }()
@@ -1172,16 +1195,34 @@ func TestPooledEnrolmentRebuildsOnlyTheCell(t *testing.T) {
 	waitFor(t, "b's radio on", radioOnAt(g, 1))
 
 	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
-	waitFor(t, "a rebuilt", func() bool { return g.nStacks() == 3 })
-	time.Sleep(60 * time.Millisecond)
-	if g.stack(1).isClosed() || g.nStacks() != 3 {
-		t.Errorf("b was rebuilt (%d stacks)", g.nStacks())
+	waitFor(t, "a's record recycled", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
+		return n == 1
+	})
+	waitFor(t, "the slot freed in the store", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.chipFreed) })
+		return n == 1
+	})
+	recs.get(func(r *fakeRecords) {
+		if r.chipFreed[0] != newID {
+			t.Errorf("slot freed for %v, want the new handset %v", r.chipFreed[0], newID)
+		}
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		if f.recycled[0] != 0 {
+			t.Errorf("recycled record %d, want 0", f.recycled[0])
+		}
+	})
+	time.Sleep(100 * time.Millisecond)
+	if g.nStacks() != 2 || g.stack(0).isClosed() || g.stack(1).isClosed() {
+		t.Errorf("a stack was rebuilt (%d stacks)", g.nStacks())
 	}
 }
 
-// The rebuild after a pooled enrolment ends every call on the cell, so it waits
-// until the stack is quiet.
-func TestEnrolmentRebuildWaitsForAQuietStack(t *testing.T) {
+// The recycle ends nothing: it waits until the stack is quiet.
+func TestRecycleWaitsForAQuietStack(t *testing.T) {
 	old := reloadDelay
 	reloadDelay = 20 * time.Millisecond
 	defer func() { reloadDelay = old }()
@@ -1201,11 +1242,46 @@ func TestEnrolmentRebuildWaitsForAQuietStack(t *testing.T) {
 	g.stack(0).get(func(f *fakeStack) { f.busy = true }) // a call is up
 	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
 	time.Sleep(1200 * time.Millisecond) // well past the delay and several ticks
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.recycled) != 0 {
+			t.Error("recycled during a call")
+		}
+	})
 	if g.nStacks() != 1 || g.stack(0).isClosed() {
 		t.Fatalf("the stack was rebuilt during a call (%d stacks)", g.nStacks())
 	}
 	g.stack(0).get(func(f *fakeStack) { f.busy = false })
-	waitFor(t, "rebuilt once quiet", func() bool { return g.nStacks() == 2 })
+	waitFor(t, "recycled once quiet", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
+		return n == 1
+	})
+	if g.nStacks() != 1 {
+		t.Errorf("the stack was rebuilt (%d stacks)", g.nStacks())
+	}
+}
+
+// A record the stack will not recycle goes the old way: the stack is rebuilt (when quiet).
+func TestRecycleRefusedFallsBackToARebuild(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 20 * time.Millisecond
+	defer func() { reloadDelay = old }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.recycle = stack.RecycleNo
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "rebuilt", func() bool { return g.nStacks() == 2 })
 }
 
 // fetchRig is a cell with one handset that the store knows but the cell does not

@@ -443,8 +443,14 @@ func replay(t *testing.T, path string, regPINs []string) *traceEnv {
 		compare(t, path, st, e.out)
 		e.out = nil
 	}
+	if replayHook != nil {
+		replayHook(e)
+	}
 	return e
 }
+
+// replayHook, when set, runs at the end of replay, with the host still open.
+var replayHook func(e *traceEnv)
 
 func compare(t *testing.T, path string, st traceStep, got []string) {
 	t.Helper()
@@ -467,4 +473,60 @@ func compare(t *testing.T, path string, st traceStep, got []string) {
 				st.line, st.action, i+1, w, g)
 		}
 	}
+}
+
+// A record that holds a handset in a chip slot becomes a free store again, in place: the
+// slot is cleared in the chip, the TPUI is the new one, and a second recycle finds a free store.
+func TestRecycleAfterEnrolment(t *testing.T) {
+	replayHook = func(e *traceEnv) {
+		if len(e.saves) == 0 {
+			t.Fatal("no record saved")
+		}
+		slot := e.saves[0].Slot
+		if slot < 1 || slot > 6 {
+			t.Fatalf("enrolled in slot %d, not a chip slot", slot)
+		}
+		e.sent = nil
+		tp := [3]byte{0, 0x11, 0x2A}
+		var got Recycled
+		done := -1
+		for i := 0; i < 8; i++ { // the record is one of the first few
+			if got = e.host.Recycle(i, tp); got == RecycleDone {
+				done = i
+				break
+			}
+			if got == RecycleBusy {
+				t.Fatalf("record %d: not quiet after the trace", i)
+			}
+		}
+		if got != RecycleDone {
+			t.Fatal("no record could be recycled")
+		}
+		var clear, zeros bool
+		for _, m := range e.sent {
+			switch {
+			case m.Prim == 0x0247 && len(m.Param) == 3 && uint(m.Param[0]) == slot && m.Param[1] == 0:
+				clear = true
+			case m.Prim == 0x020A && len(m.Param) > 1 && uint(m.Param[0]) == slot && allZero(m.Param[1:]):
+				zeros = true
+			}
+		}
+		if !clear || !zeros {
+			t.Errorf("chip slot %d: clear %v, key zeros %v", slot, clear, zeros)
+		}
+		if again := e.host.Recycle(done, tp); again != RecycleNo {
+			t.Errorf("a free store: Recycle answered %v, want RecycleNo", again)
+		}
+	}
+	defer func() { replayHook = nil }()
+	replay(t, filepath.Join(traceDir, "register.trace"), nil)
+}
+
+func allZero(b []byte) bool {
+	for _, v := range b {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
 }
