@@ -18,9 +18,11 @@ import (
 	"log/slog"
 	"math/big"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -68,6 +70,7 @@ type Window struct {
 	ClosedAt  time.Time
 	Cell      uuid.UUID // where the handset registered, once completed
 	Handset   uuid.UUID // once stored
+	Model     string    // what the user said the handset is, before registering
 }
 
 // entry is one PIN index.
@@ -80,6 +83,10 @@ type entry struct {
 // Registry is the controller's set of windows. The zero value is not
 // usable: call New.
 type Registry struct {
+	// Done, if set, is called (without the lock) when a window's handset is
+	// stored: it may write to the database, it must not call back in.
+	Done func(Window)
+
 	now  func() time.Time
 	rand io.Reader
 	log  *slog.Logger
@@ -266,12 +273,39 @@ func (g *Registry) Claim(cell uuid.UUID, pin1 uint) (owner, window uuid.UUID, ok
 	return w.Owner, w.ID, true
 }
 
-// Enrolled notes the stored handset of a completed window.
-func (g *Registry) Enrolled(window, handset uuid.UUID) {
+// MaxModel is the longest model text a window takes.
+const MaxModel = 64
+
+// SetModel notes what the handset of an open window is, as the user typed it
+// (empty: unsaid). False: no such open window, or the text is not allowed.
+func (g *Registry) SetModel(window uuid.UUID, model string) bool {
+	model = strings.TrimSpace(model)
+	if len([]rune(model)) > MaxModel || strings.ContainsFunc(model, unicode.IsControl) {
+		return false
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if w, ok := g.windows[window]; ok {
+	w, ok := g.windows[window]
+	if !ok || w.State != Open {
+		return false
+	}
+	w.Model = model
+	return true
+}
+
+// Enrolled notes the stored handset of a completed window and tells Done.
+func (g *Registry) Enrolled(window, handset uuid.UUID) {
+	g.mu.Lock()
+	w, ok := g.windows[window]
+	var done Window
+	if ok {
 		w.Handset = handset
+		done = *w
+	}
+	cb := g.Done
+	g.mu.Unlock()
+	if ok && cb != nil {
+		cb(done)
 	}
 }
 

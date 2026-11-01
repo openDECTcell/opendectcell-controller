@@ -266,6 +266,16 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	var windows *regwin.Registry
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
+		windows.Done = func(w regwin.Window) {
+			if w.Model == "" {
+				return
+			}
+			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if _, err := pool.Exec(mctx, "UPDATE handset SET model = $2 WHERE id = $1", w.Handset, w.Model); err != nil {
+				log.Warn("the handset's model could not be stored", "handset", w.Handset, "err", err)
+			}
+		}
 		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dctx, stop := context.WithCancel(ctx)

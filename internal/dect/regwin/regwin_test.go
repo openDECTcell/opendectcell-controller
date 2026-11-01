@@ -208,3 +208,30 @@ func TestLockout(t *testing.T) {
 		t.Error("spread failures locked the cell")
 	}
 }
+
+func TestModelReachesDone(t *testing.T) {
+	g, _ := newReg()
+	var got Window
+	g.Done = func(w Window) { got = w }
+	anna, cell, hs := uuid.New(), uuid.New(), uuid.New()
+	w, _, err := g.Open(anna, anna, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.SetModel(w.ID, "bad\x07text") || g.SetModel(w.ID, string(make([]rune, MaxModel+1))) {
+		t.Error("a model with a control character or too long was taken")
+	}
+	if !g.SetModel(w.ID, "  Gigaset A540 ") {
+		t.Fatal("a model was refused")
+	}
+	if _, _, ok := g.Claim(cell, 1); !ok {
+		t.Fatal("claim")
+	}
+	g.Enrolled(w.ID, hs)
+	if got.Handset != hs || got.Model != "Gigaset A540" {
+		t.Errorf("Done got %+v", got)
+	}
+	if g.SetModel(w.ID, "later") {
+		t.Error("a model was taken for a window that is no longer open")
+	}
+}

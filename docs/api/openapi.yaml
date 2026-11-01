@@ -372,6 +372,7 @@ paths:
               properties:
                 digits: { type: integer, enum: [8, 6], default: 8, description: "6 for a handset that refuses 8" }
                 owner_id: { type: string, format: uuid, description: Admin only. Default the caller }
+                model: { type: string, maxLength: 64, description: "What the handset is (for example Gigaset A540); stored on the handset once it registers" }
       responses:
         "400": { $ref: "#/components/responses/Invalid" }
         "403": { $ref: "#/components/responses/Forbidden" }

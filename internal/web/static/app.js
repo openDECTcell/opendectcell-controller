@@ -20,6 +20,38 @@
     });
   });
 
+  // form[data-dirty]: the submit button waits for a change, so "Save" and
+  // "Set" cannot be pressed on what is already stored
+  document.querySelectorAll("form[data-dirty]").forEach(function (f) {
+    var snap = function () { return new URLSearchParams(new FormData(f)).toString(); };
+    var start = snap();
+    var btns = f.querySelectorAll("button[type=submit]");
+    var sync = function () { btns.forEach(function (b) { b.disabled = snap() === start; }); };
+    f.addEventListener("input", sync);
+    f.addEventListener("change", sync);
+    window.addEventListener("pageshow", function () { start = snap(); sync(); });
+    sync();
+  });
+
+  // the sidebar keeps its scroll position from page to page: every menu
+  // choice is a page load, and it used to start at the top again
+  var side = document.getElementById("sidebar-menu");
+  var navs = [side, document.querySelector("aside.navbar-vertical")];
+  var saved = null;
+  try { saved = window.sessionStorage.getItem("opendectcell-nav-scroll"); } catch (e) { /* storage blocked */ }
+  if (saved !== null) { navs.forEach(function (n) { if (n) { n.scrollTop = parseInt(saved, 10) || 0; } }); }
+  var keep = function () {
+    var top = 0;
+    navs.forEach(function (n) { if (n && n.scrollTop > top) { top = n.scrollTop; } });
+    try { window.sessionStorage.setItem("opendectcell-nav-scroll", String(top)); } catch (e) { /* storage blocked */ }
+  };
+  if (side) { side.addEventListener("click", keep); }
+  window.addEventListener("pagehide", keep);
+
+  // The tile layers send the page's origin as the Referer: the site's own
+  // Referrer-Policy is same-origin, and OpenStreetMap's tile servers refuse
+  // requests without a Referer (their tile usage policy).
+
   // the position picker of a base station's page
   var mapEl = document.getElementById("station-map");
   var lat = document.getElementById("lat"), lon = document.getElementById("lon");
@@ -29,7 +61,7 @@
     var start = has ? [parseFloat(lat.value), parseFloat(lon.value)] : [51, 10];
     var map = window.L.map(mapEl, { attributionControl: !!tiles }).setView(start, has ? 14 : 4);
     if (tiles) {
-      window.L.tileLayer(tiles, { maxZoom: 19, attribution: mapEl.getAttribute("data-attribution") || "" }).addTo(map);
+      window.L.tileLayer(tiles, { maxZoom: 19, referrerPolicy: "origin", attribution: mapEl.getAttribute("data-attribution") || "" }).addTo(map);
     } else {
       mapEl.classList.add("station-map-blank");
     }
@@ -65,7 +97,7 @@
     var ptiles = pub.getAttribute("data-tiles");
     var pm = window.L.map(pub, { attributionControl: !!ptiles }).setView([51, 10], 4);
     if (ptiles) {
-      window.L.tileLayer(ptiles, { maxZoom: 19, attribution: pub.getAttribute("data-attribution") || "" }).addTo(pm);
+      window.L.tileLayer(ptiles, { maxZoom: 19, referrerPolicy: "origin", attribution: pub.getAttribute("data-attribution") || "" }).addTo(pm);
     } else {
       pub.classList.add("station-map-blank");
     }
@@ -132,7 +164,8 @@
       $("reg-err").hidden = true;
       window.fetch("/api/v1/registration-windows", {
         method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ digits: 8 })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ digits: 8, model: $("reg-model").value.trim() })
       }).then(function (r) {
         return r.json().then(function (j) { return r.ok ? j : Promise.reject(new Error(j.detail || j.error || ("status " + r.status))); });
       }).then(function (w) {

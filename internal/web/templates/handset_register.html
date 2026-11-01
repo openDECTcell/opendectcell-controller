@@ -5,6 +5,16 @@
   <div class="card-body">
     <div id="reg-start">
       <p>Registering opens a window of one minute on every base station that is online. You get a PIN to type into the handset.</p>
+      <div class="mb-3 narrow">
+        <label class="form-label" for="reg-model">Handset model <span class="text-secondary">(optional)</span></label>
+        <input class="form-control" id="reg-model" list="reg-models" maxlength="64" autocomplete="off" placeholder="Gigaset A540">
+        <datalist id="reg-models">
+          <option value="Gigaset A540"><option value="Gigaset C430A"><option value="Gigaset AS690H">
+          <option value="Gigaset (other)"><option value="AVM FRITZ!Fon"><option value="Panasonic KX-TGxxx">
+          <option value="Siemens Gigaset"><option value="Other">
+        </datalist>
+        <div class="form-hint">Pick one or type it. The controller keeps it with the handset; some handsets need workarounds that depend on the model.</div>
+      </div>
       <button type="button" id="reg-go" class="btn btn-primary" {{if not .Data}}disabled{{end}}>Start registration</button>
       <noscript><p class="text-secondary mt-3">This page needs JavaScript to show the PIN and wait for the handset.</p></noscript>
     </div>

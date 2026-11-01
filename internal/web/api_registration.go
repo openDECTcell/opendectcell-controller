@@ -5,7 +5,9 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -46,6 +48,7 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 	var in struct {
 		Digits  int        `json:"digits"`
 		OwnerID *uuid.UUID `json:"owner_id"`
+		Model   string     `json:"model"`
 	}
 	if r.ContentLength != 0 {
 		if !decode(w, r, &in) {
@@ -64,6 +67,10 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 		}
 		owner = *in.OwnerID
 	}
+	if len([]rune(strings.TrimSpace(in.Model))) > regwin.MaxModel || strings.ContainsFunc(in.Model, unicode.IsControl) {
+		problem(w, http.StatusBadRequest, "invalid", "", map[string]string{"model": "at most 64 characters, no control characters"})
+		return
+	}
 	win, pin, err := s.Registrations.Open(owner, u.ID, in.Digits)
 	switch {
 	case errors.Is(err, regwin.ErrDigits):
@@ -81,6 +88,9 @@ func (s *Server) apiWindowOpen(w http.ResponseWriter, r *http.Request, u *auth.U
 	case err != nil:
 		s.apiError(w, r, err)
 		return
+	}
+	if in.Model != "" {
+		_ = s.Registrations.SetModel(win.ID, in.Model)
 	}
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "registration_window.open",
 		ObjectType: "registration_window", ObjectID: win.ID.String(),
