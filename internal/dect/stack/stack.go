@@ -158,6 +158,9 @@ type Stack interface {
 	// Drop takes record i out of the table. False: the stack is not idle,
 	// try again later.
 	Drop(i int) bool
+	// Quiet reports whether the stack is idle: no link, no call, nothing
+	// being set up.
+	Quiet() bool
 	// SetLocateValidity sets the location validity in units of 40.96 s for
 	// the links from now on; 0: none.
 	SetLocateValidity(units uint)

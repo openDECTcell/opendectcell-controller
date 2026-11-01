@@ -122,11 +122,17 @@ func TestDropRecordNeedsAQuietBase(t *testing.T) {
 	e := fetchEnv(t)
 	rec := subRecord(7, []byte{0x80, 0xa8, 0x03, 0x55, 0x66, 0x77, 0x88})
 	e.host.AddRecord(1, rec)
+	if e.host.Quiet() {
+		t.Error("quiet with a link up")
+	}
 	if e.host.Drop(1) {
 		t.Error("dropped with a link up")
 	}
 	e.chip(0x0201, []byte{1})
 	e.settle()
+	if !e.host.Quiet() {
+		t.Error("not quiet after the link ended")
+	}
 	if !e.host.Drop(1) {
 		t.Error("not dropped on a quiet base")
 	}

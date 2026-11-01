@@ -816,6 +816,11 @@ int cdect_host_drop(struct cdect_host *c, unsigned i)
 	return dect_base_record_drop(&c->b, i);
 }
 
+int cdect_host_quiet(const struct cdect_host *c)
+{
+	return dect_base_quiet(&c->b);
+}
+
 void cdect_host_tick(struct cdect_host *c, uint64_t now)
 {
 	c->now = now;

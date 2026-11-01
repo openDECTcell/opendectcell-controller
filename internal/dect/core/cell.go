@@ -204,8 +204,9 @@ func (r *cellRun) handle(ev event) {
 }
 
 // reloadDelay (a variable for the tests) is how long after a change of the
-// handsets a stack is rebuilt, so a handset that has just enrolled finishes
-// what it started.
+// handsets a stack is rebuilt at the earliest, so a handset that has just
+// enrolled finishes what it started. The rebuild also waits for a quiet stack,
+// so it never ends a call.
 var reloadDelay = 3 * time.Second
 
 // setReady publishes what the router reads (route.go).
@@ -313,7 +314,8 @@ func (r *cellRun) tick() {
 	if r.st == nil && r.linkUp && !r.retryAt.IsZero() && now.After(r.retryAt) {
 		r.restart()
 	}
-	if r.st != nil && !r.reloadAt.IsZero() && now.After(r.reloadAt) {
+	// the rebuild ends every call on the cell: it waits until the stack is quiet
+	if r.st != nil && !r.reloadAt.IsZero() && now.After(r.reloadAt) && r.st.Quiet() {
 		r.log.Info("the handsets changed: DECT stack rebuilt from the records")
 		r.drop()
 		r.resumed = false // the calls went with the stack

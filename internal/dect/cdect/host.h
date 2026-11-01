@@ -112,6 +112,7 @@ void cdect_host_mail(struct cdect_host *c, uint64_t now);
 void cdect_host_resume(struct cdect_host *c, uint64_t now);
 /* Take record i out of the table; 0, or -1 when the base is not quiet or i is no record. */
 int cdect_host_drop(struct cdect_host *c, unsigned i);
+int cdect_host_quiet(const struct cdect_host *c);
 /* One loop pass: the host's steps and dect_base_tick(). */
 void cdect_host_tick(struct cdect_host *c, uint64_t now);
 /* When record i last had C-plane traffic, on the stack's clock; 0: never. */

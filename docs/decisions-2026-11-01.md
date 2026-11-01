@@ -115,8 +115,11 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 ## Roaming (added after "implement 1 to 5")
 
 **Answered 2026-11-01 (question tool), to be built:** 17 pool TPUIs stay on by default. 18 no button; re-enrol by
-hand. 19 and 23 as built / informational. 20 remove the rebuild after enrolment: update the stack in place (fresh
-pool TPUI for the next free record), no restart, so an enrolment never ends a call. 21 widen both the names list and
+hand. 19 and 23 as built / informational. 20 first answered "update in place"; I then corrected my premise (the rebuild also frees the chip
+slot the pooled handset's key sits in and clears the key from the chip, so without it a cell could enrol only six
+pooled handsets until a restart) and you chose: the rebuild stays but waits until the cell's stack is quiet, so it
+never ends a call (built: `Stack.Quiet`, libopendectcell `dect_base_quiet`). An in-place recycle (drop, free store with its
+chip slot, chip clear) is left as a possible later step; it needs a handset enrolling on the bench. 21 widen both the names list and
 the call lists in the library (records 8..31). 22 location history gets its own retention setting, default 90 days,
 separate from the call-detail retention.
 
@@ -131,8 +134,8 @@ separate from the call-detail retention.
     My additions: a full table drops the handset heard least recently; a drop waits for a quiet base; a handset
     whose key or registration changed on one cell is dropped from the others as soon as they are quiet; the
     table starts empty above the chip's slots after a restart.
-20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it** (radio stays on; a call in progress on
-    that cell would end). Fine while there is no call path; once there is, the rebuild should wait for an idle cell.
+20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it, once its stack is quiet** (radio stays on;
+    a call in progress on that cell holds the rebuild back until it ends; decided, built).
 21. **Records numbered 8 or more have no entry in the handsets' Internal Names list and no call list** (library
     limits: eight names, seven terminal ids). Widening them is library work; do you want it?
 22. **Location history**: every change of cell is a row (handset, from, to, time), shown on the handset page and

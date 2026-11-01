@@ -198,6 +198,10 @@ func (x *Host) Drop(i int) bool {
 	return ok
 }
 
+// Quiet reports whether nothing is going on: no link, no call, nothing
+// being set up.
+func (x *Host) Quiet() bool { return C.cdect_host_quiet(x.c) != 0 }
+
 // SetLocateValidity changes how long a location registration holds, in units
 // of 40.96 s, for the links set up from now on; 0: no limit.
 func (x *Host) SetLocateValidity(units uint) {

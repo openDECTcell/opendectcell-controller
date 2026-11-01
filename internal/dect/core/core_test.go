@@ -153,6 +153,12 @@ func (f *fakeStack) Drop(i int) bool {
 	return true
 }
 
+func (f *fakeStack) Quiet() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !f.busy
+}
+
 func (f *fakeStack) SetLocateValidity(u uint) {
 	f.mu.Lock()
 	f.validity = append(f.validity, u)
@@ -1171,6 +1177,35 @@ func TestPooledEnrolmentRebuildsOnlyTheCell(t *testing.T) {
 	if g.stack(1).isClosed() || g.nStacks() != 3 {
 		t.Errorf("b was rebuilt (%d stacks)", g.nStacks())
 	}
+}
+
+// The rebuild after a pooled enrolment ends every call on the cell, so it waits
+// until the stack is quiet.
+func TestEnrolmentRebuildWaitsForAQuietStack(t *testing.T) {
+	old := reloadDelay
+	reloadDelay = 20 * time.Millisecond
+	defer func() { reloadDelay = old }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) { f.busy = true }) // a call is up
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	time.Sleep(1200 * time.Millisecond) // well past the delay and several ticks
+	if g.nStacks() != 1 || g.stack(0).isClosed() {
+		t.Fatalf("the stack was rebuilt during a call (%d stacks)", g.nStacks())
+	}
+	g.stack(0).get(func(f *fakeStack) { f.busy = false })
+	waitFor(t, "rebuilt once quiet", func() bool { return g.nStacks() == 2 })
 }
 
 // fetchRig is a cell with one handset that the store knows but the cell does not
