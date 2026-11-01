@@ -38,7 +38,11 @@ type Records interface {
 	// CellRecords is what cell holds, at most max records, placed by
 	// cell-protocol.md §7.4 rules 1 and 2 (home set, no eviction). unplaced
 	// lists home-set handsets that found no free slot.
-	CellRecords(ctx context.Context, cell uuid.UUID, max int) (hs []Handset, unplaced []uuid.UUID, err error)
+	// resident is a cell whose chip admits only handsets that sit in one of its
+	// slots (chipNeedsSlots): every handset of the controller gets a chip slot
+	// there, most recently heard first, one slot stays free for an enrolment,
+	// and a pooled handset keeps the slot it enrolled in.
+	CellRecords(ctx context.Context, cell uuid.UUID, max int, resident bool) (hs []Handset, unplaced []uuid.UUID, err error)
 	// SaveRecord stores a record the stack changed. id uuid.Nil is a
 	// handset that just enrolled on cell through owner's registration
 	// window; its id is returned. owner is ignored for a known id.
@@ -187,7 +191,7 @@ func (s *Store) ReleaseTPUI(t [3]byte) {
 	s.mu.Unlock()
 }
 
-func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Handset, []uuid.UUID, error) {
+func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int, resident bool) ([]Handset, []uuid.UUID, error) {
 	max = min(max, maxSlot)
 	var hs []Handset
 	var unplaced []uuid.UUID
@@ -230,12 +234,46 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 		// Above the chip's slots the table is a working set that a stack starts
 		// without: whoever was in it before has to be heard (or called) to come
 		// back (Fetch, Ring). A pooled handset that sits in a chip slot here (it
-		// enrolled in this run) gives the slot up the same way.
+		// enrolled in this run) gives the slot up the same way, except on a
+		// resident cell, where the slot is what lets the chip hear the handset.
 		if _, err := tx.Exec(ctx, `UPDATE cell_slot cs SET handset_id = NULL, state = 'empty', written_at = now()
-			WHERE cs.cell_id = $1 AND cs.handset_id IS NOT NULL AND (cs.slot > $2 OR EXISTS
-				(SELECT 1 FROM handset h WHERE h.id = cs.handset_id AND h.pooled))`,
-			cell, int16(maxSlot)); err != nil {
+			WHERE cs.cell_id = $1 AND cs.handset_id IS NOT NULL AND (cs.slot > $2 OR (NOT $3 AND EXISTS
+				(SELECT 1 FROM handset h WHERE h.id = cs.handset_id AND h.pooled)))`,
+			cell, int16(maxSlot), resident); err != nil {
 			return err
+		}
+		if resident {
+			// Every other handset into the free chip slots, the cell's own
+			// first, then the most recently heard anywhere; one slot stays free
+			// for a handset that enrols here. (A handset with no slot is a
+			// roamer here: the chip does not hear it call or answer a page.)
+			rows, err := tx.Query(ctx, `SELECT h.id FROM handset h WHERE NOT EXISTS
+					(SELECT 1 FROM cell_slot cs WHERE cs.cell_id = $1 AND cs.handset_id = h.id)
+				ORDER BY (h.last_seen_cell_id = $1) DESC NULLS LAST, h.last_seen_at DESC NULLS LAST, h.registered_at, h.id`, cell)
+			if err != nil {
+				return err
+			}
+			others, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+			if err != nil {
+				return err
+			}
+			used, err = usedSlots(ctx, tx, cell)
+			if err != nil {
+				return err
+			}
+			for _, id := range others {
+				slot := int16(1)
+				for used[slot] && slot <= int16(max) {
+					slot++
+				}
+				if slot >= int16(max) { // the last slot is for an enrolment
+					break
+				}
+				used[slot] = true
+				if err := putSlot(ctx, tx, cell, slot, id, false); err != nil {
+					return err
+				}
+			}
 		}
 		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxSlot))
 		return err

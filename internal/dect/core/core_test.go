@@ -289,17 +289,19 @@ func (l *fakeLink) all() []sent {
 }
 
 type fakeRecords struct {
-	mu        sync.Mutex
-	hs        []Handset
-	fail      int // CellRecords fails this many times
-	saves     []uuid.UUID
-	owners    []uuid.UUID
-	newID     uuid.UUID
-	installed [][]uint
-	unknown   []uint
-	forgot    []uuid.UUID
-	seenOn    map[uuid.UUID]uuid.UUID // handset -> the cell it was last seen on
-	seenTimes []time.Time
+	mu   sync.Mutex
+	hs   []Handset
+	fail int // CellRecords fails this many times
+	// what each CellRecords call asked for resident
+	residentAsked []bool
+	saves         []uuid.UUID
+	owners        []uuid.UUID
+	newID         uuid.UUID
+	installed     [][]uint
+	unknown       []uint
+	forgot        []uuid.UUID
+	seenOn        map[uuid.UUID]uuid.UUID // handset -> the cell it was last seen on
+	seenTimes     []time.Time
 	// the pool: ReserveTPUI offers TPUIs when pool is set; place is what
 	// PlaceHandset returns, by handset; forgetPooled is Forget's answer
 	pool         bool
@@ -349,9 +351,10 @@ func (r *fakeRecords) HandsetInfo(_ context.Context, id uuid.UUID) (string, stri
 	return v[0], v[1], ok, nil
 }
 
-func (r *fakeRecords) CellRecords(_ context.Context, cell uuid.UUID, _ int) ([]Handset, []uuid.UUID, error) {
+func (r *fakeRecords) CellRecords(_ context.Context, cell uuid.UUID, _ int, resident bool) ([]Handset, []uuid.UUID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.residentAsked = append(r.residentAsked, resident)
 	if r.fail > 0 {
 		r.fail--
 		return nil, nil, errors.New("database down")
@@ -1983,4 +1986,80 @@ func TestRoamingChangeReachesTheStack(t *testing.T) {
 	if g.nStacks() != 1 {
 		t.Error("the stack was rebuilt")
 	}
+}
+
+// A resident cell (06.88, whose chip hears only handsets in its slots) keeps the
+// chip slot a pooled handset enrolled in; a handset that enrols on another cell
+// makes it rebuild its stack, from the records, which give the newcomer a slot.
+func TestResidentCellKeepsSlotsAndTakesNewcomers(t *testing.T) {
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	a, b := uuid.New(), uuid.New()
+	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "a's radio on", radioOnAt(g, 0))
+	g.core.CellUp(b, cell.CellUp{StubVersion: "06.88"})
+	waitFor(t, "b's radio on", radioOnAt(g, 1))
+	recs.get(func(r *fakeRecords) {
+		if len(r.residentAsked) != 2 || r.residentAsked[0] || !r.residentAsked[1] {
+			t.Errorf("CellRecords asked resident %v, want [false true]", r.residentAsked)
+		}
+	})
+
+	// the handset enrols on a: a frees the chip slot, b, resident, is rebuilt
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0201})
+	waitFor(t, "a's record recycled", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
+		return n == 1
+	})
+	waitFor(t, "b rebuilt to hold the newcomer", func() bool { return g.nStacks() == 3 && g.stack(1).isClosed() })
+	if g.stack(0).isClosed() {
+		t.Error("a was rebuilt: it is not resident")
+	}
+}
+
+// The enrolment on the resident cell itself is not recycled.
+func TestResidentCellDoesNotRecycleItsEnrolment(t *testing.T) {
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	b := uuid.New()
+	g.core.CellUp(b, cell.CellUp{StubVersion: "06.88"})
+	waitFor(t, "b's radio on", radioOnAt(g, 0))
+	g.core.MailUp(b, wire.MailUpMsg{Prim: 0x0203})
+	g.core.MailUp(b, wire.MailUpMsg{Prim: 0x0201})
+	time.Sleep(300 * time.Millisecond)
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.recycled) != 0 {
+			t.Errorf("the resident cell recycled records %v", f.recycled)
+		}
+	})
 }

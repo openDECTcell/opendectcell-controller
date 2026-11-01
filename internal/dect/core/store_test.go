@@ -96,7 +96,7 @@ func TestStoreEnrolAndLoad(t *testing.T) {
 	}
 
 	// Loaded back for cell a, in its slot, with its key and identities.
-	hs, unplaced, err := s.CellRecords(ctx, a, 6)
+	hs, unplaced, err := s.CellRecords(ctx, a, 6, false)
 	if err != nil || len(hs) != 1 || len(unplaced) != 0 {
 		t.Fatalf("cell a: %v %v %v", hs, unplaced, err)
 	}
@@ -107,13 +107,13 @@ func TestStoreEnrolAndLoad(t *testing.T) {
 
 	// Cell b holds nothing yet; with the handset in its home set it gets
 	// the lowest free slot there.
-	if hs, _, _ := s.CellRecords(ctx, b, 6); len(hs) != 0 {
+	if hs, _, _ := s.CellRecords(ctx, b, 6, false); len(hs) != 0 {
 		t.Fatalf("cell b: %v", hs)
 	}
 	if _, err := s.Pool.Exec(ctx, "INSERT INTO handset_home_cell VALUES ($1, $2)", id, b); err != nil {
 		t.Fatal(err)
 	}
-	if hs, _, _ := s.CellRecords(ctx, b, 6); len(hs) != 1 || hs[0].Rec.Slot != 1 {
+	if hs, _, _ := s.CellRecords(ctx, b, 6, false); len(hs) != 1 || hs[0].Rec.Slot != 1 {
 		t.Fatalf("cell b after the home set: %v", hs)
 	}
 
@@ -130,7 +130,7 @@ func TestStoreEnrolAndLoad(t *testing.T) {
 	if err != nil || id2 != id {
 		t.Fatalf("re-enrolment: %v %v", id2, err)
 	}
-	hs, _, _ = s.CellRecords(ctx, a, 6)
+	hs, _, _ = s.CellRecords(ctx, a, 6, false)
 	if len(hs) != 1 || hs[0].Rec.Slot != 3 || hs[0].Rec.UAK != again.UAK {
 		t.Errorf("after re-enrolment: %+v", hs)
 	}
@@ -157,10 +157,10 @@ func TestStoreEnrolAndLoad(t *testing.T) {
 	if _, err := s.Forget(ctx, a, id); err != nil {
 		t.Fatal(err)
 	}
-	if hs, _, _ := s.CellRecords(ctx, a, 6); len(hs) != 0 {
+	if hs, _, _ := s.CellRecords(ctx, a, 6, false); len(hs) != 0 {
 		t.Errorf("cell a after forget: %v", hs)
 	}
-	if hs, _, _ := s.CellRecords(ctx, b, 6); len(hs) != 1 || hs[0].ID != id {
+	if hs, _, _ := s.CellRecords(ctx, b, 6, false); len(hs) != 1 || hs[0].ID != id {
 		t.Errorf("cell b after forget on a: %v", hs)
 	}
 }
@@ -182,7 +182,7 @@ func TestStoreCellFull(t *testing.T) {
 	if _, err := s.Pool.Exec(ctx, "INSERT INTO handset_home_cell VALUES ($1, $2)", extra, c); err != nil {
 		t.Fatal(err)
 	}
-	hs, unplaced, err := s.CellRecords(ctx, c, 3)
+	hs, unplaced, err := s.CellRecords(ctx, c, 3, false)
 	if err != nil || len(hs) != 3 || len(unplaced) != 1 || unplaced[0] != extra {
 		t.Fatalf("full cell: %d records, unplaced %v, %v", len(hs), unplaced, err)
 	}
@@ -270,7 +270,7 @@ func TestStoreReleaseChipSlot(t *testing.T) {
 		t.Error("the handset itself is gone")
 	}
 	// a restart finds the same: the chip handset only
-	hs, _, err := s.CellRecords(ctx, a, 6)
+	hs, _, err := s.CellRecords(ctx, a, 6, false)
 	if err != nil || len(hs) != 1 || hs[0].ID != chip {
 		t.Errorf("records after the release: %+v %v", hs, err)
 	}
@@ -318,11 +318,11 @@ func TestStorePooledHandset(t *testing.T) {
 	}
 
 	// The stack starts with the chip handset only: the pooled one left its chip slot.
-	hs, unplaced, err := s.CellRecords(ctx, a, 6)
+	hs, unplaced, err := s.CellRecords(ctx, a, 6, false)
 	if err != nil || len(hs) != 1 || len(unplaced) != 0 || hs[0].ID != chip || hs[0].Rec.Slot != 1 || hs[0].Rec.TPUI != ([3]byte{}) {
 		t.Fatalf("a: %+v %v %v", hs, unplaced, err)
 	}
-	if hs, _, _ = s.CellRecords(ctx, b, 6); len(hs) != 0 {
+	if hs, _, _ = s.CellRecords(ctx, b, 6, false); len(hs) != 0 {
 		t.Fatalf("b holds %+v at start", hs)
 	}
 
@@ -357,7 +357,7 @@ func TestStorePooledHandset(t *testing.T) {
 	if err := s.Unplace(ctx, b, saved.ID); err != nil {
 		t.Fatal(err)
 	}
-	if hs, _, _ = s.CellRecords(ctx, b, 6); len(hs) != 0 {
+	if hs, _, _ = s.CellRecords(ctx, b, 6, false); len(hs) != 0 {
 		t.Errorf("b starts with %+v: the working set is not kept across a start", hs)
 	}
 	if h, ok, _ := s.PlaceHandset(ctx, b, saved.ID); !ok || h.Rec.Slot != poolFirst {
@@ -445,5 +445,87 @@ func TestStoreTableFull(t *testing.T) {
 	}
 	if h, ok, err := s.PlaceHandset(ctx, b, ids[len(ids)-1]); err != nil || !ok || h.Rec.Slot != uint(maxSlot+1+3) {
 		t.Fatalf("after a number was freed: %+v %v %v", h, ok, err)
+	}
+}
+
+// A resident cell (a chip that hears only handsets in its slots, chipNeedsSlots)
+// holds every handset of the controller in a chip slot, a pooled one included
+// and under its pool TPUI, the most recently heard first; the last slot stays
+// free for an enrolment.
+func TestStoreResidentCell(t *testing.T) {
+	s, ctx := newStore(t)
+	a, c := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "c")
+	anna := s.newUser(t, ctx, "anna")
+
+	chip, err := s.save(ctx, a, uuid.Nil, anna, rec(1, 0x41))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := s.ReserveTPUI(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rec(2, 0x42)
+	r.TPUI = tp
+	pooled, err := s.SaveRecord(ctx, a, uuid.Nil, anna, r)
+	if err != nil || !pooled.Pooled {
+		t.Fatalf("pooled enrolment: %+v %v", pooled, err)
+	}
+
+	// The cell that enrolled them is not resident: the pooled handset gives its slot up.
+	if hs, _, _ := s.CellRecords(ctx, a, 6, false); len(hs) != 1 || hs[0].ID != chip {
+		t.Fatalf("a, not resident: %+v", hs)
+	}
+	// A resident cell takes both, the pooled one under its pool TPUI.
+	hs, unplaced, err := s.CellRecords(ctx, c, 6, true)
+	if err != nil || len(unplaced) != 0 || len(hs) != 2 {
+		t.Fatalf("c, resident: %+v %v %v", hs, unplaced, err)
+	}
+	var sawPool bool
+	for _, h := range hs {
+		if h.Rec.Slot < 1 || h.Rec.Slot > 5 {
+			t.Errorf("handset %v in slot %d", h.ID, h.Rec.Slot)
+		}
+		if h.ID == pooled.ID {
+			sawPool = true
+			if h.Rec.TPUI != tp {
+				t.Errorf("the pooled handset's TPUI %x, want %x", h.Rec.TPUI, tp)
+			}
+		}
+	}
+	if !sawPool {
+		t.Error("the pooled handset has no slot on the resident cell")
+	}
+	// Resident again, nothing changes: the slots stay.
+	if again, _, _ := s.CellRecords(ctx, c, 6, true); len(again) != 2 {
+		t.Fatalf("c, second start: %+v", again)
+	}
+	// A pooled handset that enrolled on the resident cell keeps its slot there.
+	r3 := rec(3, 0x43)
+	r3.TPUI, _ = s.ReserveTPUI(ctx)
+	p3, err := s.SaveRecord(ctx, c, uuid.Nil, anna, r3)
+	if err != nil || !p3.Pooled {
+		t.Fatalf("enrolment on c: %+v %v", p3, err)
+	}
+	if hs, _, _ := s.CellRecords(ctx, c, 6, true); len(hs) != 3 {
+		t.Fatalf("c after an enrolment: %d records, want 3", len(hs))
+	}
+
+	// More handsets than slots: five hold slots, the sixth slot stays free.
+	for k := 0; k < 6; k++ {
+		x := rec(1, byte(0x50+k))
+		x.TPUI, _ = s.ReserveTPUI(ctx)
+		if _, err := s.SaveRecord(ctx, a, uuid.Nil, anna, x); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hs, _, err = s.CellRecords(ctx, c, 6, true)
+	if err != nil || len(hs) != 5 {
+		t.Fatalf("c, full: %d records, %v", len(hs), err)
+	}
+	for _, h := range hs {
+		if h.Rec.Slot == 6 {
+			t.Errorf("slot 6, the one kept for an enrolment, holds %v", h.ID)
+		}
 	}
 }
