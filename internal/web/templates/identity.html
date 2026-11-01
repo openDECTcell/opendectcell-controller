@@ -7,6 +7,12 @@
   <dt>Now</dt><dd>{{with .Current}}{{.String}}{{else}}none (factory identities){{end}}</dd>
 </dl>
 
+{{if .Replaces}}
+<div class="alert alert-danger" role="alert">
+  <h4 class="alert-title">This replaces the identity of a running system</h4>
+  <p class="mb-0">The system identity is <strong>{{.Current.String}}</strong>. Handsets registered under it know the cells by that identity. If the cells use it, every handset on every cell stops finding its base and has to register again, one by one. Do this only for a fresh start.</p>
+</div>
+{{end}}
 <h3 class="mt-4 mb-2">Before you save it</h3>
 <ul>
 {{if eq .Proposed.Source "random"}}
@@ -25,7 +31,12 @@
   <input type="hidden" name="fps" value="{{.Proposed.FPS}}">
   <input type="hidden" name="source" value="{{.Proposed.Source}}">
   <label class="form-check"><input class="form-check-input" type="checkbox" name="understood"> I have read this</label>
-  <button type="submit" class="btn btn-primary">Save this identity</button>
+  {{if .Replaces}}
+  <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="understood2"> I know that this can break the whole network and that every handset may have to register again</label>
+  <label class="form-label" for="confirm_eic">To confirm, type the EIC of the identity being replaced ({{printf "%04X" .Current.EIC}})</label>
+  <input class="form-control mb-3" id="confirm_eic" name="confirm_eic" maxlength="4" autocomplete="off" required>
+  {{end}}
+  <button type="submit" class="btn {{if .Replaces}}btn-danger{{else}}btn-primary{{end}}">{{if .Replaces}}Replace the system identity{{else}}Save this identity{{end}}</button>
 </form></div></div>
 <p><a href="/cells">Cancel</a>{{if eq .Proposed.Source "random"}} · or make up another one from the Cells page{{end}}</p>
 {{end}}

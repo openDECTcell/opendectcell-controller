@@ -4,8 +4,10 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,6 +89,11 @@ type identityPage struct {
 	Current  *cell.SystemIdentity
 }
 
+// Replaces: saving the proposal would replace a different identity.
+func (p identityPage) Replaces() bool {
+	return p.Current != nil && (p.Current.EIC != p.Proposed.EIC || p.Current.FPN != p.Proposed.FPN || p.Current.FPS != p.Proposed.FPS)
+}
+
 // identityForm reads an identity from a form: EIC in hex, FPN and FPS in
 // decimal, as the page shows them.
 func identityForm(r *http.Request, source string) (cell.SystemIdentity, error) {
@@ -144,11 +151,21 @@ func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.Us
 		source = cell.IdentityAllocated
 	}
 	id, err := identityForm(r, source)
-	if err == nil && r.PostFormValue("understood") != "on" {
+	cur, _ := s.Cells.SystemIdentity(r.Context())
+	replacing := cur != nil && (cur.EIC != id.EIC || cur.FPN != id.FPN || cur.FPS != id.FPS)
+	switch {
+	case err != nil:
+	case cur != nil && !replacing:
+		http.Redirect(w, r, "/cells?done=That+is+the+system+identity+already.", http.StatusSeeOther)
+		return
+	case r.PostFormValue("understood") != "on":
 		err = errors.New("Tick the box to confirm you read the risks.") //nolint:staticcheck // ST1005: shown on the page as a sentence
+	case replacing && r.PostFormValue("understood2") != "on":
+		err = errors.New("Tick both boxes: replacing the identity of a running system breaks it.") //nolint:staticcheck // ST1005: as above
+	case replacing && !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm_eic")), fmt.Sprintf("%04X", cur.EIC)):
+		err = errors.New("Type the EIC of the identity being replaced, exactly as shown, to confirm.") //nolint:staticcheck // ST1005: as above
 	}
 	if err != nil {
-		cur, _ := s.Cells.SystemIdentity(r.Context())
 		s.render(w, http.StatusBadRequest, "identity.html", page{Title: "DECT system identity", User: u,
 			Error: err.Error(), Data: identityPage{Proposed: id, Current: cur}})
 		return
@@ -200,8 +217,8 @@ func (s *Server) identityDonor(w http.ResponseWriter, r *http.Request, u *auth.U
 	}
 	live := s.liveStatus(c.ID)
 	switch {
-	case cur != nil && cur.Apply:
-		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "The system identity is applied; turn that off first, so the cells broadcast their own again."})
+	case cur != nil:
+		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "A system identity is set already. Replacing it can break every handset, so it is done on the Cells page, under \"Replace the system identity\", with confirmations."})
 		return
 	case !live.Online || !live.HasRFPI:
 		s.renderCells(w, r, u, http.StatusBadRequest, page{Error: "That cell is offline or does not report its identity (older software)."})

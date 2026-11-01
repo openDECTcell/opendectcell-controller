@@ -172,9 +172,36 @@ func TestSystemIdentityPages(t *testing.T) {
 		}
 	}
 	r = e.post(t, admin, "/cells/identity", url.Values{"eic": {"beef"}, "fpn": {"7"}, "fps": {"2"}})
-	if page := readBody(r); r.StatusCode != http.StatusOK || strings.Contains(page, "This EIC is made up") ||
+	if page = readBody(r); r.StatusCode != http.StatusOK || strings.Contains(page, "This EIC is made up") ||
 		!strings.Contains(page, `value="BEEF"`) {
 		t.Fatalf("allocated EIC: %d", r.StatusCode)
+	}
+
+	// Replacing a stored identity asks for more: both boxes and the old EIC.
+	if !strings.Contains(page, "This replaces the identity of a running system") {
+		t.Error("the proposal does not warn that it replaces the identity")
+	}
+	rep := url.Values{"eic": {"BEEF"}, "fpn": {"7"}, "fps": {"2"}, "source": {"allocated"}, "understood": {"on"}}
+	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("replaced with one box: %d", r.StatusCode)
+	}
+	rep.Set("understood2", "on")
+	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("replaced without typing the old EIC: %d", r.StatusCode)
+	}
+	rep.Set("confirm_eic", "0000")
+	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("replaced with the wrong EIC typed: %d", r.StatusCode)
+	}
+	if now, _ := e.cells.SystemIdentity(ctx); now == nil || fmt.Sprintf("%04X", now.EIC) != form.Get("eic") {
+		t.Fatal("the identity changed without every confirmation")
+	}
+	rep.Set("confirm_eic", strings.ToLower(form.Get("eic")))
+	if r := e.post(t, admin, "/cells/identity/save", rep); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("replace with every confirmation: %d", r.StatusCode)
+	}
+	if now, _ := e.cells.SystemIdentity(ctx); now == nil || now.EIC != 0xBEEF {
+		t.Errorf("not replaced: %+v", now)
 	}
 
 	// Not for users.
