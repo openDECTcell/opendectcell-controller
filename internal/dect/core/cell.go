@@ -797,6 +797,9 @@ func (r *cellRun) drop() {
 // send is MAIL_DOWN. A slot write gets a corr, so a cell that cannot
 // deliver it says so (§7.4).
 func (r *cellRun) send(corr uint16, m stack.Mail) error {
+	if m.Prim == 0x0300 { // a page: whom it names is public, no key travels in it
+		r.log.Debug("chip mail down: page", "param", hex.EncodeToString(m.Param))
+	}
 	if corr == 0 && (m.Prim == 0x0247 || m.Prim == 0x020A) && len(m.Param) > 0 {
 		r.corr++
 		if r.corr == 0 {
