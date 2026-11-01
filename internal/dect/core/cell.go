@@ -521,7 +521,7 @@ func (r *cellRun) restart() {
 		r.log.Error("cell full: a handset has no record number free here (cell-protocol.md §7.4)", "handset", id)
 	}
 	table, delay := chipConfig(r.up.StubVersion)
-	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]uuid.UUID{}, jobs: make(chan job, saveQueue)}
+	g := &gen{r: r, slotOf: map[int]uint{}, owner: map[uint]uuid.UUID{}, rePIN: map[int]uint{}, jobs: make(chan job, saveQueue)}
 	defer func() {
 		for i := range hs {
 			clear(hs[i].Rec.UAK[:])
@@ -627,6 +627,10 @@ type gen struct {
 	slotOf map[int]uint // record index -> chip slot
 	owner  map[uint]uuid.UUID
 	jobs   chan job
+	// rePIN is the registration PIN a known record last saved with: an
+	// enrolment again keeps its record, so the PIN is claimed when the stack
+	// reports the handset registered, not when the record is saved.
+	rePIN map[int]uint
 }
 
 type jobKind int
@@ -641,6 +645,7 @@ const (
 	jobTrack   // a record added to the running stack: its handset
 	jobUntrack // a record dropped from it: the handset leaves the cell's table
 	jobRelease // a record recycled out of its chip slot: the slot is free in the store
+	jobReenrol // a known handset enrolled again: its window's PIN is claimed
 )
 
 type job struct {
@@ -654,6 +659,7 @@ type job struct {
 	slots  []uint
 	at     time.Time // jobSeen: when the handset was heard
 	hid    uuid.UUID // jobTrack
+	pin    uint      // jobReenrol: the record's reg_pin1
 }
 
 // place notes record i in chip slot with its owner, for NameVisible.
@@ -667,6 +673,7 @@ func (g *gen) place(i int, slot uint, owner uuid.UUID) {
 
 // unplace forgets record i's place (it left the table).
 func (g *gen) unplace(i int) {
+	delete(g.rePIN, i)
 	if slot, ok := g.slotOf[i]; ok {
 		delete(g.owner, slot)
 		delete(g.slotOf, i)
@@ -723,6 +730,22 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 			if saved.Enrolled && saved.Pooled {
 				core.enrolled(id, hid, j.i, saved.Again)
 			}
+		}
+	case jobReenrol:
+		hid, ok := ids[j.i]
+		if !ok || core.Reg == nil {
+			break
+		}
+		owner, window, claimed := core.Reg.Claim(id, j.pin)
+		switch {
+		case !claimed:
+		case owner != j.owner:
+			// Not built: a handset changing hands. Its key changed all the same
+			// (the stack accepted the PIN), so say so rather than hide it.
+			log.Warn("a handset enrolled again through another user's window: the window is not completed", "handset", hid)
+		default:
+			core.Reg.Enrolled(window, hid)
+			log.Info("handset enrolled again: record stored", "handset", hid, "record", j.i)
 		}
 	case jobTrack:
 		ids[j.i] = j.hid
@@ -809,6 +832,8 @@ func (g *gen) Save(i int, rec stack.Record) {
 			return
 		}
 		g.place(i, rec.Slot, owner)
+	} else if rec.RegPIN1 != 0 {
+		g.rePIN[i] = rec.RegPIN1
 	}
 	g.job(job{kind: jobSave, i: i, rec: rec, owner: owner, window: window})
 }
@@ -845,8 +870,16 @@ func (g *gen) NameVisible(viewer, slot uint) bool {
 func (g *gen) Switched(cur int, why string) {
 	g.r.log.Debug("record current", "record", cur, "why", why)
 }
-func (g *gen) Registered(cur int) { g.r.log.Info("handset registered", "record", cur) }
-func (g *gen) CapLearned(i int)   { g.r.log.Debug("handset capability learned", "record", i) }
+func (g *gen) Registered(cur int) {
+	g.r.log.Info("handset registered", "record", cur)
+	// A handset that enrolled again (its record was known) completes the
+	// window of the PIN it proved, as a new one does when it is saved.
+	if pin := g.rePIN[cur]; pin != 0 {
+		delete(g.rePIN, cur)
+		g.job(job{kind: jobReenrol, i: cur, pin: pin, owner: g.owner[g.slotOf[cur]]})
+	}
+}
+func (g *gen) CapLearned(i int) { g.r.log.Debug("handset capability learned", "record", i) }
 
 // Clock: the controller's clock is trusted (NTP on its host).
 func (g *gen) Clock() (time.Time, bool) { return time.Now(), true }

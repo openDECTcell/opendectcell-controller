@@ -693,6 +693,40 @@ func TestEnrolmentSaves(t *testing.T) {
 	}
 }
 
+// A handset that enrols again keeps its record, so the save does not bind the
+// window: the stack's "registered" does.
+func TestReenrolmentCompletesTheWindow(t *testing.T) {
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	pin1, n := uint(1), 0
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: pin1})
+			if n++; n > 1 {
+				env.Registered(0)
+			}
+		}
+	})
+	g.core.Reg = reg
+	w1, _, _ := reg.Open(anna, anna, 8)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "the first window bound", func() bool {
+		w, _ := reg.Get(w1.ID)
+		return w.State == regwin.Completed && w.Handset == newID
+	})
+	w2, _, _ := reg.Open(anna, anna, 8) // the next index: the first is in quarantine
+	pin1 = 2
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	waitFor(t, "the second window bound", func() bool {
+		w, _ := reg.Get(w2.ID)
+		return w.State == regwin.Completed && w.Handset == newID
+	})
+}
+
 // The window follows the live PINs: open with them on a cell that can take
 // a handset, closed when none is live, never on a full cell.
 func TestRegistrationWindow(t *testing.T) {
