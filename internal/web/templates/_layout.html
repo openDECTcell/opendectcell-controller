@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} · {{.Brand.Name}}</title>
+{{if .Brand.HasLogo}}<link rel="icon" href="/branding/logo?v={{.Brand.Rev}}">{{else}}<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">{{end}}
 <script src="/static/theme.js"></script>
 <link rel="stylesheet" href="/static/vendor/tabler/tabler.min.css">
 {{if .Leaflet}}<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">{{end}}

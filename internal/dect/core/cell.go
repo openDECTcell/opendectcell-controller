@@ -48,6 +48,7 @@ type cellRun struct {
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
 	recycleDue  []recycleDue      // pooled enrolments whose chip slot is to be freed
+	releases    int               // links the chip reported released, since the stack started
 	forgetDue   []uuid.UUID       // handsets the user removes without asking them
 	rfpiAskAt   time.Time         // when the chip was last asked for its RFPI
 	sigAt       map[int]time.Time // when each record's field strength was last written
@@ -190,7 +191,17 @@ func (r *cellRun) handle(ev event) {
 		if r.st == nil {
 			return
 		}
-		r.recycleDue = append(r.recycleDue, recycleDue{idx: ev.idx, hid: ev.hid, at: time.Now().Add(reloadDelay)})
+		due := recycleDue{idx: ev.idx, hid: ev.hid, at: time.Now().Add(reloadDelay), rel: r.releases}
+		if r.st.Quiet() { // no link: the registration's has ended already
+			due.first = time.Now()
+		}
+		r.recycleDue = append(r.recycleDue, due)
+		if r.trans[ev.hid] == nil && r.idxOf != nil {
+			// while the record is in its chip slot the cell knows whose it is: a call
+			// finds it, its name and profile reach the stack, its contacts are noted
+			r.idxOf[ev.hid], r.hidOf[ev.idx] = ev.idx, ev.hid
+			r.applyStored(ev.hid, ev.idx)
+		}
 		// a handset that enrolled again may sit in this cell's working set with its old key
 		if t := r.trans[ev.hid]; t != nil {
 			t.evict = true
@@ -206,6 +217,9 @@ func (r *cellRun) handle(ev event) {
 		switch ev.mail.Prim { // the link's own mails, with what they carry: no memory reads, so no keys
 		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242:
 			r.log.Debug("chip mail content", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "param", hex.EncodeToString(ev.mail.Param))
+		}
+		if ev.mail.Prim == 0x0201 {
+			r.releases++
 		}
 		if ev.mail.Prim == 0xF601 { // the chip's answer to the contact: its RFPI, which is public
 			r.log.Debug("the chip names its RFPI", "mail", hex.EncodeToString(ev.mail.Param))
@@ -251,22 +265,33 @@ func (r *cellRun) handle(ev event) {
 
 // recycleDue is a pooled handset that enrolled into record idx, a chip slot's.
 type recycleDue struct {
-	idx int
-	hid uuid.UUID
-	at  time.Time
+	idx   int
+	hid   uuid.UUID
+	at    time.Time
+	rel   int       // r.releases when it enrolled: the registration link is the next release, the follow-up the one after
+	first time.Time // when the registration link was seen to have ended
 }
 
 // recycle frees the chip slots of pooled handsets that enrolled here: the
 // record becomes a free store again, with a fresh pool TPUI, and the handset
 // comes back into the table above the chip's slots when it is heard (or
-// called). It waits for the delay after the enrolment and for a quiet stack;
-// a record the stack will not recycle goes the old way, a rebuild.
+// called). It waits for the delay after the enrolment, for a quiet stack, and
+// for the handset's follow-up contact (followWait); a record the stack will not
+// recycle goes the old way, a rebuild.
 func (r *cellRun) recycle(now time.Time) {
 	if len(r.recycleDue) == 0 || r.gen == nil {
 		return
 	}
 	p := r.recycleDue[0]
 	if now.Before(p.at) || !r.st.Quiet() {
+		return
+	}
+	// not before the handset's follow-up contact has come and gone (followWait)
+	if p.first.IsZero() { // quiet: the registration's link has ended
+		r.recycleDue[0].first = now
+		p.first = now
+	}
+	if r.releases < p.rel+2 && now.Sub(p.first) < followWait {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
@@ -292,6 +317,10 @@ func (r *cellRun) recycle(now time.Time) {
 	r.recycleDue = r.recycleDue[1:]
 	if t != ([3]byte{}) {
 		r.offered = append(r.offered, t)
+	}
+	if r.hidOf[p.idx] == p.hid {
+		delete(r.hidOf, p.idx) // the record is a free store again; the handset comes back through a lookup
+		delete(r.idxOf, p.hid)
 	}
 	r.gen.unplace(p.idx)
 	delete(r.seenMs, p.idx)
@@ -361,6 +390,15 @@ func (r *cellRun) rebuild(now time.Time) {
 // enrolled finishes what it started. The rebuild also waits for a quiet stack,
 // so it never ends a call.
 var reloadDelay = 3 * time.Second
+
+// followWait is how long a freshly enrolled pooled handset's record stays in its
+// chip slot after the registration link ended, for the handset's follow-up
+// contact: a handset that was never located before makes it a moment after the
+// link (the A540: a location-less reconnect that reads its lists), and a
+// record already freed from the chip gets no answer then, so the handset
+// stays without its names until it is restarted. A handset that makes no
+// such contact is let go after this (a variable for the tests).
+var followWait = 20 * time.Second
 
 // setReady publishes what the router reads (route.go).
 func (r *cellRun) setReady(v bool) {

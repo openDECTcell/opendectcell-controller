@@ -183,6 +183,16 @@ func TestNameAndLogo(t *testing.T) {
 	if resp, _ := e.get(t, e.browser(), "/branding/logo"); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("logo before upload: %d", resp.StatusCode)
 	}
+	// without a logo the favicon is the default mark
+	if _, lb := e.get(t, e.browser(), "/login"); !strings.Contains(lb, `rel="icon" type="image/svg+xml" href="/static/favicon.svg"`) {
+		t.Error("the page does not name the default favicon")
+	}
+	if fr, _ := e.get(t, e.browser(), "/favicon.ico"); fr.StatusCode != http.StatusTemporaryRedirect || fr.Header.Get("Location") != "/static/favicon.svg" {
+		t.Errorf("/favicon.ico: %d %v", fr.StatusCode, fr.Header.Get("Location"))
+	}
+	if fr, fb := e.get(t, e.browser(), "/static/favicon.svg"); fr.StatusCode != http.StatusOK || !strings.Contains(fb, "<svg") {
+		t.Errorf("the default favicon: %d", fr.StatusCode)
+	}
 	r := multipartPost(t, e, a, "/admin/settings/general", map[string]string{"name": "Makerspace DECT", "tagline": "phones for all"}, png)
 	if r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("save: %d %s", r.StatusCode, readBody(r))
@@ -194,6 +204,13 @@ func TestNameAndLogo(t *testing.T) {
 		t.Errorf("login page does not show the brand: %s", body[:min(len(body), 400)])
 	}
 	_ = resp
+	// with one, the favicon is the logo
+	if !strings.Contains(body, `<link rel="icon" href="/branding/logo?v=`) {
+		t.Error("the page does not use the logo as its favicon")
+	}
+	if fr, _ := e.get(t, anon, "/favicon.ico"); fr.StatusCode != http.StatusTemporaryRedirect || fr.Header.Get("Location") != "/branding/logo" {
+		t.Errorf("/favicon.ico with a logo: %d %v", fr.StatusCode, fr.Header.Get("Location"))
+	}
 	lr, lbody := e.get(t, anon, "/branding/logo")
 	if lr.StatusCode != http.StatusOK || lr.Header.Get("Content-Type") != "image/png" || lbody != string(png) ||
 		!strings.Contains(lr.Header.Get("Content-Security-Policy"), "sandbox") || lr.Header.Get("X-Content-Type-Options") != "nosniff" {

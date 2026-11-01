@@ -164,6 +164,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /readyz", s.readyz)
 	s.mux.HandleFunc("GET /metrics", s.metrics)
 	s.mux.HandleFunc("GET /branding/logo", s.logo)
+	s.mux.HandleFunc("GET /favicon.ico", s.favicon)
 
 	s.mux.HandleFunc("GET /login", s.loginPage)
 	s.mux.HandleFunc("POST /login", s.loginPost)

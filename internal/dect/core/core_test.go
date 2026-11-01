@@ -1477,14 +1477,17 @@ func TestPooledRecordsAndOffers(t *testing.T) {
 // A pooled handset that enrols on one cell: its chip slot is freed in place, with no
 // rebuild; other cells do nothing, the handset comes to them when it is heard there.
 func TestPooledEnrolmentRecyclesTheChipSlot(t *testing.T) {
-	old := reloadDelay
-	reloadDelay = 20 * time.Millisecond
-	defer func() { reloadDelay = old }()
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
 	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID, pool: true}
 	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
 			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
 		}
 	})
@@ -1497,6 +1500,7 @@ func TestPooledEnrolmentRecyclesTheChipSlot(t *testing.T) {
 	waitFor(t, "b's radio on", radioOnAt(g, 1))
 
 	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0201}) // the registration link ends
 	waitFor(t, "a's record recycled", func() bool {
 		n := 0
 		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
@@ -1527,14 +1531,17 @@ func TestPooledEnrolmentRecyclesTheChipSlot(t *testing.T) {
 // takes it, above the chip's slots, instead of believing it is held in the freed
 // record (the A540 on the 7412 stayed on "Synchronisiere" until a restart).
 func TestRecycledHandsetIsTakenWhenItLocates(t *testing.T) {
-	old := reloadDelay
-	reloadDelay = 20 * time.Millisecond
-	defer func() { reloadDelay = old }()
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
 	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID, pool: true}
 	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
 			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
 		}
 	})
@@ -1544,6 +1551,7 @@ func TestRecycledHandsetIsTakenWhenItLocates(t *testing.T) {
 	g.core.CellUp(a, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "a's radio on", radioOnAt(g, 0))
 	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0203})
+	g.core.MailUp(a, wire.MailUpMsg{Prim: 0x0201}) // the registration link ends
 	waitFor(t, "a's record recycled", func() bool {
 		n := 0
 		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
@@ -1569,16 +1577,65 @@ func TestRecycledHandsetIsTakenWhenItLocates(t *testing.T) {
 	})
 }
 
+// The record stays in its chip slot until the handset's follow-up contact has come
+// and gone: a freshly registered A540 reconnects a moment after its registration
+// link and reads its lists, and a record already freed from the chip gets no answer.
+func TestRecycleWaitsForTheFollowUpContact(t *testing.T) {
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, time.Hour
+	defer func() { reloadDelay, followWait = old, oldFollow }()
+	newID, anna := uuid.New(), uuid.New()
+	recs := &fakeRecords{newID: newID, pool: true, info: map[uuid.UUID][2]string{newID: {"Anna's A540", ""}}}
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	g := newRig(t, recs, func(f *fakeStack) {
+		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
+			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
+		}
+	})
+	g.core.Reg = reg
+	reg.Open(anna, anna, 8)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	// the record has its name while it is in the chip
+	waitFor(t, "the name reaches the record", func() bool {
+		got := ""
+		g.stack(0).get(func(f *fakeStack) { got = f.names[0] })
+		return got == "Anna's A540"
+	})
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0201}) // the registration link ends
+	time.Sleep(600 * time.Millisecond)
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.recycled) != 0 {
+			t.Error("recycled before the handset's follow-up contact")
+		}
+	})
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0200}) // the follow-up link
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0201})
+	waitFor(t, "recycled after the follow-up", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.recycled) })
+		return n == 1
+	})
+}
+
 // The recycle ends nothing: it waits until the stack is quiet.
 func TestRecycleWaitsForAQuietStack(t *testing.T) {
-	old := reloadDelay
-	reloadDelay = 20 * time.Millisecond
-	defer func() { reloadDelay = old }()
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
 	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID, pool: true}
 	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
 			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
 		}
 	})
@@ -1589,7 +1646,8 @@ func TestRecycleWaitsForAQuietStack(t *testing.T) {
 	waitFor(t, "radio on", radioOn(g))
 	g.stack(0).get(func(f *fakeStack) { f.busy = true }) // a call is up
 	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
-	time.Sleep(1200 * time.Millisecond) // well past the delay and several ticks
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0201}) // the registration link ends
+	time.Sleep(1200 * time.Millisecond)             // well past the delay and several ticks
 	g.stack(0).get(func(f *fakeStack) {
 		if len(f.recycled) != 0 {
 			t.Error("recycled during a call")
@@ -1611,15 +1669,18 @@ func TestRecycleWaitsForAQuietStack(t *testing.T) {
 
 // A record the stack will not recycle goes the old way: the stack is rebuilt (when quiet).
 func TestRecycleRefusedFallsBackToARebuild(t *testing.T) {
-	old := reloadDelay
-	reloadDelay = 20 * time.Millisecond
-	defer func() { reloadDelay = old }()
+	old, oldFollow := reloadDelay, followWait
+	reloadDelay, followWait = 20*time.Millisecond, 20*time.Millisecond
+	defer func() { reloadDelay, followWait = old, oldFollow }()
 	newID, anna := uuid.New(), uuid.New()
 	recs := &fakeRecords{newID: newID, pool: true}
 	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
 	g := newRig(t, recs, func(f *fakeStack) {
 		f.recycle = stack.RecycleNo
 		f.onMail = func(env stack.Env, m stack.Mail) {
+			if m.Prim != 0x0203 {
+				return
+			}
 			env.Save(0, stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}, RegPIN1: 1, TPUI: [3]byte{0, 0x11, 7}})
 		}
 	})
@@ -1629,6 +1690,7 @@ func TestRecycleRefusedFallsBackToARebuild(t *testing.T) {
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "radio on", radioOn(g))
 	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0203})
+	g.core.MailUp(id, wire.MailUpMsg{Prim: 0x0201}) // the registration link ends
 	waitFor(t, "rebuilt", func() bool { return g.nStacks() == 2 })
 }
 

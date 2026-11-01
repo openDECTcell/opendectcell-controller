@@ -32,3 +32,15 @@ func (s *Server) logo(w http.ResponseWriter, r *http.Request) {
 	h.Set("Last-Modified", up.UTC().Format(http.TimeFormat))
 	w.Write(data)
 }
+
+// favicon answers the request browsers make for /favicon.ico whatever the
+// page says: the instance's logo if it has one, else the default mark.
+func (s *Server) favicon(w http.ResponseWriter, r *http.Request) {
+	to := "/static/favicon.svg"
+	if s.Settings != nil {
+		if in, err := s.Settings.Instance(r.Context()); err == nil && in.HasLogo {
+			to = "/branding/logo"
+		}
+	}
+	http.Redirect(w, r, to, http.StatusTemporaryRedirect)
+}

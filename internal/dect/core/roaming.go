@@ -323,3 +323,17 @@ func (r *cellRun) applyInfo(i int, name, profile string) {
 		r.log.Warn("the stack could not read a handset's device profile", "record", i, "profile", profile)
 	}
 }
+
+// applyStored reads handset hid's name and device profile from the store and gives
+// them to record i: a record a registration just filled gets them here, the
+// registration's wizard may have written them already or does a moment later
+// (Core.HandsetChanged, whose evInfo finds the record by now).
+func (r *cellRun) applyStored(hid uuid.UUID, i int) {
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	name, profile, ok, err := r.core.Records.HandsetInfo(ctx, hid)
+	cancel()
+	if err != nil || !ok {
+		return
+	}
+	r.applyInfo(i, name, profile)
+}
