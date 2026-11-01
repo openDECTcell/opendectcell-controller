@@ -167,3 +167,44 @@ func TestSetNameAndProfile(t *testing.T) {
 		t.Error("a record that does not exist took a profile")
 	}
 }
+
+// Freeing a handset's chip slot must not leave the chip with an empty table:
+// it goes silent then (07.56, and on the 7412 the maintainer's A540 got no
+// answer). The placeholder key is written again, as at radio-up.
+func TestRecycleLeavesAKeyInTheChip(t *testing.T) {
+	e := &traceEnv{t: t, now: 1000, wall: 1793350800, pps: map[uint8]*PP{}}
+	cfg := Config{PIN: "12345678", UAKTable: 0x9518, CheckDelayMs: 50, Stub: "dectfw_secondlevel_441.hex",
+		NoLocAuth: true, DeferUnknown: true} // the dummy key is on
+	e.host = NewHost(e, cfg)
+	t.Cleanup(e.host.Close)
+	e.host.AddRecord(0, subRecord(1, []byte{0x80, 0xa8, 0x03, 0x11, 0x22, 0x33, 0x44}))
+	e.host.AddFreeStore(1, [3]byte{0, 0x11, 0x08})
+	if err := e.host.Start(); err != nil {
+		t.Fatal(err)
+	}
+	e.chip(0xF601, []byte{0x00, 0x01, 0x23, 0x45, 0x60})
+	e.host.RadioUp(true)
+	e.host.Hello()
+	e.settle()
+	e.sent = nil
+	if got := e.host.Recycle(0, [3]byte{0, 0x11, 0x2A}); got != RecycleDone {
+		t.Fatalf("Recycle: %v", got)
+	}
+	var zeros, placeholder bool
+	for _, m := range e.sent {
+		if m.Prim != 0x020A || len(m.Param) < 2 || m.Param[0] != 1 {
+			continue
+		}
+		if allZero(m.Param[1:]) {
+			zeros = true
+		} else if zeros {
+			placeholder = true
+		}
+	}
+	if !zeros {
+		t.Error("the slot was not emptied")
+	}
+	if !placeholder {
+		t.Error("the chip's table was left empty after the recycle")
+	}
+}

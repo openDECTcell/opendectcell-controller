@@ -835,6 +835,13 @@ int cdect_host_recycle(struct cdect_host *c, unsigned i)
 	memcpy(tpui, c->rec.tpui, sizeof(tpui));
 	wipe(&c->rec, sizeof(c->rec));
 	rc = dect_base_record_recycle(&c->b, i, tpui);
+	/*
+	 * The slot is empty now. The chip must not be left with an empty table
+	 * (it goes silent: no handset can attach), so the table is written again
+	 * as at radio-up: the other handsets' keys, or the placeholder key.
+	 */
+	if (rc == 0 && c->radio_up)
+		install(c);
 	return rc;
 }
 
