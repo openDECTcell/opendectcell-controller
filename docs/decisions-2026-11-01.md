@@ -136,8 +136,9 @@ separate from the call-detail retention.
     table starts empty above the chip's slots after a restart.
 20. **A cell rebuilds its stack 3 s after a pooled handset enrolled on it, once its stack is quiet** (radio stays on;
     a call in progress on that cell holds the rebuild back until it ends; decided, built).
-21. **Records numbered 8 or more have no entry in the handsets' Internal Names list and no call list** (library
-    limits: eight names, seven terminal ids). Widening them is library work; do you want it?
+21. **Records numbered 8 to 32 have an entry in the handsets' Internal Names list and a call list** (decided:
+    widen both; built in libopendectcell API 147: names capacity 32, terminal ids 1 to 32; not seen on a real handset with
+    more than eight entries).
 22. **Location history**: every change of cell is a row (handset, from, to, time), shown on the handset page and
     counted in the statistics, and erased with the call details after the retention period (90 days by default).
     OK as location data, or shorter?

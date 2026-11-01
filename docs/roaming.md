@@ -105,8 +105,8 @@ In order; 1 and 2 are the preconditions, 3 to 5 are what the user feels.
 
 What is not built: the controller does not choose the location area size (class A or B, LAL 31 + j) for any cell; the
 maintainer sets the identity per cell on the cells page. IPUI O for class B cross-site subscription (needs a window
-option). Records numbered 8 or more have no names-list entry and no call-list terminal id (the library keeps eight and
-seven, `api-versions.md` #144); a pooled handset beyond the first eight records of a cell is a plain phone there.
+option). Records numbered 8 to 32 have a names-list entry and a call list like the first seven (libopendectcell API 147,
+decision 21); not yet seen on a real handset with more than eight entries.
 
 ### 4.2 The working set (built, 2026-11-01; not yet seen on air)
 
