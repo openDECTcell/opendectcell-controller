@@ -190,6 +190,7 @@ func (s *Server) handsetLine(w http.ResponseWriter, r *http.Request, u *auth.Use
 // handsetDeregister asks the cells to deregister the handset: it forgets the
 // base and the base its record; the name, lines and history stay, so that
 // registering it again through the assistant makes it a handset of every cell.
+// force does not ask the handset (it may be out of range).
 func (s *Server) handsetDeregister(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	h, ok := s.handsetByPath(w, r, u)
 	if !ok {
@@ -199,7 +200,13 @@ func (s *Server) handsetDeregister(w http.ResponseWriter, r *http.Request, u *au
 		s.render(w, http.StatusServiceUnavailable, "handset.html", page{Title: h.Display(), User: u, Error: "Deregistering needs the DECT core."})
 		return
 	}
-	s.HandsetDeregister(h.ID)
-	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "handset.deregister", ObjectType: "handset", ObjectID: h.ID.String()})
-	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done=The+cells+are+deregistering+the+handset.+Register+it+again+when+it+says+so.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
+	force := r.PostFormValue("force") == "1"
+	s.HandsetDeregister(h.ID, force)
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "handset.deregister", ObjectType: "handset", ObjectID: h.ID.String(),
+		Details: map[string]any{"force": force}})
+	msg := "The+cells+are+asking+the+handset+to+deregister.+If+it+does+not+answer+(out+of+range,+switched+off)+they+forget+it+after+about+30+seconds;+reload+to+see+it."
+	if force {
+		msg = "The+cells+forget+the+handset+now,+without+asking+it.+Delete+the+base+on+the+handset+too."
+	}
+	http.Redirect(w, r, "/handsets/"+h.ID.String()+"?done="+msg, http.StatusSeeOther) //nolint:gosec // G710: our UUID
 }

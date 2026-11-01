@@ -58,7 +58,7 @@
         <dt>Owner</dt><dd>{{.H.Owner}}</dd>
         <dt>Registered</dt><dd>{{fmtTime .H.RegisteredAt}}</dd>
         <dt>Last seen</dt><dd>{{with .H.LastSeenAt}}{{fmtTime .}}{{if $.Data.H.LastSeenCell}} on {{$.Data.H.LastSeenCell}}{{end}}{{else}}never{{end}}</dd>
-        <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}{{if .H.Pooled}} <span class="badge bg-blue-lt" title="Every cell holds this handset under an identity of its own, so it can move between cells and be rung wherever it is">every cell</span>{{else}} <span class="badge bg-secondary-lt" title="Registered before handsets were shared between cells: it stays with the cell it was registered on. Deregister it below and register it again to make it work on every cell">home cell only</span>{{end}}</dd>
+        <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}{{if and (not .H.Pooled) (eq .H.CellsHoldingN 0)}} <span class="badge bg-warning-lt" title="No cell holds this handset now. Register it again with the assistant">not registered on any cell</span>{{else if .H.Pooled}} <span class="badge bg-blue-lt" title="Every cell holds this handset under an identity of its own, so it can move between cells and be rung wherever it is">every cell</span>{{else}} <span class="badge bg-secondary-lt" title="Registered before handsets were shared between cells: it stays with the cell it was registered on. Deregister it below and register it again to make it work on every cell">home cell only</span>{{end}}</dd>
       </dl></div>
       <div class="card-header border-top"><h3 class="card-title">Cell changes</h3></div>
       <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>When</th><th>From</th><th>To</th></tr></thead><tbody>
@@ -66,10 +66,14 @@
         {{else}}<tr><td colspan="3" class="text-secondary">The handset has not changed cell since this was recorded.</td></tr>{{end}}
       </tbody></table></div>
       <div class="card-footer">
-        <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Deregister this handset? It forgets the base station and the cells forget it. Its name and phone lines stay; register it again afterwards.">
-          <button type="submit" class="btn btn-outline-danger btn-sm">Deregister</button>
-          <span class="text-secondary small ms-2">The handset forgets the base and the cells forget the handset. Its name and lines stay.{{if not .H.Pooled}} Register it again afterwards and it works on every cell.{{end}}</span>
-        </form>
+        <p class="text-secondary small">Deregistering makes the handset forget the base and the cells forget the handset. Its name and lines stay.{{if not .H.Pooled}} Register it again afterwards and it works on every cell.{{end}}</p>
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Ask the handset to deregister? If it is out of range the cells forget it after about 30 seconds.">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Deregister</button></form>
+          <form method="post" action="/handsets/{{.H.ID}}/deregister" data-confirm="Remove this handset from the cells without asking it? Use this when it is out of range or switched off. Delete the base on the handset yourself.">
+            <input type="hidden" name="force" value="1">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Remove without the handset</button></form>
+        </div>
       </div>
     </div>
   </div>

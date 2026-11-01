@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -726,8 +727,8 @@ func TestDeregisterReachesTheStack(t *testing.T) {
 	id := uuid.New()
 	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
 	waitFor(t, "radio on", radioOn(g))
-	g.core.Deregister(uuid.New()) // a handset no cell holds: nothing happens
-	g.core.Deregister(hid)
+	g.core.Deregister(uuid.New(), false) // a handset no cell holds: nothing happens
+	g.core.Deregister(hid, false)
 	waitFor(t, "the deregister line", func() bool {
 		ok := false
 		g.stack(0).get(func(f *fakeStack) {
@@ -736,6 +737,41 @@ func TestDeregisterReachesTheStack(t *testing.T) {
 			}
 		})
 		return ok
+	})
+}
+
+// Removing a handset without asking it: the record goes at once (when the
+// stack is quiet), its chip slot is freed and the store forgets the handset.
+func TestForcedRemovalForgetsTheHandset(t *testing.T) {
+	hid := uuid.New()
+	recs := &fakeRecords{hs: []Handset{{ID: hid, Owner: uuid.New(), Rec: stack.Record{Slot: 1, PortID: []byte{0x80, 0x01}}}}}
+	g := newRig(t, recs, nil)
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25"})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).get(func(f *fakeStack) { f.busy = true })
+	g.core.Deregister(hid, true)
+	time.Sleep(300 * time.Millisecond)
+	recs.get(func(r *fakeRecords) {
+		if len(r.forgot) != 0 {
+			t.Error("forgotten while the stack was busy")
+		}
+	})
+	g.stack(0).get(func(f *fakeStack) { f.busy = false })
+	waitFor(t, "forgotten", func() bool {
+		n := 0
+		recs.get(func(r *fakeRecords) { n = len(r.forgot) })
+		return n == 1
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.recycled) != 1 || f.recycled[0] != 0 {
+			t.Errorf("recycled %v", f.recycled)
+		}
+		for _, c := range f.ctls {
+			if strings.HasPrefix(c.line, "deregister") {
+				t.Errorf("the handset was asked: %q", c.line)
+			}
+		}
 	})
 }
 

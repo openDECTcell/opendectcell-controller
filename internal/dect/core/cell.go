@@ -47,6 +47,7 @@ type cellRun struct {
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
 	recycleDue  []recycleDue // pooled enrolments whose chip slot is to be freed
+	forgetDue   []uuid.UUID  // handsets the user removes without asking them
 	bridge      bool         // this stack has been told it carries external calls (route.go)
 	// what the router reads from other goroutines (route.go): the handsets
 	// this stack holds by record number, and whether its radio is on
@@ -158,7 +159,10 @@ func (r *cellRun) handle(ev event) {
 			r.idxOf[ev.hid], r.hidOf[ev.idx] = ev.idx, ev.hid
 		}
 	case evDereg:
-		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil && r.gen != nil {
+		if _, ok := r.idxOf[ev.hid]; ok && ev.force && r.st != nil && r.gen != nil {
+			r.log.Info("removing a handset without asking it, on request", "handset", ev.hid)
+			r.forgetDue = append(r.forgetDue, ev.hid)
+		} else if i, ok := r.idxOf[ev.hid]; ok && r.st != nil && r.gen != nil {
 			if slot, ok := r.gen.slotOf[i]; ok {
 				r.log.Info("deregistering a handset on request", "handset", ev.hid, "record", slot)
 				if !r.bridge {
@@ -282,6 +286,54 @@ func (r *cellRun) recycle(now time.Time) {
 	delete(r.seenPend, p.idx)
 	r.gen.job(job{kind: jobRelease, i: p.idx, hid: p.hid})
 	r.log.Info("a pooled handset left the chip slot it enrolled in", "handset", p.hid, "record", p.idx)
+}
+
+// forgetNow removes the handsets the user asked to remove without the handset
+// (it may be out of range), one at a time, when the stack is quiet: the record
+// becomes a free store, its chip slot is cleared, and the store forgets the
+// handset as it does after a deregistration the handset answered.
+func (r *cellRun) forgetNow() {
+	if len(r.forgetDue) == 0 || r.gen == nil || !r.st.Quiet() {
+		return
+	}
+	hid := r.forgetDue[0]
+	i, held := r.idxOf[hid]
+	if !held {
+		r.forgetDue = r.forgetDue[1:] // gone already, say a deregistration that was running
+		return
+	}
+	if t := r.trans[hid]; t != nil {
+		// a pooled handset in the working set: leave the table, then the store forgets it everywhere
+		if r.dropTransient(hid, "removed by the user") {
+			r.forgetDue = r.forgetDue[1:]
+			r.gen.job(job{kind: jobForgetHandset, hid: hid})
+		}
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	t, err := r.core.Records.ReserveTPUI(ctx)
+	cancel()
+	if err != nil {
+		t = [3]byte{} // no pool: the TPUI is derived from the slot
+	}
+	switch r.st.Recycle(i, t) {
+	case stack.RecycleBusy:
+		r.core.Records.ReleaseTPUI(t)
+		return // the next tick
+	case stack.RecycleNo:
+		r.core.Records.ReleaseTPUI(t)
+		r.log.Warn("the stack would not remove the record", "record", i)
+		r.forgetDue = r.forgetDue[1:]
+		return
+	}
+	r.forgetDue = r.forgetDue[1:]
+	if t != ([3]byte{}) {
+		r.offered = append(r.offered, t)
+	}
+	delete(r.seenMs, i)
+	delete(r.seenAt, i)
+	delete(r.seenPend, i)
+	r.gen.Forget(i, "removed by the user without the handset")
 }
 
 // rebuild asks for the stack to be built again from the records, at the next tick.
@@ -413,6 +465,7 @@ func (r *cellRun) tick() {
 		return
 	}
 	r.recycle(now)
+	r.forgetNow()
 	if r.st == nil {
 		return
 	}
@@ -610,7 +663,7 @@ func (r *cellRun) drop() {
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.reloadAt = time.Time{}
-	r.recycleDue = nil
+	r.recycleDue, r.forgetDue = nil, nil
 	for _, t := range r.offered {
 		r.core.Records.ReleaseTPUI(t)
 	}
@@ -666,10 +719,11 @@ const (
 	jobInstalled
 	jobUnknown
 	jobSeen
-	jobTrack   // a record added to the running stack: its handset
-	jobUntrack // a record dropped from it: the handset leaves the cell's table
-	jobRelease // a record recycled out of its chip slot: the slot is free in the store
-	jobReenrol // a known handset enrolled again: its window's PIN is claimed
+	jobTrack         // a record added to the running stack: its handset
+	jobUntrack       // a record dropped from it: the handset leaves the cell's table
+	jobRelease       // a record recycled out of its chip slot: the slot is free in the store
+	jobReenrol       // a known handset enrolled again: its window's PIN is claimed
+	jobForgetHandset // the user removed a handset: the store forgets it, wherever it is placed
 )
 
 type job struct {
@@ -791,6 +845,12 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 			if err == nil && pooled {
 				core.forgotten(id, hid)
 			}
+		}
+	case jobForgetHandset:
+		var pooled bool
+		pooled, err = core.Records.Forget(ctx, id, j.hid)
+		if err == nil && pooled {
+			core.forgotten(id, j.hid)
 		}
 	case jobRename:
 		if hid, ok := ids[j.i]; ok {

@@ -218,6 +218,7 @@ type event struct {
 	idx     int       // evRecycle: its record in the stack
 	line    string    // evCtl: the command; {hs} is the handset's record number on the cell
 	name    string    // evInfo: the handset's name
+	force   bool      // evDereg: do not ask the handset, it may be out of range
 	profile string    // evInfo: the id of its device profile
 	sip     string    // evCtl: the call it belongs to
 	// evFetched: the identity asked about, what the store said
@@ -274,16 +275,18 @@ func (c *Core) HandsetChanged(hid uuid.UUID) {
 	}
 }
 
-// Deregister asks for the handset to be deregistered: the cell it was heard on
-// last (every cell when none is known) tells it to forget the base, whether it
-// answers or not the cell forgets the handset, and the store follows (Forget).
-func (c *Core) Deregister(hid uuid.UUID) {
-	if h, ok := c.lastHeard(hid); ok {
+// Deregister asks for the handset to be deregistered. The cell it was heard on
+// last (every cell when none is known) tells it to forget the base; whether it
+// answers or not the cell forgets the handset after about 30 s, and the store
+// follows (Forget). force skips the asking, for a handset that is out of
+// range: every cell that holds it forgets it as soon as its stack is quiet.
+func (c *Core) Deregister(hid uuid.UUID, force bool) {
+	if h, ok := c.lastHeard(hid); ok && !force {
 		c.post(h.cell, event{kind: evDereg, hid: hid})
 		return
 	}
 	for _, id := range c.cellIDs() {
-		c.post(id, event{kind: evDereg, hid: hid})
+		c.post(id, event{kind: evDereg, hid: hid, force: force})
 	}
 }
 

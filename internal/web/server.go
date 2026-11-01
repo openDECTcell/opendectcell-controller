@@ -75,7 +75,7 @@ type Server struct {
 	// was changed, so the DECT stacks that hold it follow.
 	HandsetChanged func(id uuid.UUID)
 	// HandsetDeregister, if set, asks the DECT cells to deregister the handset.
-	HandsetDeregister func(id uuid.UUID)
+	HandsetDeregister func(id uuid.UUID, force bool)
 	Settings          *settings.Store // nil: the default instance name, no settings pages
 	Stats             *stats.Store    // nil: no statistics pages
 	Handsets          *handset.Store  // nil: no handset pages

@@ -15,15 +15,17 @@ import (
 func TestHandsetPages(t *testing.T) {
 	var changedMu sync.Mutex
 	var changed, deregistered []uuid.UUID
+	var forced []bool
 	e := newEnvWith(t, func(s *Server) {
 		s.HandsetChanged = func(id uuid.UUID) {
 			changedMu.Lock()
 			changed = append(changed, id)
 			changedMu.Unlock()
 		}
-		s.HandsetDeregister = func(id uuid.UUID) {
+		s.HandsetDeregister = func(id uuid.UUID, force bool) {
 			changedMu.Lock()
 			deregistered = append(deregistered, id)
+			forced = append(forced, force)
 			changedMu.Unlock()
 		}
 	})
@@ -58,6 +60,11 @@ func TestHandsetPages(t *testing.T) {
 
 	u, a := e.userBrowser(t), e.adminBrowser(t)
 	_, mv := e.get(t, u, "/handsets/"+mine.String())
+	if !strings.Contains(mv, "not registered on any cell") {
+		t.Errorf("a handset no cell holds is not marked: %s", mv)
+	}
+	e.store.Pool.Exec(ctx, "INSERT INTO cell_slot (cell_id, slot, handset_id, state) VALUES ($1, 1, $2, 'present')", hall, mine)
+	_, mv = e.get(t, u, "/handsets/"+mine.String())
 	if !strings.Contains(mv, "home cell only") || !strings.Contains(mv, "Hall") || !strings.Contains(mv, "Barn") {
 		t.Errorf("the handset page shows no cell change or its kind: %s", mv)
 	}
@@ -136,8 +143,16 @@ func TestHandsetPages(t *testing.T) {
 		t.Errorf("deregister: %d", r.StatusCode)
 	}
 	changedMu.Lock()
-	if len(deregistered) != 1 || deregistered[0] != mine {
-		t.Errorf("the cells were asked for %v", deregistered)
+	if len(deregistered) != 1 || deregistered[0] != mine || forced[0] {
+		t.Errorf("the cells were asked for %v %v", deregistered, forced)
+	}
+	changedMu.Unlock()
+	if r := e.post(t, u, "/handsets/"+mine.String()+"/deregister", url.Values{"force": {"1"}}); r.StatusCode != http.StatusSeeOther {
+		t.Errorf("forced deregister: %d", r.StatusCode)
+	}
+	changedMu.Lock()
+	if len(forced) != 2 || !forced[1] {
+		t.Errorf("the force was not passed on: %v", forced)
 	}
 	changedMu.Unlock()
 	var name, ring string

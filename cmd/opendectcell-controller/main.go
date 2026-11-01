@@ -319,9 +319,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 				dectCore.HandsetChanged(id)
 			}
 		},
-		HandsetDeregister: func(id uuid.UUID) {
+		HandsetDeregister: func(id uuid.UUID, force bool) {
 			if dectCore != nil {
-				dectCore.Deregister(id)
+				dectCore.Deregister(id, force)
 			}
 		},
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
