@@ -237,6 +237,7 @@ func (m Map) Validate() (origin string, err error) {
 const (
 	DefaultCallDetailDays = 90
 	DefaultAuditDays      = 365
+	DefaultLocationDays   = 90
 )
 
 // Retention is how long detail is kept. Zero means for ever, and is what an
@@ -248,16 +249,32 @@ type Retention struct {
 	CallDetailDays int `json:"call_detail_days"`
 	// AuditDays: audit entries older than this are deleted.
 	AuditDays int `json:"audit_days"`
+	// LocationDays: after this many days a row of the location history (which
+	// cell a handset moved to) is deleted. Its own setting (maintainer,
+	// 2026-11-01), so it can be shorter than the call details.
+	LocationDays int `json:"location_days"`
 }
 
-// Retention returns the retention settings.
+// Retention returns the retention settings. A setting saved before the
+// location history had its own field gets the default for it, not "for ever".
 func (s *Store) Retention(ctx context.Context) (Retention, error) {
-	var r Retention
-	ok, err := s.Get(ctx, KeyRetention, &r)
-	if err == nil && !ok {
-		r = Retention{CallDetailDays: DefaultCallDetailDays, AuditDays: DefaultAuditDays}
+	var raw struct {
+		Retention
+		LocationDays *int `json:"location_days"`
 	}
-	return r, err
+	ok, err := s.Get(ctx, KeyRetention, &raw)
+	if err != nil {
+		return Retention{}, err
+	}
+	if !ok {
+		return Retention{CallDetailDays: DefaultCallDetailDays, AuditDays: DefaultAuditDays, LocationDays: DefaultLocationDays}, nil
+	}
+	r := raw.Retention
+	r.LocationDays = DefaultLocationDays
+	if raw.LocationDays != nil {
+		r.LocationDays = *raw.LocationDays
+	}
+	return r, nil
 }
 
 // Security holds the switches that make the controller stricter.

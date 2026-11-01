@@ -224,17 +224,18 @@ func (s *Server) settingsRetention(w http.ResponseWriter, r *http.Request, u *au
 	}
 	c, ok1 := days("call_detail_days")
 	a, ok2 := days("audit_days")
-	if !ok1 || !ok2 {
+	l, ok3 := days("location_days")
+	if !ok1 || !ok2 || !ok3 {
 		s.renderSettings(w, r, u, http.StatusBadRequest, page{Error: "Give a number of days from 7 to 3650, or 0 (or nothing) to keep everything."})
 		return
 	}
-	ret := settings.Retention{CallDetailDays: c, AuditDays: a}
+	ret := settings.Retention{CallDetailDays: c, AuditDays: a, LocationDays: l}
 	if err := s.Settings.Put(r.Context(), settings.KeyRetention, ret); err != nil {
 		s.internalError(w, r, err)
 		return
 	}
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyRetention,
-		Details: map[string]any{"call_detail_days": c, "audit_days": a}})
+		Details: map[string]any{"call_detail_days": c, "audit_days": a, "location_days": l}})
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
 }
 

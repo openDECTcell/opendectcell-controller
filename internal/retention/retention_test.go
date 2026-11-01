@@ -62,6 +62,30 @@ func TestRetention(t *testing.T) {
 	if left != 0 {
 		t.Fatalf("defaults left the 400-day-old audit entry")
 	}
+	// a setting saved before the location history had its own field: 90 days for
+	// it, not for ever; a field of its own then works apart from the call details
+	exec(`INSERT INTO handset_move (handset_id, from_cell_id, to_cell_id, at) VALUES ($1, $2, $2, $3), ($1, $2, $2, $4)`,
+		hid, cid, now.AddDate(0, 0, -95), now.AddDate(0, 0, -40))
+	if err := st.Put(ctx, settings.KeyRetention, map[string]int{"call_detail_days": 90, "audit_days": 365}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(ctx, pool, st, now, log); err != nil {
+		t.Fatal(err)
+	}
+	pool.QueryRow(ctx, "SELECT count(*) FROM handset_move WHERE at < $1", now.AddDate(0, 0, -90)).Scan(&left)
+	if left != 0 {
+		t.Fatalf("a setting without location_days kept a 95-day-old move")
+	}
+	if err := st.Put(ctx, settings.KeyRetention, settings.Retention{CallDetailDays: 90, AuditDays: 365, LocationDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(ctx, pool, st, now, log); err != nil {
+		t.Fatal(err)
+	}
+	pool.QueryRow(ctx, "SELECT count(*) FROM handset_move").Scan(&left)
+	if left != 1 {
+		t.Fatalf("location_days 30: %d moves kept, want the 5-day-old one only", left)
+	}
 	// an admin who clears both fields keeps everything for ever
 	exec(`INSERT INTO call_log (direction, remote_party, started_at) VALUES ('in', '+4930777777', $1)`, now.AddDate(0, 0, -500))
 	if err := st.Put(ctx, settings.KeyRetention, settings.Retention{}); err != nil {

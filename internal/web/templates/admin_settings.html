@@ -80,10 +80,13 @@
       <div class="card-header"><h3 class="card-title">{{icon "database"}} Retention</h3></div>
       <form method="post" action="/admin/settings/retention">
         <div class="card-body">
-          <p class="text-secondary">Until you save this, call details are erased after 90 days and audit entries deleted after 365. Empty or 0 keeps everything for ever.</p>
+          <p class="text-secondary">Until you save this, call details are erased after 90 days, the location history after 90 and audit entries deleted after 365. Empty or 0 keeps everything for ever.</p>
           <div class="mb-3"><label class="form-label" for="call_detail_days">Erase a call's number and quality details after (days)</label>
             <input class="form-control" id="call_detail_days" name="call_detail_days" inputmode="numeric" value="{{if .Retention.CallDetailDays}}{{.Retention.CallDetailDays}}{{end}}" placeholder="for ever">
             <div class="form-hint">The call itself (when, how long, how it ended) stays, so the statistics still add up.</div></div>
+          <div class="mb-3"><label class="form-label" for="location_days">Delete the location history after (days)</label>
+            <input class="form-control" id="location_days" name="location_days" inputmode="numeric" value="{{if .Retention.LocationDays}}{{.Retention.LocationDays}}{{end}}" placeholder="for ever">
+            <div class="form-hint">Which cell a handset moved to, and when (shown on the handset page).</div></div>
           <div class="mb-0"><label class="form-label" for="audit_days">Delete audit entries after (days)</label>
             <input class="form-control" id="audit_days" name="audit_days" inputmode="numeric" value="{{if .Retention.AuditDays}}{{.Retention.AuditDays}}{{end}}" placeholder="for ever">
             <div class="form-hint">The purge itself is recorded.</div></div>

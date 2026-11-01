@@ -50,13 +50,15 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, now time
 		if n := tag.RowsAffected(); n > 0 {
 			log.Info("retention: call details erased", "calls", n, "older_than_days", r.CallDetailDays)
 		}
-		// where a handset went is location data: it goes with the call details
-		tag, err = pool.Exec(ctx, "DELETE FROM handset_move WHERE at < $1", now.AddDate(0, 0, -r.CallDetailDays))
+	}
+	if r.LocationDays > 0 {
+		// where a handset went is location data, with a retention of its own
+		tag, err := pool.Exec(ctx, "DELETE FROM handset_move WHERE at < $1", now.AddDate(0, 0, -r.LocationDays))
 		if err != nil {
 			return err
 		}
 		if n := tag.RowsAffected(); n > 0 {
-			log.Info("retention: handset moves erased", "moves", n, "older_than_days", r.CallDetailDays)
+			log.Info("retention: handset moves erased", "moves", n, "older_than_days", r.LocationDays)
 		}
 	}
 	if r.AuditDays > 0 {

@@ -114,6 +114,12 @@ someone else, say who; `docs/ui-backlog.md` is written from that assumption.
 
 ## Roaming (added after "implement 1 to 5")
 
+**Answered 2026-11-01 (question tool), to be built:** 17 pool TPUIs stay on by default. 18 no button; re-enrol by
+hand. 19 and 23 as built / informational. 20 remove the rebuild after enrolment: update the stack in place (fresh
+pool TPUI for the next free record), no restart, so an enrolment never ends a call. 21 widen both the names list and
+the call lists in the library (records 8..31). 22 location history gets its own retention setting, default 90 days,
+separate from the call-detail retention.
+
 17. **Pool TPUIs are on by default** for handsets that enrol from now on (`cells.handset_pool`). The pool form
     `{00, 11, N}` was benched up to N = 0x43; 249 TPUIs in all. Leave on, or default off until bench B1 passes?
 18. **Handsets enrolled before** keep their chip slots on their home cells and have no TPUI of their own: heard on
