@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: CI
 
+# Manual only (the maintainers, 2026-11-02: saves CI minutes). The same gate runs
+# locally before every commit; start this workflow from the Actions tab for a
+# clean-machine run, e.g. before a release.
 on:
-  push:
-    # a docs-only push has nothing to build (saves CI minutes)
-    paths-ignore: ["**.md", "docs/**"]
-  pull_request:
+  workflow_dispatch:
 
 # a newer push to the same branch makes the older run pointless
 concurrency:
