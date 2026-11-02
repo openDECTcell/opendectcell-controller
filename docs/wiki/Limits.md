@@ -11,7 +11,7 @@ certificate renewal) against the real controller; SIP registration and calls; ca
 
 ## Built, but not seen on hardware
 
-The message-waiting indicator (the SIP mailbox to the handset's lamp); handsets choosing a cell by walking around with several boxes on at once; hold and resume; two calls on one handset;
+The message-waiting indicator (the SIP mailbox to the handset's lamp); the **handset phonebook** (each handset reads its owner's contacts and the shared ones, and its edits go back to the controller); handsets choosing a cell by walking around with several boxes on at once; hold and resume; two calls on one handset;
 three or five parallel calls on one cell; call waiting; the audio of a cell beyond a test peer; the LuCI
 firmware-upload page.
 
@@ -20,7 +20,7 @@ firmware-upload page.
 | Area | Not there |
 |---|---|
 | Calls | Transfer, conference, early media; calls **between** handsets (refused); handover of a call between cells |
-| Handset features | The **phonebook and call lists** on the handset from the controller (the contacts page exists, the handset list access is not wired); the date shown by every handset model |
+| Handset features | The **call lists** on the handset from the controller (the phonebook is built, see below); the date shown by every handset model |
 | Cells | A way to update a cell's software from the controller; rotation of the controller's certificate authority; a hard limit of calls per cell |
 | Controller | A calls page for users (a stub today); WebAuthn security keys; personal API tokens; a list of your sessions; export or deletion of one user's data (GDPR); German or other languages; a manual for administrators beyond this wiki |
 | Operations | A tested restore; scheduled backups; high availability (one controller, one database); more than about ten metrics; per-call and per-cell quality metrics; per-tenant quotas |

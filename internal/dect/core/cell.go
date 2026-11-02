@@ -73,6 +73,10 @@ type cellRun struct {
 	retryAt time.Time
 	// pumpPending: an evPump is in the inbox (a stack in a worker wakes the cell once, not per callback)
 	pumpPending atomic.Bool
+	// per record: the handset's journal sequence in the last Contact List, and the entry identifiers
+	// it gave to contacts it made (contacts.go)
+	cseq   map[int]uint32
+	chints map[int]map[int64]uint16
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
 	seenAt    map[int]time.Time
@@ -186,6 +190,10 @@ func (r *cellRun) handle(ev event) {
 		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil {
 			r.applyInfo(i, ev.name, ev.profile)
 		}
+	case evContacts:
+		r.contactsOf(ev.hid)
+	case evContactsDone:
+		r.contactsDone(ev)
 	case evPump:
 		r.pumpPending.Store(false)
 		if p, ok := r.st.(stack.Pumper); ok && r.st != nil {
@@ -594,8 +602,9 @@ func (r *cellRun) tick() {
 			r.setReady(true)
 			r.radioAt = time.Now()
 			r.log.Info("cell radio on")
-			for _, hid := range r.hidOf { // the handsets the stack started with: what their mailboxes hold
+			for i, hid := range r.hidOf { // the handsets the stack started with: what their mailboxes and phonebooks hold
 				r.replayMWI(hid)
+				r.pushContacts(i)
 			}
 		}
 	}
@@ -863,6 +872,7 @@ func (r *cellRun) drop() {
 	r.bring, r.install = nil, false
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
+	r.cseq, r.chints = nil, nil
 	r.reloadAt = time.Time{}
 	r.recycleDue, r.nudgeDue, r.forgetDue = nil, nil, nil
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false
@@ -929,6 +939,7 @@ const (
 	jobUnknown
 	jobSeen
 	jobTrack         // a record added to the running stack: its handset
+	jobContacts      // a handset changed its Contact List: store the change (name is the journal line)
 	jobUntrack       // a record dropped from it: the handset leaves the cell's table
 	jobRelease       // a record recycled out of its chip slot: the slot is free in the store
 	jobReenrol       // a known handset enrolled again: its window's PIN is claimed
@@ -1072,6 +1083,15 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 		pooled, err = core.Records.Forget(ctx, id, j.hid)
 		if err == nil && pooled {
 			core.forgotten(id, j.hid)
+		}
+	case jobContacts:
+		if hid, ok := ids[j.i]; ok && core.Contacts != nil {
+			a, aerr := core.Contacts.ApplyChange(ctx, hid, j.name)
+			if aerr != nil {
+				log.Info("a handset's change of its phonebook was not stored", "handset", hid, "err", aerr)
+			}
+			// stored or refused, the handset's entry is replaced by the file's next time
+			core.post(id, event{kind: evContactsDone, hid: hid, seq: a.Seq, contact: a.Contact, entry: a.Entry})
 		}
 	case jobRename:
 		if hid, ok := ids[j.i]; ok {

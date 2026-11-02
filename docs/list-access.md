@@ -1,6 +1,6 @@
 # CAT-iq list access: controller side
 
-Status: draft, 2026-10-22 (opendectcell-controller#49); §1.1 added 2026-10-31. Pending maintainer review.
+Status: draft, 2026-10-22 (opendectcell-controller#49); §1.1 added 2026-10-31. **The Contact List is wired 2026-11-02** (§5); the call lists are not yet.
 
 A CAT-iq handset reads and edits lists held by the base: the phonebook and
 the call lists (ETSI TS 102 527-3). The transport (`<<IWU-TO-IWU>>`
@@ -72,3 +72,26 @@ air; the fallback there is to ignore a rename in `named()`.
 - The `c3 04` record and the payload field meanings (cell side).
 - Melodies, photos and per-contact line selection, which some handsets
   support. Left out until a handset needs them.
+
+## 5. The Contact List as built (2026-11-02)
+
+libopendectcell API 151 gives each record a Contact List of its own (`dect_base_record_contacts`); the handset a record serves reads
+that one. The controller keeps the contacts in the database and the stack's lists follow:
+
+- **Format.** `contacts.FileText` writes a handset's list as the library's contacts file (`dect_contacts.h`): the handset owner's
+  contacts and the shared ones, three numbers per entry (the default first; the database allows five), names cut to 31 bytes at a
+  character, a leading `+` as `00`. A handset's change comes back as one journal line (`put`, `del`, `clear`), `contacts.ParseChange`.
+- **When a handset gets its list.** When it comes into a cell's table, when a stack starts, and whenever its owner's contacts (or a
+  shared one) change in the web interface or from another handset (`Contacts.OnChange` → `core.ContactsChanged` → every cell
+  refreshes its handsets of that owner).
+- **What a handset can change.** Its owner's personal contacts: make, edit, delete. The shared contacts are read-only and "delete
+  list" is refused (a handset must not empty the address book). Numbers beyond the three it sees, and a name it saw cut, are kept
+  when it edits the contact. A contact it makes keeps its entry identifier on that handset (the file's hint).
+- **In a worker process** the list crosses the socket as one message (at most about 120 KB, 500 entries), the stack's journal lines
+  come back as `ContactsChanged` callbacks on the cell's goroutine.
+- **Tested:** the format and the changes against the database; the real library through cdect (load, refuse, journal); the core
+  (start, arrival, store a change and give the list again with its sequence and hint, refresh only one owner's handsets). **Not seen
+  on a handset yet:** open the phonebook on the A540 (a `Testkontakt` was added for the lab's owner), edit and delete an entry.
+- **Open:** the call lists (§1) the same way; handsets that open the phonebook while a list is replaced are not specially handled
+  (the library keeps their locks, an entry being edited keeps the handset's version).
+

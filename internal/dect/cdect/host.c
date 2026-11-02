@@ -647,10 +647,24 @@ struct cdect_host *cdect_host_new(uintptr_t h)
 	return c;
 }
 
+/* Free record i's Contact List (the base lets go of it when the record goes). */
+static void contacts_free(struct cdect_host *c, unsigned i)
+{
+	if (i < DECT_BASE_HS_MAX && c->contacts[i]) {
+		wipe(c->contacts[i], sizeof(*c->contacts[i]));
+		free(c->contacts[i]);
+		c->contacts[i] = NULL;
+	}
+}
+
 void cdect_host_free(struct cdect_host *c)
 {
+	unsigned i;
+
 	if (!c)
 		return;
+	for (i = 0; i < DECT_BASE_HS_MAX; i++)
+		contacts_free(c, i);
 	wipe(c, sizeof(*c));
 	free(c);
 }
@@ -942,7 +956,50 @@ void cdect_host_resume(struct cdect_host *c, uint64_t now)
 
 int cdect_host_drop(struct cdect_host *c, unsigned i)
 {
-	return dect_base_record_drop(&c->b, i);
+	int rc = dect_base_record_drop(&c->b, i);
+
+	if (rc == 0)
+		contacts_free(c, i);	/* the base has let go of it */
+	return rc;
+}
+
+int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, size_t len)
+{
+	int rc;
+
+	if (i >= DECT_BASE_HS_MAX)
+		return -1;
+	if (!c->contacts[i]) {
+		c->contacts[i] = calloc(1, sizeof(*c->contacts[i]));
+		if (!c->contacts[i])
+			return -1;
+		dect_contacts_init(c->contacts[i]);
+	}
+	rc = dect_contacts_load(c->contacts[i], text, len);
+	dect_base_record_contacts(&c->b, i, c->contacts[i]);
+	return rc;
+}
+
+size_t cdect_host_contact_change(struct cdect_host *c, unsigned i)
+{
+	if (i >= DECT_BASE_HS_MAX || !c->contacts[i])
+		return 0;
+	return dect_contacts_take_change(c->contacts[i], c->out, sizeof(c->out));
+}
+
+int cdect_host_test_contact_put(struct cdect_host *c, unsigned i, const char *name, const char *digits)
+{
+	struct dect_contact in;
+
+	if (i >= DECT_BASE_HS_MAX || !c->contacts[i])
+		return -1;
+	memset(&in, 0, sizeof(in));
+	snprintf(in.name, sizeof(in.name), "%s", name);
+	in.line = DECT_CONTACT_ALL_LINES;
+	in.n_numbers = 1;
+	in.numbers[0].props = DECT_CONTACT_MOBILE;
+	snprintf(in.numbers[0].digits, sizeof(in.numbers[0].digits), "%s", digits);
+	return dect_contacts_put(c->contacts[i], 0, &in) ? 0 : -1;
 }
 
 /* dect_base_record_recycle() with the TPUI from c->rec, wiped after. */
@@ -954,6 +1011,8 @@ int cdect_host_recycle(struct cdect_host *c, unsigned i)
 	memcpy(tpui, c->rec.tpui, sizeof(tpui));
 	wipe(&c->rec, sizeof(c->rec));
 	rc = dect_base_record_recycle(&c->b, i, tpui);
+	if (rc == 0)
+		contacts_free(c, i);
 	/*
 	 * The slot is empty now. The chip must not be left with an empty table
 	 * (it goes silent: no handset can attach), so the table is written again

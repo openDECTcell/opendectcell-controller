@@ -63,7 +63,19 @@ type Contact struct {
 }
 
 // Store holds contacts.
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct {
+	Pool *pgxpool.Pool
+	// OnChange, if set, is told after a contact was created, changed or deleted: whose list it
+	// is (nil: a shared contact, every handset reads it). The DECT side refreshes the
+	// handsets' phonebooks with it.
+	OnChange func(owner *uuid.UUID)
+}
+
+func (s *Store) changed(owner *uuid.UUID) {
+	if s.OnChange != nil {
+		s.OnChange(owner)
+	}
+}
 
 var numberRE = regexp.MustCompile(`^\+?[0-9*#]{1,32}$`)
 
@@ -228,6 +240,7 @@ func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bo
 	if err != nil {
 		return nil, err
 	}
+	s.changed(owner)
 	return s.Get(ctx, u, id)
 }
 
@@ -257,6 +270,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id int64, c Contact) (
 	if err != nil {
 		return nil, err
 	}
+	s.changed(old.OwnerID)
 	return s.Get(ctx, u, id)
 }
 
@@ -269,13 +283,17 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 	if !auth.CanAccess(u, old.OwnerID) {
 		return auth.ErrForbidden
 	}
-	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "DELETE FROM contact WHERE id = $1", id); err != nil {
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "contact.delete", ObjectType: "contact", ObjectID: fmt.Sprint(id),
 			Details: map[string]any{"scope": scope(old.OwnerID)}})
 	})
+	if err == nil {
+		s.changed(old.OwnerID)
+	}
+	return err
 }
 
 // handset views (what the DECT side will serve)

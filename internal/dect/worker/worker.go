@@ -315,6 +315,10 @@ func (h *hosted) handle(f frame) bool {
 		h.st.SetRFPI(a)
 	case mSetValidity:
 		h.st.SetLocateValidity(uint(r.u32()))
+	case mSetContacts:
+		i := int(r.u32())
+		text := r.str()
+		h.reply(f, b2u(r.err == nil && h.st.SetContacts(i, text)))
 	case mClose:
 		h.st.Close()
 		h.reply(f, nil)
@@ -476,6 +480,13 @@ func (e *workerEnv) Clock() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Unix(0, ns), good
+}
+
+func (e *workerEnv) ContactsChanged(i int, line string) {
+	var w wbuf
+	w.u32(uint32(i))
+	w.str(line)
+	e.send(mEnvContacts, &w)
 }
 
 func (e *workerEnv) Media(handle, channel uint8, wideband, up bool) {

@@ -46,6 +46,14 @@ A call from one handset to another handset **is not supported yet**: the control
 SIP, and refuses an internal call with a message on the handset. Use the SIP side (call the other handset's
 line number) if you need it.
 
+## The phonebook
+
+A CAT-iq handset's phonebook shows **your contacts** (Phones > Contacts) and the **shared** ones. What you add, change or
+delete on the handset goes back to your personal contacts; the shared ones are read-only from a handset, and "delete all"
+on the handset is ignored. A handset shows three numbers per contact: if a contact has more, they are kept. A change in
+the web interface reaches the handset the next time it connects to a cell or within a moment if it is on one. **(Built, not yet
+tried on a handset.)** The call lists (missed, received, dialled) are not on the handsets yet.
+
 ## Names and numbers on the display
 
 The caller's number and, if the SIP side provides it, the name are shown on the handset. CAT-iq handsets show

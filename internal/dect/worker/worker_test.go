@@ -40,6 +40,7 @@ type fakeStack struct {
 	env      stack.Env
 	records  map[int]stack.Record
 	blockCtl chan struct{}
+	contacts []string
 	closed   atomic.Bool
 }
 
@@ -63,7 +64,12 @@ func (f *fakeStack) HasRFPI() bool                       { return false }
 func (f *fakeStack) SetName(i int, n string) bool        { return n != "" }
 func (f *fakeStack) SetProfile(int, string, string) bool { return true }
 func (f *fakeStack) SetLocateValidity(uint)              {}
-func (f *fakeStack) Close()                              { f.closed.Store(true) }
+func (f *fakeStack) SetContacts(i int, text string) bool {
+	f.contacts = append(f.contacts, text)
+	f.env.ContactsChanged(i, "1\tput\t5\t0\tAnna")
+	return text != ""
+}
+func (f *fakeStack) Close() { f.closed.Store(true) }
 
 func (f *fakeStack) Mail(m stack.Mail, now uint64) {
 	// a mail from the chip: answer it with one for the chip, ask whether it may go, and tell what the host should save
@@ -99,6 +105,7 @@ type ownerEnv struct {
 	events  []string
 	saved   []int
 	named   []string
+	changes []string
 	logs    []string
 	media   []uint8
 	room    bool
@@ -112,6 +119,7 @@ func (e *ownerEnv) Log(l string)            { e.logs = append(e.logs, l) }
 func (e *ownerEnv) Event(_ stack.To, l string) {
 	e.events = append(e.events, l)
 }
+func (e *ownerEnv) ContactsChanged(i int, l string)    { e.changes = append(e.changes, l) }
 func (e *ownerEnv) Save(i int, _ stack.Record)         { e.saved = append(e.saved, i) }
 func (e *ownerEnv) Fetch([]byte)                       {}
 func (e *ownerEnv) Forget(int, string)                 {}
@@ -201,6 +209,14 @@ func TestRemoteStackRoundTrip(t *testing.T) {
 	st.SetRFPI([5]byte{1})
 	if !st.HasRFPI() {
 		t.Error("HasRFPI after SetRFPI")
+	}
+
+	// a contacts file goes to the stack; what the handset changes comes back
+	if !st.SetContacts(2, "#opendectcell-contacts 1 seq=0\n") || st.SetContacts(2, "") {
+		t.Error("SetContacts")
+	}
+	if len(fs.contacts) != 2 || len(env.changes) != 2 || env.changes[0] != "1\tput\t5\t0\tAnna" {
+		t.Errorf("contacts %q, changes %q", fs.contacts, env.changes)
 	}
 
 	st.Close()

@@ -140,6 +140,7 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 	r.trans[h.ID] = &transRec{idx: i, slot: h.Rec.Slot, added: now}
 	r.log.Info("a handset is in this cell's table", "handset", h.ID, "record", h.Rec.Slot, "held", len(r.trans))
 	r.replayMWI(h.ID)
+	r.pushContacts(i)
 	return true
 }
 
@@ -159,6 +160,8 @@ func (r *cellRun) dropTransient(hid uuid.UUID, why string) bool {
 	delete(r.hidOf, t.idx)
 	r.freeIdx = append(r.freeIdx, t.idx)
 	delete(r.seenMs, t.idx)
+	delete(r.cseq, t.idx)
+	delete(r.chints, t.idx)
 	delete(r.seenAt, t.idx)
 	r.gen.unplace(t.idx)
 	r.gen.job(job{kind: jobUntrack, i: t.idx, hid: hid})

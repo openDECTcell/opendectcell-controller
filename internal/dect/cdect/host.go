@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"runtime/cgo"
 	"runtime/debug"
+	"sync"
 	"unsafe"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
@@ -65,6 +66,9 @@ var (
 
 // ErrNoSlot means no chip slot is left for a free store.
 var ErrNoSlot = errors.New("cdect: no chip slot left")
+
+// contactsLoad serialises dect_contacts_load, which is not reentrant across stores.
+var contactsLoad sync.Mutex
 
 // Host is one cell's DECT base stack (stack.Stack). It is not safe for
 // concurrent use: one goroutine per cell owns it.
@@ -347,12 +351,61 @@ func (x *Host) Mail(m Mail, now uint64) {
 	copyIn(in.param[:], m.Param)
 	C.cdect_host_mail(x.c, C.uint64_t(now))
 	x.raise()
+	x.pollContacts()
 }
 
 // Tick runs the stack's timers; call it at least every 100 ms.
 func (x *Host) Tick(now uint64) {
 	C.cdect_host_tick(x.c, C.uint64_t(now))
 	x.raise()
+	x.pollContacts()
+}
+
+// SetContacts gives record i's handset its Contact List from a contacts file; false if
+// the library refuses the text.
+func (x *Host) SetContacts(i int, text string) bool {
+	if i < 0 || text == "" {
+		return false
+	}
+	// dect_contacts_load keeps the list it replaces in a static buffer: one load at a time in a process
+	contactsLoad.Lock()
+	defer contactsLoad.Unlock()
+	cs := C.CString(text)
+	defer C.free(unsafe.Pointer(cs))
+	return C.cdect_host_set_contacts(x.c, C.unsigned(i), cs, C.size_t(len(text))) == 0
+}
+
+// pollContacts reports what the handsets changed in their Contact Lists since the
+// last call, one journal line at a time.
+func (x *Host) pollContacts() {
+	for i := range C.DECT_BASE_HS_MAX {
+		if x.c.contacts[i] == nil {
+			continue
+		}
+		for {
+			n := C.cdect_host_contact_change(x.c, C.unsigned(i))
+			if n == 0 {
+				break
+			}
+			x.env.ContactsChanged(i, C.GoStringN(&x.c.out[0], C.int(n)))
+		}
+	}
+}
+
+// contactCount is how many contacts record i's list holds, -1 if it has none (tests).
+func (x *Host) contactCount(i int) int {
+	if i < 0 || i >= C.DECT_BASE_HS_MAX || x.c.contacts[i] == nil {
+		return -1
+	}
+	return int(x.c.contacts[i].n)
+}
+
+// testContactPut puts a contact into record i's list as a handset would (tests).
+func (x *Host) testContactPut(i int, name, digits string) bool {
+	n, d := C.CString(name), C.CString(digits)
+	defer C.free(unsafe.Pointer(n))
+	defer C.free(unsafe.Pointer(d))
+	return C.cdect_host_test_contact_put(x.c, C.unsigned(i), n, d) == 0
 }
 
 // Seen is when record i last had C-plane traffic, on the stack's clock; 0

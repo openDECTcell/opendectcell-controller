@@ -56,6 +56,7 @@ var apiRE = regexp.MustCompile(` api=\d+`)
 type traceEnv struct {
 	t       *testing.T
 	host    *Host
+	changes []string // what the handsets changed in their Contact Lists
 	now     uint64
 	wall    int64
 	rnd     int
@@ -104,14 +105,15 @@ func (e *traceEnv) Event(to To, line string) {
 	e.events = append(e.events, "ev "+apiRE.ReplaceAllString(line, " api=N"))
 }
 
-func (e *traceEnv) Save(_ int, r Record)        { e.saves = append(e.saves, r) }
-func (e *traceEnv) Forget(int, string)          {}
-func (e *traceEnv) Named(int, string)           {}
-func (e *traceEnv) NameVisible(_, _ uint) bool  { return true }
-func (e *traceEnv) Switched(int, string)        {}
-func (e *traceEnv) Registered(int)              {}
-func (e *traceEnv) CapLearned(int, Capability)  {}
-func (e *traceEnv) Media(_, _ uint8, _, _ bool) {}
+func (e *traceEnv) Save(_ int, r Record)               { e.saves = append(e.saves, r) }
+func (e *traceEnv) Forget(int, string)                 {}
+func (e *traceEnv) Named(int, string)                  {}
+func (e *traceEnv) NameVisible(_, _ uint) bool         { return true }
+func (e *traceEnv) ContactsChanged(i int, line string) { e.changes = append(e.changes, line) }
+func (e *traceEnv) Switched(int, string)               {}
+func (e *traceEnv) Registered(int)                     {}
+func (e *traceEnv) CapLearned(int, Capability)         {}
+func (e *traceEnv) Media(_, _ uint8, _, _ bool)        {}
 
 func (e *traceEnv) Clock() (time.Time, bool) {
 	return time.Unix(e.wall, 0).UTC(), true

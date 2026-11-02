@@ -83,6 +83,9 @@ struct cdect_host {
 	uint8_t  fetch_id[DECT_MM_PORTID_MAX];
 	size_t   fetch_len;
 
+	/* record i's own Contact List (SetContacts), NULL until it is given one */
+	struct dect_contacts *contacts[DECT_BASE_HS_MAX];
+
 	/* The field strength the chip last reported on a link to each record (dBm), and when (0: never). */
 	int      sig_dbm[DECT_BASE_HS_MAX];
 	uint64_t sig_ms[DECT_BASE_HS_MAX];
@@ -137,6 +140,16 @@ int cdect_host_set_name(struct cdect_host *c, unsigned i, const char *name);
  */
 int cdect_host_set_profile(struct cdect_host *c, unsigned i, const char *mfr, size_t mfr_len,
 			   const char *dev, size_t dev_len);
+/*
+ * Give record i a Contact List from a contacts file (dect_contacts.h): a store is made on
+ * the first call and attached to the record (dect_base_record_contacts). 0, or -1 for a
+ * text that is not a contacts file, or no memory.
+ */
+int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, size_t len);
+/* The oldest journalled change of record i's Contact List as a line in c->out (no newline): its length, 0 if none. */
+size_t cdect_host_contact_change(struct cdect_host *c, unsigned i);
+/* Tests: a contact "name" put into record i's list as a handset would (journalled). */
+int cdect_host_test_contact_put(struct cdect_host *c, unsigned i, const char *name, const char *digits);
 /* One loop pass: the host's steps and dect_base_tick(). */
 void cdect_host_tick(struct cdect_host *c, uint64_t now);
 /* When record i last had C-plane traffic, on the stack's clock; 0: never. */

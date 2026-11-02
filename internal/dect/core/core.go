@@ -86,6 +86,9 @@ type Core struct {
 	// each mailbox, for a handset that comes into a cell's table; nil: none
 	// (mwi.go).
 	MWIFor func(ctx context.Context, hid uuid.UUID) []MWILine
+
+	// Contacts is the handsets' phonebook (contacts.go); nil: they have none.
+	Contacts Contacts
 	// RingWaveSize is how many more cells are paged each PageDelay while a
 	// call is unanswered, RingMaxCells how many cells it is offered to in all
 	// (the last-heard one included); 0 are the defaults (route.go).
@@ -213,19 +216,21 @@ const (
 	evMail
 	evReject
 	evRadio
-	evFetched // the answer to a Fetch: the handset's record, or none
-	evEvict   // take this handset out of the cell's table (its key or registration changed)
-	evReload  // rebuild the stack soon, from the records
-	evRecycle // a pooled handset enrolled into a chip slot: free the slot in place
-	evCtl     // a bridge command for the stack (route.go)
-	evHome    // a handset enrolled into a chip slot of this cell and stays there: record idx is its
-	evInfo    // a handset's name or device profile changed: tell the stack that holds it
-	evDereg   // the user asks for the handset to be deregistered
-	evPump    // a stack in a worker process has callbacks waiting: run them here (stack.Pumper)
+	evFetched      // the answer to a Fetch: the handset's record, or none
+	evEvict        // take this handset out of the cell's table (its key or registration changed)
+	evReload       // rebuild the stack soon, from the records
+	evRecycle      // a pooled handset enrolled into a chip slot: free the slot in place
+	evCtl          // a bridge command for the stack (route.go)
+	evHome         // a handset enrolled into a chip slot of this cell and stays there: record idx is its
+	evInfo         // a handset's name or device profile changed: tell the stack that holds it
+	evDereg        // the user asks for the handset to be deregistered
+	evPump         // a stack in a worker process has callbacks waiting: run them here (stack.Pumper)
+	evContacts     // somebody's contacts changed (hid: the owner, uuid.Nil: all): the handsets get a new Contact List
+	evContactsDone // a change a handset made to its Contact List was stored: hid, seq, contact, entry
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump", "contacts", "contactsdone"}[k]
 }
 
 type event struct {
@@ -242,6 +247,9 @@ type event struct {
 	force   bool      // evDereg: do not ask the handset, it may be out of range
 	profile string    // evInfo: the id of its device profile
 	sip     string    // evCtl: the call it belongs to
+	seq     uint32    // evContactsDone: the journal sequence of the handset's change
+	contact int64     // evContactsDone: the contact it made or changed
+	entry   uint16    // evContactsDone: the handset's identifier for it
 	// evFetched: the identity asked about, what the store said
 	ipui []byte
 	h    Handset

@@ -274,6 +274,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
 	var windows *regwin.Registry
 	var dectCore *dectcore.Core
+	// The contacts: the web pages' store, and the phonebook of the handsets; a change of either
+	// gives the handsets a new Contact List (set below, once the DECT core exists).
+	contactStore := &contacts.Store{Pool: pool}
 	// The calls between the handsets and SIP (internal/bridge): the SIP side
 	// is set below, once it exists.
 	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log},
@@ -309,6 +312,14 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		dect.Originate = calls.HandsetCall
 		calls.MWI = dect
 		dect.MWIFor = calls.MWIFor
+		dect.Contacts = phonebook{contactStore}
+		contactStore.OnChange = func(owner *uuid.UUID) {
+			if owner == nil {
+				dect.ContactsChanged(uuid.Nil) // a shared contact: everybody's list
+			} else {
+				dect.ContactsChanged(*owner)
+			}
+		}
 		windows.Done = func(w regwin.Window) {
 			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
@@ -350,7 +361,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
 		Cells: cells, CellLink: link,
-		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: &contacts.Store{Pool: pool},
+		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: contactStore,
 		Registrations: windows,
 		HandsetChanged: func(id uuid.UUID) {
 			if dectCore != nil {

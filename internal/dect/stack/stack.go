@@ -102,6 +102,10 @@ type Env interface {
 	CapLearned(i int, c Capability)
 	// Clock is the time now and whether it is known to be right (NTP).
 	Clock() (t time.Time, ok bool)
+	// ContactsChanged: the handset of record i changed its Contact List; line is
+	// the change in the journal's format (dect_contacts.h), for the host to apply
+	// to the phonebook it keeps.
+	ContactsChanged(i int, line string)
 	// Media: the audio of the call on handle is bound to channel (up), or
 	// released: MEDIA_OPEN and MEDIA_CLOSE (cell-protocol.md §8.1).
 	Media(handle, channel uint8, wideband, up bool)
@@ -210,6 +214,11 @@ type Stack interface {
 	// texts of its manufacturer's and its own profile file (either may be
 	// empty: the standard behaviour). False: the stack cannot read them.
 	SetProfile(i int, mfr, dev string) bool
+	// SetContacts gives record i's handset its Contact List: text is a contacts
+	// file (dect_contacts.h), which replaces the list it had, keeping what the
+	// handset changed that the file does not include yet. False: the library
+	// refuses it (not a contacts file) or the list does not fit.
+	SetContacts(i int, text string) bool
 	// SetLocateValidity sets the location validity in units of 40.96 s for
 	// the links from now on; 0: none.
 	SetLocateValidity(units uint)

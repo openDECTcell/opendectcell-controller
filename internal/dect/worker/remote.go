@@ -420,6 +420,9 @@ func (p *proxy) fromWorker(f frame) {
 			w.bool(ok)
 			_ = p.r.write(frame{typ: mRet, id: p.id, req: req, body: w.b})
 		})
+	case mEnvContacts:
+		i, line := int(r.u32()), r.str()
+		p.enqueue(func() { p.env.ContactsChanged(i, line) })
 	case mEnvMedia:
 		h, c := r.u8(), r.u8()
 		wb, up := r.bool(), r.bool()
@@ -594,6 +597,17 @@ func (p *proxy) SetProfile(i int, mfr, dev string) bool {
 	w.str(mfr)
 	w.str(dev)
 	body, ok := p.call(mSetProfile, &w)
+	return ok && len(body) == 1 && body[0] == 1
+}
+
+func (p *proxy) SetContacts(i int, text string) bool {
+	if len(text) > maxFrame-64 {
+		return false // does not fit one message
+	}
+	var w wbuf
+	w.u32(uint32(i))
+	w.str(text)
+	body, ok := p.call(mSetContacts, &w)
 	return ok && len(body) == 1 && body[0] == 1
 }
 

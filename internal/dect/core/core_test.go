@@ -32,10 +32,12 @@ type fakeStack struct {
 	// the TPUI each free record was given, in the order of free
 	freeTPUI [][3]byte
 	started  bool
-	radio    bool
-	closed   bool
-	mails    []stack.Mail
-	ticks    int
+	// the Contact List text each record was given (SetContacts)
+	contactsOf map[int]string
+	radio      bool
+	closed     bool
+	mails      []stack.Mail
+	ticks      int
 	// the registration window (ADR 0005); free defaults to true
 	regPINs  []string
 	regOpen  bool
@@ -217,6 +219,16 @@ func (f *fakeStack) SetName(i int, name string) bool {
 	}
 	f.names[i] = name
 	f.nameCalls++
+	return true
+}
+
+func (f *fakeStack) SetContacts(i int, text string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.contactsOf == nil {
+		f.contactsOf = map[int]string{}
+	}
+	f.contactsOf[i] = text
 	return true
 }
 

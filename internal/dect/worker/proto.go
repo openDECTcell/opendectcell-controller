@@ -38,6 +38,7 @@ const (
 	mSetProfile                   // request: u32 i, str, str -> mRet(u8)
 	mSetRFPI                      // [5]
 	mSetValidity                  // u32 units
+	mSetContacts                  // request: u32 i, bytes text -> mRet(u8)
 	mClose                        // request: -> mRet()
 	mPing                         // -> mPong
 	// worker -> controller
@@ -56,14 +57,15 @@ const (
 	mEnvCapLearn             // u32 i, gob(stack.Capability)
 	mEnvClock                // request: -> mRet(i64 unix nanos, u8 ok)
 	mEnvMedia                // u8 handle, u8 channel, u8 wideband, u8 up
+	mEnvContacts             // u32 i, str journal line
 	mPong                    // -
 	mGone                    // the worker's stack ended by itself (not used yet)
 	mRet         uint8 = 200 // the answer to a request
 )
 
 // maxFrame is the largest message: a mail is at most 255 bytes of parameters, a
-// record about 100.
-const maxFrame = 64 << 10
+// record about 100, a contacts file (500 entries) about 100 KB.
+const maxFrame = 128 << 10
 
 const hdrLen = 1 + 4 + 4
 
