@@ -139,10 +139,10 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 	r.idxOf[h.ID], r.hidOf[i] = i, h.ID
 	r.trans[h.ID] = &transRec{idx: i, slot: h.Rec.Slot, added: now}
 	r.log.Info("a handset is in this cell's table", "handset", h.ID, "record", h.Rec.Slot, "held", len(r.trans))
+	r.core.DirectoryChanged(h.Owner)
 	r.replayMWI(h.ID)
 	r.pushContacts(i)
 	r.callsDirty = true // its calls, with the others
-	r.core.DirectoryChanged()
 	return true
 }
 
@@ -166,10 +166,11 @@ func (r *cellRun) dropTransient(hid uuid.UUID, why string) bool {
 	delete(r.cseq, t.idx)
 	delete(r.chints, t.idx)
 	delete(r.seenAt, t.idx)
+	owner := r.gen.owner[t.slot]
 	r.gen.unplace(t.idx)
 	r.gen.job(job{kind: jobUntrack, i: t.idx, hid: hid})
 	r.log.Info("a handset left this cell's table", "handset", hid, "why", why, "held", len(r.trans))
-	r.core.DirectoryChanged()
+	r.core.DirectoryChanged(owner)
 	return true
 }
 

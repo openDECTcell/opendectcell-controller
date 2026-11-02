@@ -35,8 +35,10 @@ var (
 	dirRefresh = time.Minute
 )
 
-// DirectoryChanged tells every cell that handsets moved between cells' tables or changed name.
-func (c *Core) DirectoryChanged() {
+// DirectoryChanged tells the cells that handsets of owner moved between tables or changed name
+// (uuid.Nil: every cell). Only a cell that holds one of the owner's handsets lists the account's
+// others, so only those read the directory again.
+func (c *Core) DirectoryChanged(owner uuid.UUID) {
 	c.mu.Lock()
 	ids := make([]uuid.UUID, 0, len(c.cells))
 	for id := range c.cells {
@@ -44,8 +46,21 @@ func (c *Core) DirectoryChanged() {
 	}
 	c.mu.Unlock()
 	for _, id := range ids {
-		c.post(id, event{kind: evDirectory})
+		c.post(id, event{kind: evDirectory, hid: owner})
 	}
+}
+
+// holdsOwner says whether a handset of owner is in this cell's table.
+func (r *cellRun) holdsOwner(owner uuid.UUID) bool {
+	if r.gen == nil {
+		return false
+	}
+	for _, o := range r.gen.owner {
+		if o == owner {
+			return true
+		}
+	}
+	return false
 }
 
 // pushDirectory gives the stack the directory if it is due.

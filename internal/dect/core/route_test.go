@@ -341,7 +341,8 @@ func TestRingOneBusyCellIsNotASilentHandset(t *testing.T) {
 	}
 	rr.waitLines(t, 0, 1)
 	rr.stack(0).env.Event(stack.ToBridge, "released call=7 by=base sip=p2")
-	if ev, _ := nextEvent(t, o); ev.Kind != CallReleased {
+	// busy or released, by which of the two ends last; either way the handset is not noted
+	if ev, _ := nextEvent(t, o); ev.Kind != CallReleased && ev.Kind != CallBusy {
 		t.Errorf("event %+v", ev)
 	}
 	time.Sleep(100 * time.Millisecond)

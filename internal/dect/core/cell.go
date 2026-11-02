@@ -204,7 +204,9 @@ func (r *cellRun) handle(ev event) {
 	case evCalls:
 		r.callsFor(ev.hids)
 	case evDirectory:
-		r.dirDirty = true
+		if ev.hid == uuid.Nil || r.holdsOwner(ev.hid) {
+			r.dirDirty = true
+		}
 	case evPump:
 		r.pumpPending.Store(false)
 		if p, ok := r.st.(stack.Pumper); ok && r.st != nil {

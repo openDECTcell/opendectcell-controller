@@ -52,7 +52,7 @@ func TestDirectoryHoldsTheAccountsHandsetsOnOtherCells(t *testing.T) {
 	recs.mu.Lock()
 	recs.dirHs = []DirHandset{other}
 	recs.mu.Unlock()
-	g.core.DirectoryChanged()
+	g.core.DirectoryChanged(uuid.Nil)
 	waitFor(t, "the directory emptied", func() bool {
 		var n = -1
 		g.stack(0).get(func(f *fakeStack) { n = len(f.dirSets) })
@@ -80,7 +80,7 @@ func TestDirectoryNumbersAreStable(t *testing.T) {
 	recs.mu.Lock()
 	recs.dirHs = []DirHandset{a, b, c}
 	recs.mu.Unlock()
-	g.core.DirectoryChanged()
+	g.core.DirectoryChanged(uuid.Nil)
 	waitFor(t, "three entries", func() bool { return len(dirOf(g, 0)) == 3 })
 	got := map[string]uint{}
 	for _, e := range dirOf(g, 0) {
