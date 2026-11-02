@@ -33,8 +33,9 @@ firmware-upload page.
 - **A 7412 cell carries three calls at once**, a 7520 five.
 - **Two handsets whose temporary numbers end in the same digit** cannot both be in a call or ringing at once on a
   7412 cell ([Roaming](Roaming-and-many-cells.md)).
-- **All cells' DECT stacks run inside one controller process.** A crash in the DECT library stops every call until it
-  restarts (the controller restarts by itself). Separate worker processes are designed and not built.
+- **By default all cells' DECT stacks run inside one controller process.** A crash in the DECT library stops every call
+  until it restarts. Worker processes (`OPENDECTCELL_CELLS_STACK_WORKERS`) contain a crash to one worker and its cells; built and
+  tried on the lab, off by default until it has had a long soak.
 - **Scale.** Designed and tested at the database and routing level for 100 cells and 500 handsets; not tested with that
   many real connections. The documented comfortable size today is about 10 cells and 50 handsets.
 - **The cell operator can read the handset keys of its cell** by design (the base has to hold them): do not enrol a

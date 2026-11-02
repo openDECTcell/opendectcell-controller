@@ -186,7 +186,7 @@ func (r *Remote) request(f frame) (chan frame, uint32) {
 
 // NewStack makes a stack in the worker for one cell. clock is the controller's
 // monotonic clock in ms, which the stack's times are on. The result implements
-// stack.Stack, and Pumper: its callbacks into env run on the goroutine that
+// stack.Stack and stack.Pumper: its callbacks into env run on the goroutine that
 // calls it, inside its calls and in Tick and Pump.
 func (r *Remote) NewStack(env stack.Env, cfg stack.Config, clock func() uint64) stack.Stack {
 	if r.dead.Load() {
@@ -222,17 +222,6 @@ func (r *Remote) NewStack(env stack.Env, cfg stack.Config, clock func() uint64) 
 	return p
 }
 
-// Pumper is a stack whose callbacks wait for its owner to run them.
-type Pumper interface {
-	// SetWake gives the function the stack calls (from any goroutine) when a
-	// callback is waiting; the owner then calls Pump soon.
-	SetWake(func())
-	// Pump runs the callbacks that are waiting, on the calling goroutine.
-	Pump()
-	// Alive is false once the worker that hosts the stack has ended.
-	Alive() bool
-}
-
 // proxy is a stack.Stack that lives in a worker.
 type proxy struct {
 	r     *Remote
@@ -265,7 +254,7 @@ type snapshot struct {
 }
 
 var _ stack.Stack = (*proxy)(nil)
-var _ Pumper = (*proxy)(nil)
+var _ stack.Pumper = (*proxy)(nil)
 
 func (p *proxy) SetWake(f func()) { p.wake.Store(&f) }
 func (p *proxy) Alive() bool      { return !p.isDead() }

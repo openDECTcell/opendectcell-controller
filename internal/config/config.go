@@ -154,6 +154,11 @@ type Cells struct {
 	// PublicAddress, when that is an IP address.
 	MediaIP    string `yaml:"media_ip"`
 	MediaPorts string `yaml:"media_ports"`
+	// StackWorkers is how many worker processes run the cells' DECT stacks
+	// (docs/adr/0003-stack-isolation.md): a crash or a hang in the C library
+	// ends one worker, not the controller. 0: the stacks run inside the
+	// controller process.
+	StackWorkers int32 `yaml:"stack_workers"`
 }
 
 // MediaRange parses MediaPorts; Validate has checked it.
@@ -307,6 +312,7 @@ func vars(c *Config) []envVar {
 		{"CELLS_LISTEN", false, str(&c.Cells.Listen)},
 		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
 		{"CELLS_HANDSET_POOL", false, boolean(&c.Cells.HandsetPool)},
+		{"CELLS_STACK_WORKERS", false, uintN(&c.Cells.StackWorkers, 8)},
 		{"CELLS_MEDIA_IP", false, str(&c.Cells.MediaIP)},
 		{"CELLS_MEDIA_PORTS", false, str(&c.Cells.MediaPorts)},
 		{"SIP_UDP_LISTEN", false, str(&c.SIP.UDPListen)},

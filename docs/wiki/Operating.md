@@ -75,6 +75,10 @@ or deletion of one user's data yet; see [Limits](Limits.md).
 The project's aim is hundreds of cells and about 500 handsets. What has been **tested**: the database layer with 500
 handsets over 100 cells, and the call routing with 40 simulated cells. What has **not** been tested: 100 real cells
 connected at once, CPU and memory of one controller carrying that many DECT stacks, and many simultaneous calls
-(the compose file opens 100 audio ports, about 50 calls). All cells' DECT stacks run inside the one controller
-process, so a crash in the DECT library stops every cell and call until it restarts. Plan for that: run it under
-Docker's restart policy (the compose file does), and watch for restarts.
+(the compose file opens 100 audio ports, about 50 calls). By default all cells' DECT stacks run inside the one controller
+process, so a crash in the DECT library stops every cell and call until it restarts (Docker's restart policy brings it
+back, the compose file sets it). **Worker processes** avoid that: set `OPENDECTCELL_CELLS_STACK_WORKERS` to the number of
+CPUs (for example `OPENDECTCELL_CELLS_STACK_WORKERS=4 docker compose up -d controller`): the stacks then run in that many
+separate processes, a crash or hang ends one of them, the cells in it restart within seconds and the controller and
+the other cells carry on. It has run on the lab (a crash was provoked on purpose) but has not had a long soak, so it is off
+by default.

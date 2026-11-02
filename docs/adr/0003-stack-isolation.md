@@ -1,6 +1,6 @@
 # ADR 0003: One cell's stack must not take the controller down
 
-Status: **decided** 2026-10-31 (the maintainers' notes): out of process, as proposed, but **several worker processes over all hardware threads, each hosting many cells**, not one per cell (see "The decision" at the end; the table below is the original comparison). Not built yet.
+Status: **decided** 2026-10-31 (the maintainers' notes): out of process, as proposed, but **several worker processes over all hardware threads, each hosting many cells**, not one per cell (see "The decision" at the end; the table below is the original comparison). **Built 2026-11-02** (`internal/dect/worker`, option `cells.stack_workers`, off by default; see "As built" at the end).
 
 ## The problem
 
@@ -144,3 +144,35 @@ step 5 (calls), so calls are built on the final process layout.
 - Whether a cell should move to another worker when N changes (a restart
   of the controller with more threads): it does, by the hash; its calls
   went with the restart anyway.
+
+## As built (2026-11-02)
+
+What differs from the proposal above, and why:
+
+- **The seam is `stack.Stack`, not the cell loop.** The core (`cellRun`, the store, the bridge) stays in the controller. For a
+  cell the core holds a *remote stack* (`worker.Remote.NewStack`) that implements `stack.Stack` and forwards to the real stack in
+  a worker; the worker forwards the stack's `stack.Env` callbacks back. No database access, keys or network in the worker, and
+  no change to the core's logic beyond three small things: a stack that cannot be made now is retried (`r.retryAt`), a stack
+  whose worker ended is dropped and rebuilt, and a stack in a worker wakes its cell (`evPump`).
+- **Channel:** one `SOCK_SEQPACKET` pair per worker, file 3 of the child; messages are `type, stack id, request number, body`
+  (`internal/dect/worker/proto.go`). Many stacks per worker, as decided. Calls that return a value (`Start`, `Ctl`, `Drop`,
+  `Recycle`, `SetName`, `SetProfile`, `Close`) are requests; the others are one-way. What the controller reads often (`Seen`,
+  `Signal`, `RegState`, `Quiet`, `HasRFPI`) comes from a snapshot the worker pushes when it changes (at most every 100 ms).
+- **The worker ticks itself** every 10 ms on the controller's clock (an offset taken at the stack's creation, never going
+  back); the core's `Tick` only runs waiting callbacks.
+- **Callbacks run on the cell's goroutine.** `stack.Env` is not thread-safe and runs "inside the call". A callback from the worker is
+  queued; the cell's goroutine runs it while it waits for the answer to a request, in `Tick`, and when the proxy wakes the cell
+  (`stack.Pumper`). The tests run under the race detector to catch a callback on any other goroutine.
+- **Supervision** (`worker.Supervisor`, the proposal's policy): N workers (`OPENDECTCELL_CELLS_STACK_WORKERS`, 0 = off), a new stack goes to
+  the worker with the fewest; a ping every 2 s, a worker that misses one is killed; restart with backoff 1 s to 60 s (reset after
+  5 minutes up); the worker's crash report is logged once. A call to a stack that does not answer in 5 s declares the worker dead.
+  Hardening in the worker: no core file, not dumpable, dies with the controller (`PR_SET_PDEATHSIG`), empty environment. Not
+  done: `RLIMIT_AS` (the Go runtime reserves address space and does not start under a small one), seccomp.
+- **Tested:** in process over a socket pair (round trip, death, hang, ping) and with real child processes (a crash, a hung process
+  stopped with SIGSTOP, no worker at all); the core (waking, a dead worker, no stack); **on air, 2026-11-02:** the lab controller
+  with two workers, the 7520 and the 7412 each in one, a handset paged through each; then `SIGSEGV` sent to the 7520's worker:
+  the controller logged it and went on, the other cell's stack was not touched, the worker was started again, the 7520's stack
+  started 5 s later on it, and both handsets were paged again.
+- **Not yet:** a soak (days); what a worker restart does to a call in progress (it ends: the call went with the stack, as the ADR
+  says); CPU and memory of workers with many cells; the default stays 0 until that has run for a while.
+

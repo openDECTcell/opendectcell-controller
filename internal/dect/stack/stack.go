@@ -217,5 +217,19 @@ type Stack interface {
 	Close()
 }
 
-// New makes a stack for one cell; nil where the binary has no libopendectcell.
+// Pumper is a stack whose callbacks into Env wait for its owner to run them: one
+// that lives in another process (internal/dect/worker). Core calls SetWake
+// before it uses the stack and Pump when the wake function says so (and in Tick).
+type Pumper interface {
+	// SetWake gives the function the stack calls, from any goroutine, when a
+	// callback is waiting.
+	SetWake(func())
+	// Pump runs the callbacks that wait, on the calling goroutine.
+	Pump()
+	// Alive is false once the process that hosts the stack has ended.
+	Alive() bool
+}
+
+// New makes a stack for one cell; nil where the binary has no libopendectcell, or
+// when a stack cannot be made now (a worker is down).
 type New func(env Env, cfg Config) Stack

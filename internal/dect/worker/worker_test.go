@@ -79,6 +79,12 @@ func (f *fakeStack) Mail(m stack.Mail, now uint64) {
 }
 
 func (f *fakeStack) Ctl(line string, now uint64, isBridge bool) bool {
+	switch line {
+	case "crash": // a crash in the C code
+		os.Exit(2)
+	case "stop": // a hang: the whole process stops answering
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGSTOP)
+	}
 	if f.blockCtl != nil {
 		<-f.blockCtl
 	}
@@ -217,13 +223,13 @@ func TestWorkerEndsAndTheStacksSeeIt(t *testing.T) {
 		t.Fatal("no stack")
 	}
 	woken := make(chan struct{}, 1)
-	st.(Pumper).SetWake(func() {
+	st.(stack.Pumper).SetWake(func() {
 		select {
 		case woken <- struct{}{}:
 		default:
 		}
 	})
-	if !st.(Pumper).Alive() || !r.Alive() {
+	if !st.(stack.Pumper).Alive() || !r.Alive() {
 		t.Fatal("not alive at the start")
 	}
 	wrk.Close() // the worker is gone
@@ -237,7 +243,7 @@ func TestWorkerEndsAndTheStacksSeeIt(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Error("the owner was not woken")
 	}
-	if st.(Pumper).Alive() {
+	if st.(stack.Pumper).Alive() {
 		t.Error("the stack is alive in a dead worker")
 	}
 	if err := st.Start(); err == nil {
@@ -274,7 +280,7 @@ func TestWorkerThatHangsIsDeclaredDead(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Error("the worker was not declared dead")
 	}
-	if st.(Pumper).Alive() {
+	if st.(stack.Pumper).Alive() {
 		t.Error("alive after a hang")
 	}
 }

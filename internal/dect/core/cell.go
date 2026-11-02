@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,6 +71,8 @@ type cellRun struct {
 	sweepAt time.Time
 	install bool // the radio is on: the records go in at the next tick
 	retryAt time.Time
+	// pumpPending: an evPump is in the inbox (a stack in a worker wakes the cell once, not per callback)
+	pumpPending atomic.Bool
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
 	seenAt    map[int]time.Time
@@ -182,6 +185,11 @@ func (r *cellRun) handle(ev event) {
 	case evInfo:
 		if i, ok := r.idxOf[ev.hid]; ok && r.st != nil {
 			r.applyInfo(i, ev.name, ev.profile)
+		}
+	case evPump:
+		r.pumpPending.Store(false)
+		if p, ok := r.st.(stack.Pumper); ok && r.st != nil {
+			p.Pump()
 		}
 	case evCtl:
 		r.ctl(ev)
@@ -558,6 +566,13 @@ func (r *cellRun) tick() {
 	if r.st == nil {
 		return
 	}
+	if p, ok := r.st.(stack.Pumper); ok && !p.Alive() {
+		r.log.Error("the worker process of this cell's DECT stack ended: its calls end, the stack starts again", "retry", r.core.Retry)
+		r.drop()
+		r.resumed = false // the calls went with the stack
+		r.retryAt = time.Now().Add(r.core.Retry)
+		return
+	}
 	r.syncRFPI(now)
 	r.recycle(now)
 	r.nudge(now)
@@ -766,7 +781,23 @@ func (r *cellRun) restart() {
 		// slot mask and bind byte, calls on side links, and a date and time update
 		// every 24 hours
 		AudioMask: 0x0002, AudioCodec: 3, TwoCalls: true, TimeEveryMin: 24 * 60})
+	if st == nil {
+		// a stack in a worker process cannot be made now (no worker is up): again after the retry delay
+		for i := range hs {
+			clear(hs[i].Rec.UAK[:])
+		}
+		r.log.Warn("no DECT stack could be made (no worker is up?): trying again", "retry", r.core.Retry)
+		r.retryAt = time.Now().Add(r.core.Retry)
+		return
+	}
 	r.st = st
+	if p, ok := st.(stack.Pumper); ok {
+		p.SetWake(func() {
+			if r.pumpPending.CompareAndSwap(false, true) {
+				r.core.post(r.id, event{kind: evPump})
+			}
+		})
+	}
 	r.units = r.core.roaming().Units()
 	ids := map[int]uuid.UUID{}
 	r.idxOf, r.hidOf, r.trans, r.freeIdx = map[uuid.UUID]int{}, map[int]uuid.UUID{}, map[uuid.UUID]*transRec{}, nil

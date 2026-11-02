@@ -54,6 +54,9 @@ services:
       # UDP port per call. Set OPENDECTCELL_CELLS_MEDIA_IP to this host's address as
       # the cells reach it (docs/deployment.md), or calls have no audio.
       OPENDECTCELL_CELLS_MEDIA_PORTS: 41100-41199
+      # The cells' DECT stacks in worker processes (docs/adr/0003-stack-isolation.md): a
+      # crash in the C library ends one worker, not the controller. 0: inside the controller.
+      OPENDECTCELL_CELLS_STACK_WORKERS: ${OPENDECTCELL_CELLS_STACK_WORKERS:-0}
     volumes:
       - secrets:/secrets:ro
     ports:

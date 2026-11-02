@@ -53,6 +53,8 @@ import (
 	dectcore "github.com/openDECTcell/opendectcell-controller/internal/dect/core"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/worker"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
@@ -101,6 +103,7 @@ commands:
   user create --username NAME --role admin|user [--display-name N] [--email E] [--may-add-cells]
   user set-password --username NAME
   user reset-2fa --username NAME   turn a user's two-factor login off (lost app and recovery codes)
+  cellworker               a DECT stack worker process (started by serve; not for hand use)
   version
   healthcheck [--url URL]  exit 0 if the controller answers /healthz (for container health checks)
   init-secrets --dir DIR   create a master key and database credentials in DIR if missing (compose bring-up)
@@ -133,6 +136,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	case "healthcheck":
 		return healthcheck(rest)
+	case "cellworker":
+		return cellWorker(stderr)
 	case "init-secrets":
 		return initSecrets(rest, stdout)
 	case "help", "-h", "--help":
@@ -280,9 +285,26 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	if dectStack != nil {
 		windows = regwin.New(log.With("component", "registration"), nil, nil)
-		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool}, New: dectStack,
+		// the stacks in worker processes, if asked (ADR 0003): a crash in the C code ends a worker
+		newStack := dectStack
+		var sup *worker.Supervisor
+		sctx, sstop := context.WithCancel(ctx)
+		defer func() { // after the core has closed its stacks
+			sstop()
+			if sup != nil {
+				sup.Wait()
+			}
+		}()
+		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool},
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dectCore = dect
+		if n := int(cfg.Cells.StackWorkers); n > 0 {
+			sup = &worker.Supervisor{N: n, Log: log.With("component", "dect-workers")}
+			sup.Start(sctx)
+			newStack = func(env stack.Env, c stack.Config) stack.Stack { return sup.NewStack(env, c, dect.Clock) }
+			log.Info("the DECT stacks run in worker processes", "workers", n)
+		}
+		dect.New = newStack
 		calls.DECT = bridge.RouterOf(dect)
 		dect.Originate = calls.HandsetCall
 		calls.MWI = dect

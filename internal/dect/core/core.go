@@ -168,6 +168,10 @@ func (c *Core) Wait() {
 	c.wg.Wait()
 }
 
+// Clock is the stacks' monotonic clock in milliseconds: what a stack in a worker
+// process is given, to keep time with this one.
+func (c *Core) Clock() uint64 { return c.now() }
+
 // now is the stacks' monotonic clock in milliseconds.
 func (c *Core) now() uint64 {
 	return uint64(time.Since(c.start)/time.Millisecond) + firstMonotonicMs
@@ -217,10 +221,11 @@ const (
 	evHome    // a handset enrolled into a chip slot of this cell and stays there: record idx is its
 	evInfo    // a handset's name or device profile changed: tell the stack that holds it
 	evDereg   // the user asks for the handset to be deregistered
+	evPump    // a stack in a worker process has callbacks waiting: run them here (stack.Pumper)
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump"}[k]
 }
 
 type event struct {
