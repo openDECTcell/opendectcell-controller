@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +17,12 @@ import (
 
 // Routing a call to a handset (docs/roaming.md §4, point 4). A handset may be
 // on any cell that is up. The cell it was last heard on is paged alone first;
-// when nothing answers within PageDelay (<LCE.03>) every other cell is paged
-// too, and the first to answer takes the call: the legs on the other cells are
-// released. A cell that does not hold the handset in its table takes it in from
+// when nothing answers within PageDelay (<LCE.03>) the next RingWaveSize cells
+// are paged too, and so on every PageDelay up to RingMaxCells in all, the
+// first to answer takes the call and the legs on the other cells are released.
+// The others are the cells the handset was heard on in the last week, then the
+// nearest to the one it was last on (Records.CellOrder): paging every cell of
+// a system of hundreds would flood their radios and fill their tables. A cell that does not hold the handset in its table takes it in from
 // the database when its leg is offered (roaming.go, ensure).
 //
 // The SIP side (internal/bridge) uses it: Ring starts an offer, the events
@@ -116,7 +120,7 @@ type route struct {
 	hid    uuid.UUID
 	events chan CallEvent
 	legs   map[uuid.UUID]*leg // by cell
-	later  []*leg             // the legs of the second wave
+	waves  [][]*leg           // the legs of the later waves, each paged PageDelay after the one before
 	timer  *time.Timer
 	winner *leg
 	rang   bool
@@ -170,6 +174,46 @@ func (c *Core) readyCells() []uuid.UUID {
 	return up
 }
 
+// ringOrder is the cells a call to the handset is offered to, in the order of
+// the waves: the one it was last heard on first (if it is up), then those
+// Records.CellOrder ranks, at most RingMaxCells in all.
+func (c *Core) ringOrder(ctx context.Context, hid, last uuid.UUID, cells []uuid.UUID) []uuid.UUID {
+	limit := c.ringMaxCells()
+	ordered := cells
+	if len(cells) > 1 {
+		o, err := c.Records.CellOrder(ctx, hid, last, cells, limit)
+		if err != nil {
+			c.Log.Warn("the cells could not be ranked for a call: they are paged in any order", "handset", hid, "err", err)
+		} else if len(o) > 0 {
+			ordered = o
+		}
+	}
+	out := make([]uuid.UUID, 0, min(len(ordered)+1, limit))
+	if slices.Contains(cells, last) {
+		out = append(out, last)
+	}
+	for _, id := range ordered {
+		if id != last {
+			out = append(out, id)
+		}
+	}
+	return out[:min(len(out), limit)]
+}
+
+func (c *Core) ringWaveSize() int {
+	if c.RingWaveSize > 0 {
+		return c.RingWaveSize
+	}
+	return DefaultRingWaveSize
+}
+
+func (c *Core) ringMaxCells() int {
+	if c.RingMaxCells > 0 {
+		return c.RingMaxCells
+	}
+	return DefaultRingMaxCells
+}
+
 // Ring offers a call to a handset where it is.
 func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, error) {
 	known, err := c.Records.HandsetKnown(ctx, hid)
@@ -207,28 +251,32 @@ func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, erro
 	}
 	rt := &route{call: call, hid: hid, events: make(chan CallEvent, 16), legs: map[uuid.UUID]*leg{}}
 	c.calls.live[call.SIP] = rt
-	// wave one: the last cell alone, or every cell if it is not among them
+	// wave one: the last cell alone, or the first few if it is not up; the
+	// others follow in waves (ringOrder)
+	order := c.ringOrder(ctx, hid, last, cells)
 	var first []*leg
-	for _, id := range cells {
+	var rest []*leg
+	for _, id := range order {
 		l := &leg{cell: id}
 		rt.legs[id] = l
-		if id == last {
+		if id == last && first == nil {
 			first = []*leg{l}
+		} else {
+			rest = append(rest, l)
 		}
 	}
+	size := c.ringWaveSize()
 	if first == nil {
-		for _, l := range rt.legs {
-			first = append(first, l)
-		}
-	} else {
-		for _, l := range rt.legs {
-			if l != first[0] {
-				rt.later = append(rt.later, l)
-			}
-		}
-		if len(rt.later) > 0 {
-			rt.timer = time.AfterFunc(c.pageDelay(), func() { c.calls.nextWave(c, rt) })
-		}
+		n := min(size, len(rest))
+		first, rest = rest[:n], rest[n:]
+	}
+	for len(rest) > 0 {
+		n := min(size, len(rest))
+		rt.waves = append(rt.waves, rest[:n])
+		rest = rest[n:]
+	}
+	if len(rt.waves) > 0 {
+		rt.timer = time.AfterFunc(c.pageDelay(), func() { c.calls.nextWave(c, rt) })
 	}
 	for _, l := range first {
 		l.asked = true
@@ -255,20 +303,27 @@ func (c *Core) offerLeg(rt *route, l *leg) {
 	c.post(l.cell, event{kind: evCtl, line: b.String(), sip: rt.call.SIP, hid: rt.hid})
 }
 
-// nextWave pages the cells not paged yet, if the call is still unanswered.
+// nextWave pages the next wave of cells, if the call is still unanswered, and
+// arms the one after it.
 func (rs *routes) nextWave(c *Core, rt *route) {
 	rs.mu.Lock()
-	if rt.over || rt.winner != nil {
+	if rt.over || rt.winner != nil || len(rt.waves) == 0 {
 		rs.mu.Unlock()
 		return
 	}
-	later := rt.later
-	rt.later = nil
-	for _, l := range later {
+	wave := rt.waves[0]
+	rt.waves = rt.waves[1:]
+	for _, l := range wave {
 		l.asked = true
 	}
+	if rt.timer != nil {
+		rt.timer.Stop()
+	}
+	if len(rt.waves) > 0 {
+		rt.timer = time.AfterFunc(c.pageDelay(), func() { c.calls.nextWave(c, rt) })
+	}
 	rs.mu.Unlock()
-	for _, l := range later {
+	for _, l := range wave {
 		c.offerLeg(rt, l)
 	}
 }
@@ -282,7 +337,7 @@ func (rs *routes) finish(c *Core, rt *route, kind CallEventKind, reason string, 
 		return
 	}
 	rt.over = true
-	rt.later = nil
+	rt.waves = nil
 	if rt.timer != nil {
 		rt.timer.Stop()
 	}
@@ -418,7 +473,7 @@ func (c *Core) bridgeLine(cell uuid.UUID, line string) {
 		if rt.timer != nil {
 			rt.timer.Stop()
 		}
-		rt.later = nil
+		rt.waves = nil
 		for _, o := range rt.legs {
 			if o != l {
 				c.releaseLeg(o, "normal")
@@ -447,8 +502,8 @@ func (rs *routes) legEnded(c *Core, rt *route, kind CallEventKind, reason string
 			return
 		}
 	}
-	if len(rt.later) > 0 {
-		// nothing on the first wave is left: the others are paged now
+	if len(rt.waves) > 0 {
+		// nothing paged so far is left: the next wave is paged now
 		go rs.nextWave(c, rt)
 		return
 	}

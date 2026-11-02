@@ -493,6 +493,11 @@ func (r *fakeRecords) Seen(_ context.Context, cell, id uuid.UUID, at time.Time) 
 	return prev, nil
 }
 
+// CellOrder: the cells as they come, the limit applied.
+func (r *fakeRecords) CellOrder(_ context.Context, _, _ uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error) {
+	return cells[:min(len(cells), limit)], nil
+}
+
 func (r *fakeRecords) LastSeenCell(_ context.Context, id uuid.UUID) (uuid.UUID, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1812,6 +1817,60 @@ func TestWorkingSetExpiry(t *testing.T) {
 		}
 	})
 	time.Sleep(1500 * time.Millisecond) // well past the expiry of a handset nobody heard
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.dropped) != 1 || len(f.records) != 1 {
+			t.Errorf("dropped %v, records %+v: the handset that was heard stays", f.dropped, f.records)
+		}
+	})
+}
+
+// A handset placed in a cell's table and never heard there leaves after unheardKeep, long
+// before the validity and the grace: a call offered to a cell the handset is not on must not
+// fill its table. One that is heard stays.
+func TestPlacedButNeverHeardLeavesSoon(t *testing.T) {
+	old := unheardKeep
+	unheardKeep = 200 * time.Millisecond
+	defer func() { unheardKeep = old }()
+	h1, h2 := handset(7, owner), handset(8, owner)
+	h2.Rec.PortID = []byte{0x80, 0x08}
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h1.ID: h1, h2.ID: h2}}
+	g := newRig(t, recs, func(f *fakeStack) { f.seen = map[int]uint64{} })
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: time.Hour, ExpireAfter: time.Hour, MovedAfter: time.Hour}, nil
+	}
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).env.Fetch(h1.Rec.PortID)
+	g.stack(0).env.Fetch(h2.Rec.PortID)
+	waitFor(t, "both in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
+		return n == 2
+	})
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(30 * time.Millisecond):
+				g.stack(0).get(func(f *fakeStack) {
+					for i, r := range f.records {
+						if r.Slot == 8 {
+							f.seen[i] = g.core.now()
+						}
+					}
+				})
+			}
+		}
+	}()
+	waitFor(t, "h1 dropped long before the validity", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.dropped) })
+		return n == 1
+	})
+	time.Sleep(600 * time.Millisecond)
 	g.stack(0).get(func(f *fakeStack) {
 		if len(f.dropped) != 1 || len(f.records) != 1 {
 			t.Errorf("dropped %v, records %+v: the handset that was heard stays", f.dropped, f.records)

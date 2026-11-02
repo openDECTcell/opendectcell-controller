@@ -83,6 +83,11 @@ type Records interface {
 	// LastSeenCell is the cell the handset was last heard on, uuid.Nil if
 	// none.
 	LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	// CellOrder ranks cells (the ones that are up) for a call to the handset:
+	// those it was heard on in the last week, the most recent first, then the
+	// nearest to anchor (the cell it was last on; uuid.Nil: none), cells with
+	// no position last; at most limit.
+	CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error)
 	// Seen: the handset had contact on cell at the given time. It returns the
 	// cell it was last seen on before, uuid.Nil if none, so a move between
 	// cells can be told.
@@ -429,6 +434,27 @@ func (s *Store) place(ctx context.Context, cell uuid.UUID, heard bool, find func
 		return Handset{}, false, err
 	}
 	return out[0], true, nil
+}
+
+func (s *Store) CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error) {
+	var a any // a nil uuid is no anchor
+	if anchor != uuid.Nil {
+		a = anchor
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT c.id FROM cell c
+		LEFT JOIN (SELECT to_cell_id, max(at) AS at FROM handset_move
+			WHERE handset_id = $1 AND at > now() - interval '7 days' GROUP BY to_cell_id) h ON h.to_cell_id = c.id
+		LEFT JOIN cell a ON a.id = $3
+		WHERE c.id = ANY($2)
+		ORDER BY (h.at IS NULL), h.at DESC,
+			(c.latitude IS NULL OR a.latitude IS NULL),
+			(c.latitude - a.latitude)^2 + (cos(radians((c.latitude + a.latitude) / 2)) * (c.longitude - a.longitude))^2,
+			c.id
+		LIMIT $4`, id, cells, a, limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 }
 
 func (s *Store) Unplace(ctx context.Context, cell, id uuid.UUID) error {

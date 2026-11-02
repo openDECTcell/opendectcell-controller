@@ -53,6 +53,12 @@ func (r Roaming) Units() uint {
 	return uint(min(255, max(1, math.Round(float64(r.LocateValidity)/float64(locateUnit)))))
 }
 
+// unheardKeep (a variable for the tests) is how long a handset that was placed in a
+// cell's table, for a call or a lookup, and has not been heard there since stays: a call
+// to a handset nobody knows the cell of is offered to several cells (route.go), and the
+// ones it is not on should not keep it for the whole validity.
+var unheardKeep = 90 * time.Second
+
 // roamingEvery (a variable for the tests) is how often the settings are read.
 var roamingEvery = 10 * time.Second
 
@@ -266,6 +272,8 @@ func (r *cellRun) sweep(now time.Time) {
 		switch o, moved := r.core.lastHeard(hid); {
 		case t.evict:
 			why = "its registration changed"
+		case t.heard.IsZero() && now.Sub(t.added) > unheardKeep:
+			why = "never heard here"
 		case now.Sub(last) > rm.LocateValidity+rm.ExpireAfter:
 			why = "not heard"
 		case moved && o.cell != r.id && o.at.After(last) && now.Sub(o.at) >= rm.MovedAfter:

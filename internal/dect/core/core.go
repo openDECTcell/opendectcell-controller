@@ -45,14 +45,16 @@ type Identity interface {
 
 // Defaults.
 const (
-	DefaultTick      = 10 * time.Millisecond  // dect-stubd's loop in its traces
-	DefaultBringUp   = 100 * time.Millisecond // one start-up mail per loop pass, as dect-stubd
-	DefaultRetry     = 5 * time.Second        // after the records could not be loaded
-	DefaultPageDelay = 3 * time.Second        // <LCE.03>: a page is repeated after this
-	inboxSize        = 1024
-	saveQueue        = 64
-	storeTimeout     = 10 * time.Second
-	firstMonotonicMs = 1000
+	DefaultTick         = 10 * time.Millisecond  // dect-stubd's loop in its traces
+	DefaultBringUp      = 100 * time.Millisecond // one start-up mail per loop pass, as dect-stubd
+	DefaultRetry        = 5 * time.Second        // after the records could not be loaded
+	DefaultPageDelay    = 3 * time.Second        // <LCE.03>: a page is repeated after this
+	DefaultRingWaveSize = 8                      // cells paged together after the last-heard one
+	DefaultRingMaxCells = 24                     // cells a call is offered to in all
+	inboxSize           = 1024
+	saveQueue           = 64
+	storeTimeout        = 10 * time.Second
+	firstMonotonicMs    = 1000
 )
 
 // Core runs the DECT stacks of the controller's cells. It is the cell
@@ -79,6 +81,10 @@ type Core struct {
 	// PageDelay is how long the cell a handset was last on is paged alone,
 	// before the others are (route.go); 0 is DefaultPageDelay.
 	PageDelay time.Duration
+	// RingWaveSize is how many more cells are paged each PageDelay while a
+	// call is unanswered, RingMaxCells how many cells it is offered to in all
+	// (the last-heard one included); 0 are the defaults (route.go).
+	RingWaveSize, RingMaxCells int
 
 	// Originate takes a call a handset placed to the SIP side (outgoing.go);
 	// it runs on its own goroutine and answers through the Outgoing. nil: a
