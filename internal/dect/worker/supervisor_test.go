@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 
@@ -22,6 +24,9 @@ func TestMain(m *testing.M) {
 		conn, err := net.FileConn(f)
 		if err != nil {
 			os.Exit(3)
+		}
+		if err := Confine(); err != nil {
+			os.Exit(4)
 		}
 		_ = Serve(conn, func(e stack.Env, cfg stack.Config) stack.Stack {
 			return &fakeStack{env: e, records: map[int]stack.Record{}}
@@ -140,5 +145,65 @@ func TestSupervisorWithoutWorkers(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if s.Ready() || s.NewStack(&ownerEnv{}, stack.Config{}, func() uint64 { return 1 }) != nil {
 		t.Error("a stack without a worker")
+	}
+}
+
+// A confined worker cannot open files, make connections or start programs, on any thread; its socket
+// to the controller keeps working. The test binary is the worker (TestMain).
+func TestConfinedWorkerCannotReachFilesOrNetwork(t *testing.T) {
+	if os.Getenv("OPENDECTCELL_CONFINE_PROBE") == "1" {
+		t.Skip("child")
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestConfineProbe", "-test.v")
+	cmd.Env = []string{"OPENDECTCELL_CONFINE_PROBE=1"}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("probe: %v\n%s", err, out)
+	}
+}
+
+// TestConfineProbe runs only as the child of the test above: it confines itself and tries the denied calls.
+func TestConfineProbe(t *testing.T) {
+	if os.Getenv("OPENDECTCELL_CONFINE_PROBE") != "1" {
+		t.Skip("run by TestConfinedWorkerCannotReachFilesOrNetwork")
+	}
+	keep, err := os.OpenFile("/dev/null", os.O_WRONLY, 0) // opened before, still usable after
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Confine(); err != nil {
+		t.Fatalf("Confine: %v", err)
+	}
+	if _, err := os.Open("/etc/passwd"); err == nil {
+		t.Error("a confined process opened a file")
+	}
+	if f, err := os.OpenFile("/tmp/opendectcell-confine-probe", os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		f.Close()
+		os.Remove("/tmp/opendectcell-confine-probe")
+		t.Error("a confined process created a file")
+	}
+	if c, err := net.Dial("tcp", "127.0.0.1:9"); err == nil {
+		c.Close()
+		t.Error("a confined process made a connection")
+	}
+	if err := exec.Command("/bin/true").Run(); err == nil {
+		t.Error("a confined process started a program")
+	}
+	// every thread is confined, not just the one that called it
+	done := make(chan error, 8)
+	for range 8 {
+		go func() {
+			runtime.LockOSThread()
+			_, err := os.Open("/etc/hostname")
+			done <- err
+		}()
+	}
+	for range 8 {
+		if err := <-done; err == nil {
+			t.Error("a thread other than the confining one opened a file")
+		}
+	}
+	if _, err := keep.Write([]byte("x")); err != nil {
+		t.Errorf("an already open file stopped working: %v", err)
 	}
 }

@@ -6,11 +6,13 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/cell/wire"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/core"
+	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 )
 
 // fakeIdentity is the handsets' internal numbers, names and owners.
@@ -174,4 +176,40 @@ func TestInternalCallBusyAndDeclined(t *testing.T) {
 			t.Error("speech was opened")
 		}
 	}
+}
+
+// Another cell cannot answer or end a cell's media: the cell that was sent MEDIA_OPEN alone answers
+// it, and only the cell a flow runs on can close it.
+func TestMediaOfAnotherCellIsNotTouched(t *testing.T) {
+	r := newRig(t, fakeLines{acct: uuid.New(), has: true})
+	r.cells.silent = true // the cell does not answer by itself
+	sc := newFakeSIP(t, pcma)
+	r.m.SIP = &fakeCaller{call: sc}
+	h := newFakeHandset(true)
+	go r.m.handsetCall(h)
+	sc.events <- sip.Event{Kind: sip.EvAnswered}
+	waitFor(t, "answered", func() bool { return len(h.actions()) == 1 })
+	h.events <- core.CallEvent{Kind: core.CallMediaUp, Cell: h.info.Cell, Channel: 1}
+	waitFor(t, "MEDIA_OPEN", func() bool { n, _ := r.cells.counts(); return n == 1 })
+	id := r.cells.opened[0].MediaID
+	// a stranger's acknowledgement is not taken: the call's media is still waiting for the real one
+	r.m.MediaOpened(uuid.New(), wire.MediaOpenAckMsg{MediaID: id, Status: wire.MediaInternalError})
+	r.m.MediaOpened(h.info.Cell, wire.MediaOpenAckMsg{MediaID: id, Status: wire.MediaOK})
+	waitFor(t, "the speech open", func() bool {
+		r.m.mu.Lock()
+		defer r.m.mu.Unlock()
+		return r.m.sessions[id] != nil
+	})
+	// a stranger's MEDIA_CLOSED does not stop it
+	r.m.MediaClosed(uuid.New(), wire.MediaClosedMsg{MediaID: id, Reason: wire.MediaClosedByChip})
+	time.Sleep(50 * time.Millisecond)
+	r.m.mu.Lock()
+	s := r.m.sessions[id]
+	r.m.mu.Unlock()
+	select {
+	case <-s.done:
+		t.Error("a stranger ended a call's speech")
+	default:
+	}
+	h.events <- core.CallEvent{Kind: core.CallReleased}
 }

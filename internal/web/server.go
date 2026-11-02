@@ -233,6 +233,9 @@ func (s *Server) readyz(w http.ResponseWriter, r *http.Request) {
 
 // middleware
 
+// maxRequestBody caps every request body the server reads.
+const maxRequestBody = 1 << 20
+
 func (s *Server) securityHeaders(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
@@ -244,6 +247,13 @@ func (s *Server) securityHeaders(h http.Handler) http.Handler {
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "same-origin")
 		hd.Set("X-Frame-Options", "DENY")
+		if s.SecureCookies { // the site is served over https: browsers keep to it for a year
+			hd.Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		// no request body is larger than this (the logo upload, the biggest, is 320 KiB); handlers that expect less cap it themselves
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
+		}
 		h.ServeHTTP(w, r)
 	})
 }

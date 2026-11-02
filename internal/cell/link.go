@@ -826,6 +826,10 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 		}
 		ss.log.Info("cell answered CONFIG_SET", "status", st)
 	case wire.MediaOpenAck:
+		if ss.cell.State != wire.StateActive { // a cell that is not admitted has no media to answer for
+			ss.errorReply(f, wire.ErrNotAllowed, "cell is not active")
+			return nil
+		}
 		a, err := wire.DecodeMediaOpenAck(f.Body)
 		if err != nil {
 			return malformed(err)
@@ -834,6 +838,10 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			ss.srv.Media.MediaOpened(ss.cell.ID, a)
 		}
 	case wire.MediaClosed:
+		if ss.cell.State != wire.StateActive {
+			ss.errorReply(f, wire.ErrNotAllowed, "cell is not active")
+			return nil
+		}
 		c, err := wire.DecodeMediaClosed(f.Body)
 		if err != nil {
 			return malformed(err)

@@ -67,7 +67,7 @@ func interopManager(t *testing.T, ep sip.Endpoint) *sip.Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := sip.New(sip.Config{UDP: conn, TCP: tcp, RTP: &rtp.Ports{IP: bind, Min: 42000, Max: 42199},
+	m, err := sip.New(sip.Config{AllowLocal: true, UDP: conn, TCP: tcp, RTP: &rtp.Ports{IP: bind, Min: 42000, Max: 42199},
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
 	if err != nil {
 		t.Fatal(err)

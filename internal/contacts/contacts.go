@@ -27,6 +27,11 @@ var (
 	ErrNotMissed = errors.New("contacts: not a missed call")
 )
 
+// MaxContactsPerOwner is how many contacts one owner (a user, or the shared list) may have: the most a
+// handset's phonebook file holds (dect_contacts.h), and each change of the list is sent to every handset
+// that reads it.
+const MaxContactsPerOwner = 500
+
 // ValidationError lists problems by field.
 type ValidationError map[string]string
 
@@ -225,6 +230,13 @@ func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bo
 	if err := validate(&c); err != nil {
 		return nil, err
 	}
+	var held int
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM contact WHERE owner_user_id IS NOT DISTINCT FROM $1", owner).Scan(&held); err != nil {
+		return nil, err
+	}
+	if held >= MaxContactsPerOwner {
+		return nil, ValidationError{"name": fmt.Sprintf("at most %d contacts", MaxContactsPerOwner)}
+	}
 	var id int64
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, "INSERT INTO contact (owner_user_id, last_name, first_name) VALUES ($1, $2, $3) RETURNING id",
@@ -332,8 +344,10 @@ func (s *Store) SaveFromHandset(ctx context.Context, handset uuid.UUID, id int64
 	if err != nil {
 		return nil, err
 	}
-	if cur.OwnerID == nil {
-		return nil, ErrReadOnly // a handset edits only its owner's list
+	if cur.OwnerID == nil || *cur.OwnerID != owner {
+		// a handset edits only its owner's own list: not the shared contacts, and not another user's even
+		// when the handset's owner is an admin, who may see every contact (security review F-16)
+		return nil, ErrReadOnly
 	}
 	return s.Update(ctx, u, id, c)
 }

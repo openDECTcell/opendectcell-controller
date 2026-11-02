@@ -407,6 +407,12 @@ func (l *line) incoming(req *sip.Request, tx sip.ServerTransaction) {
 		return
 	}
 	t := resolve.Target{Transport: resolve.Transport(strings.ToLower(req.Transport())), Addr: netip.AddrPortFrom(src.Addr().Unmap(), src.Port())}
+	release, ok := m.takeIncoming(l.acct.ID, t.Addr.Addr())
+	if !ok {
+		_ = sess.Respond(486, "Busy Here", nil)
+		return
+	}
+	defer release()
 	ep, err := m.cfg.RTP.Open(context.Background())
 	if err != nil {
 		_ = sess.Respond(503, "Service Unavailable", nil)
@@ -556,13 +562,20 @@ func (c *Call) readBye(req *sip.Request, tx sip.ServerTransaction) {
 	c.mu.Lock()
 	cs, ss := c.client, c.server
 	c.mu.Unlock()
+	var err error
 	switch {
 	case ss != nil:
-		_ = ss.ReadBye(req, tx)
+		err = ss.ReadBye(req, tx)
 	case cs != nil:
-		_ = cs.ReadBye(req, tx)
+		err = cs.ReadBye(req, tx)
 	default:
 		c.m.respond(tx, req, 481, "Call/Transaction Does Not Exist")
+		return
+	}
+	if err != nil {
+		// the dialog's tags or sequence number did not match: not this call's far end, so the call goes on
+		c.m.respond(tx, req, 481, "Call/Transaction Does Not Exist")
+		return
 	}
 	c.mu.Lock()
 	if c.endReason == "" {

@@ -271,6 +271,38 @@ func TestPasswordChange(t *testing.T) {
 	}
 }
 
+// A callback URL given to another browser (the attacker's login handed to a victim) signs nobody in:
+// the login is bound to the browser that started it.
+func TestOIDCCallbackNeedsTheStartingBrowser(t *testing.T) {
+	e := newEnv(t)
+	e.idp.SetUser(oidctest.User{Subject: "sub-10", PreferredUsername: "gina", Name: "Gina", Groups: []string{"ops"}})
+	attacker, victim := e.browser(), e.browser()
+	loc := e.srv.URL + "/auth/oidc/start?next=/admin/audit"
+	for !strings.Contains(loc, "/auth/oidc/callback") { // up to the callback, without following it
+		resp, err := attacker.Get(loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		l, err := resp.Location()
+		if err != nil {
+			t.Fatalf("no redirect at %s: %d", loc, resp.StatusCode)
+		}
+		loc = l.String()
+	}
+	resp, err := victim.Get(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther {
+		t.Errorf("a callback from a browser that did not start the login was followed: %d", resp.StatusCode)
+	}
+	if r, _ := e.get(t, victim, "/admin/audit"); r.StatusCode == http.StatusOK {
+		t.Error("the victim's browser was signed in")
+	}
+}
+
 func TestOIDCBrowserFlowAndAudit(t *testing.T) {
 	e := newEnv(t)
 	e.idp.SetUser(oidctest.User{Subject: "sub-9", PreferredUsername: "frank", Name: "Frank", Groups: []string{"ops"}})

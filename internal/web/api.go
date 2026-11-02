@@ -90,11 +90,17 @@ func (s *Server) apiUser(h func(http.ResponseWriter, *http.Request, *auth.User))
 	})
 }
 
-// apiAdmin answers 404 to non-admins, like the admin pages.
+// apiAdmin answers 404 to non-admins, like the admin pages, and 403 to a local admin who has not set up
+// two-factor sign-in where the settings require it (as requireAdmin redirects the pages): the API must
+// not be the way round the requirement.
 func (s *Server) apiAdmin(h func(http.ResponseWriter, *http.Request, *auth.User)) func(http.ResponseWriter, *http.Request, *auth.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *auth.User) {
 		if auth.RequireAdmin(u) != nil {
 			notFoundAPI(w)
+			return
+		}
+		if s.adminNeeds2FA(r, u) {
+			problem(w, http.StatusForbidden, "two_factor_required", "set up two-factor sign-in at /account/2fa before using the admin API", nil)
 			return
 		}
 		h(w, r, u)

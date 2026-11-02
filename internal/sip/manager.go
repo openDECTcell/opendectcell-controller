@@ -49,6 +49,9 @@ type Config struct {
 	// OnMWI is called with what an MWI account's mailbox says (a NOTIFY of
 	// event message-summary); it must return quickly.
 	OnMWI func(account uuid.UUID, m MWI)
+	// AllowLocal lets accounts use servers on loopback and link-local addresses (tests, a PBX on the
+	// controller's own host); off, they are refused (target.go).
+	AllowLocal bool
 }
 
 // Manager runs every account's user agent over a shared transport set.
@@ -72,6 +75,42 @@ type Manager struct {
 	lines     map[uuid.UUID]*line
 	byContact map[string]*line
 	calls     map[string]*Call // by Call-ID
+	// incoming calls not over yet, per account and per source address (takeIncoming)
+	inAcct map[uuid.UUID]int
+	inSrc  map[netip.Addr]int
+}
+
+// The most incoming calls one account, and one source address, may have going at once. Each one
+// holds a pair of RTP ports, a call log row and a goroutine until it ends, so without a limit a
+// flood of INVITEs fills the port range and the call log.
+const (
+	maxIncomingPerAccount = 8
+	maxIncomingPerSource  = 4
+)
+
+// takeIncoming counts a new incoming call for the account and the source; ok is false when either
+// is at its limit. The caller calls release when the call is over.
+func (m *Manager) takeIncoming(acct uuid.UUID, src netip.Addr) (release func(), ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.inAcct == nil {
+		m.inAcct, m.inSrc = map[uuid.UUID]int{}, map[netip.Addr]int{}
+	}
+	if m.inAcct[acct] >= maxIncomingPerAccount || m.inSrc[src] >= maxIncomingPerSource {
+		return nil, false
+	}
+	m.inAcct[acct]++
+	m.inSrc[src]++
+	return func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.inAcct[acct]--; m.inAcct[acct] <= 0 {
+			delete(m.inAcct, acct)
+		}
+		if m.inSrc[src]--; m.inSrc[src] <= 0 {
+			delete(m.inSrc, src)
+		}
+	}, true
 }
 
 // New creates a manager; Start runs it.
@@ -325,25 +364,41 @@ func (m *Manager) respond(tx sip.ServerTransaction, req *sip.Request, code int, 
 
 // lineFor finds the account a request is for: by our Contact user part in
 // the Request-URI, else by the AOR user in To (some PBXes address the AOR).
-func (m *Manager) lineFor(req *sip.Request) *line {
+// trusted says the first way found it: the Contact user part is a random
+// token only the account's registrar was told, so whoever sends it is the
+// registrar's side. The second way needs nothing a stranger cannot know (an
+// extension number and a domain), so the caller must also check where the
+// request came from (line.fromPeer).
+func (m *Manager) lineFor(req *sip.Request) (l *line, trusted bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if l := m.byContact[req.Recipient.User]; l != nil {
-		return l
+		return l, true
 	}
 	if to := req.To(); to != nil {
 		var found *line
 		for _, l := range m.lines {
 			if l.acct.Username == to.Address.User && strings.EqualFold(l.acct.Domain, to.Address.Host) {
 				if found != nil {
-					return nil // ambiguous
+					return nil, false // ambiguous
 				}
 				found = l
 			}
 		}
-		return found
+		return found, false
 	}
-	return nil
+	return nil, false
+}
+
+// accept finds the account for a request that starts something (an INVITE, a
+// NOTIFY) and says whether it may: addressed by the Contact token, or from an
+// address the account talks to. A refusal is answered by the caller.
+func (m *Manager) accept(req *sip.Request) (*line, bool) {
+	l, trusted := m.lineFor(req)
+	if l == nil || trusted {
+		return l, true
+	}
+	return l, l.fromPeer(req.Source())
 }
 
 func (m *Manager) onOptions(req *sip.Request, tx sip.ServerTransaction) {
@@ -412,9 +467,15 @@ func (m *Manager) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 			return
 		}
 	}
-	l := m.lineFor(req)
+	l, ok := m.accept(req)
 	if l == nil {
 		m.respond(tx, req, 404, "Not Found")
+		return
+	}
+	if !ok {
+		// an INVITE addressed by extension and domain from an address the account does not talk to
+		m.log.Debug("an INVITE from a stranger is refused", "account", l.acct.ID, "from", req.Source())
+		m.respond(tx, req, 403, "Forbidden")
 		return
 	}
 	m.respond(tx, req, 100, "Trying")

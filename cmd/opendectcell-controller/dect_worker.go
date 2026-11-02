@@ -26,5 +26,9 @@ func cellWorker(stderr io.Writer) error {
 		return fmt.Errorf("cellworker: file 3 is not the controller's socket: %w", err)
 	}
 	f.Close()
+	// from here on this process may open no file and no connection, and start no program
+	if err := worker.Confine(); err != nil {
+		return fmt.Errorf("cellworker: cannot confine the process: %w", err)
+	}
 	return worker.Serve(conn, dectStack)
 }

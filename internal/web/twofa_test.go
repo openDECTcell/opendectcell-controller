@@ -151,6 +151,10 @@ func TestAdminsNeedTwoFactorWhenRequired(t *testing.T) {
 			t.Errorf("%s was shut for the admin too: %d", p, resp.StatusCode)
 		}
 	}
+	// the admin API is no way round it
+	if resp, _ := e.get(t, a, "/api/v1/users"); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("/api/v1/users for an admin without two-factor: %d", resp.StatusCode)
+	}
 	// users are not affected
 	if resp, _ := e.get(t, u, "/statistics"); resp.StatusCode != http.StatusOK {
 		t.Errorf("a user's page: %d", resp.StatusCode)
@@ -163,6 +167,9 @@ func TestAdminsNeedTwoFactorWhenRequired(t *testing.T) {
 	}
 	if resp, _ := e.get(t, a, "/admin"); resp.StatusCode != http.StatusOK {
 		t.Errorf("/admin after setup: %d", resp.StatusCode)
+	}
+	if resp, _ := e.get(t, a, "/api/v1/users"); resp.StatusCode != http.StatusOK {
+		t.Errorf("/api/v1/users after setup: %d", resp.StatusCode)
 	}
 	// switched off in the settings, the requirement is gone for the next admin
 	if err := e.app.Settings.Put(ctx, settings.KeySecurity, settings.Security{RequireAdmin2FA: false}); err != nil {

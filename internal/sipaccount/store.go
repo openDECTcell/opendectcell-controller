@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -442,6 +443,20 @@ func validate(r *Record) error {
 			v[k] = "not a valid choice"
 		}
 	}
+	// These texts go into SIP headers and the digest: a line break or a quote ends the header and
+	// lets a user write the rest of the request. Reject control characters, quotes and backslashes.
+	for k, s := range map[string]string{"label": r.Label, "display_name": r.DisplayName, "username": r.Username,
+		"domain": r.Domain, "auth_username": r.AuthUsername, "registrar": r.Registrar, "outbound_proxy": r.OutboundProxy,
+		"advanced.user_agent": r.Advanced.UserAgent, "advanced.line_name": r.Advanced.LineName,
+		"advanced.stunuser": r.Advanced.StunUser, "advanced.identity_header": r.Advanced.IdentityHeader,
+		"advanced.public_address": r.Advanced.PublicAddress} {
+		if strings.ContainsFunc(s, unsafeHeaderRune) {
+			v[k] = "no control characters, quotes or backslashes"
+		}
+		if len(s) > 255 {
+			v[k] = "at most 255 characters"
+		}
+	}
 	if r.Advanced.LinePrefix != "" && strings.Trim(r.Advanced.LinePrefix, "*#0123456789") != "" {
 		v["advanced.line_prefix"] = "digits, * and # only"
 	}
@@ -457,6 +472,13 @@ func validate(r *Record) error {
 	}
 	return nil
 }
+
+// unsafeHeaderRune says whether a rune may not appear in a text that is written into a SIP header.
+func unsafeHeaderRune(r rune) bool { return unicode.IsControl(r) || r == '"' || r == '\\' }
+
+// MaxAccountsPerUser is how many SIP accounts a user who is not an admin may have: each enabled
+// account is a user agent that registers over the network and holds a goroutine and sockets.
+const MaxAccountsPerUser = 20
 
 // validateProfile checks the options of the VoIP profile page the way the
 // LuCI page does.
@@ -524,6 +546,15 @@ func (s *Store) Create(ctx context.Context, u *auth.User, in Input) (*Record, er
 	}
 	if err := s.checkOwner(ctx, r.OwnerID); err != nil {
 		return nil, err
+	}
+	if !u.IsAdmin() {
+		var n int
+		if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM sip_account WHERE owner_user_id = $1", u.ID).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n >= MaxAccountsPerUser {
+			return nil, ValidationError{"label": fmt.Sprintf("at most %d accounts per user", MaxAccountsPerUser)}
+		}
 	}
 	adv, _ := json.Marshal(r.Advanced)
 	var out *Record

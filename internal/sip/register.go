@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +69,7 @@ type line struct {
 	target   resolve.Target // the registrar target that worked last
 	hasTgt   bool
 	contactU string
+	peers    []netip.Addr // the addresses its registrar and proxy resolved to, last time
 
 	// the message-waiting subscription (mwi.go)
 	mwiOnce    sync.Once
@@ -163,11 +165,54 @@ func (l *line) resolveHop(ctx context.Context, host string, port int) ([]resolve
 	return resolve.Resolve(ctx, l.m.cfg.DNS, resolve.Request{Host: host, Port: port, Transport: l.acct.Transport})
 }
 
+// notePeers remembers the addresses the account's servers resolved to.
+func (l *line) notePeers(ts []resolve.Target) {
+	peers := make([]netip.Addr, 0, len(ts))
+	for _, t := range ts {
+		peers = append(peers, t.Addr.Addr().Unmap())
+	}
+	l.mu.Lock()
+	l.peers = peers
+	l.mu.Unlock()
+}
+
+// fromPeer says whether a request came from an address the account's own
+// servers have: its registrar or proxy, as last resolved (for an account that
+// does not register, resolved now). src is a request's Source, "ip:port".
+func (l *line) fromPeer(src string) bool {
+	ap, err := netip.ParseAddrPort(src)
+	if err != nil {
+		return false
+	}
+	ip := ap.Addr().Unmap()
+	l.mu.Lock()
+	peers := l.peers
+	l.mu.Unlock()
+	if len(peers) == 0 {
+		base := l.ctx
+		if base == nil {
+			base = context.Background()
+		}
+		ctx, cancel := context.WithTimeout(base, 2*time.Second)
+		defer cancel()
+		if ts, err := l.targets(ctx); err == nil {
+			l.notePeers(ts)
+			l.mu.Lock()
+			peers = l.peers
+			l.mu.Unlock()
+		}
+	}
+	return slices.Contains(peers, ip)
+}
+
 // targets returns where to send, with the last working target first.
 func (l *line) targets(ctx context.Context) ([]resolve.Target, error) {
 	h, p := l.nextHop()
 	ts, err := l.resolveHop(ctx, h, p)
 	if err != nil {
+		return nil, err
+	}
+	if ts, err = l.m.filterTargets(ts); err != nil {
 		return nil, err
 	}
 	l.mu.Lock()
@@ -195,6 +240,9 @@ func (l *line) loop() {
 	for l.ctx.Err() == nil {
 		l.setStatus(func(s *RegStatus) { s.State, s.Transport = RegRegistering, l.acct.Transport })
 		ts, err := l.targets(l.ctx)
+		if err == nil {
+			l.notePeers(ts)
+		}
 		if err != nil {
 			l.fail(RegBackoff, "DNS: "+err.Error())
 			if !l.sleep(jitter(backoff)) {

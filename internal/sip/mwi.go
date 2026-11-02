@@ -170,8 +170,8 @@ func (m *Manager) onNotify(req *sip.Request, tx sip.ServerTransaction) {
 		m.respond(tx, req, 200, "OK")
 		return
 	}
-	l := m.lineFor(req)
-	if l == nil {
+	l, ok := m.accept(req)
+	if l == nil || !ok {
 		m.respond(tx, req, 481, "Subscription Does Not Exist")
 		return
 	}

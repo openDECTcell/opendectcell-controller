@@ -76,27 +76,32 @@ func SafeReturnPath(p string) string {
 	return p
 }
 
-// Begin starts a login and returns the IdP URL to redirect the browser to.
-func (o *OIDC) Begin(ctx context.Context, returnTo string) (string, error) {
+// Begin starts a login and returns the IdP URL to redirect the browser to, and a token that binds the
+// login to that browser: the caller sets it as a cookie and hands it back to Callback. Without it a
+// callback URL (state and code) given to another person would sign them in to the attacker's account.
+func (o *OIDC) Begin(ctx context.Context, returnTo string) (authURL, bind string, err error) {
 	_, oc, err := o.client(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	state, err := NewToken()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	nonce, err := NewToken()
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	if bind, err = NewToken(); err != nil {
+		return "", "", err
 	}
 	verifier := oauth2.GenerateVerifier()
-	_, err = o.Store.Pool.Exec(ctx, "INSERT INTO oidc_login (state_hash, nonce, code_verifier, return_to, expires_at) VALUES ($1, $2, $3, $4, $5)",
-		HashToken(state), nonce, verifier, SafeReturnPath(returnTo), o.Store.now().Add(oidcLoginTTL))
+	_, err = o.Store.Pool.Exec(ctx, "INSERT INTO oidc_login (state_hash, browser_hash, nonce, code_verifier, return_to, expires_at) VALUES ($1, $2, $3, $4, $5, $6)",
+		HashToken(state), HashToken(bind), nonce, verifier, SafeReturnPath(returnTo), o.Store.now().Add(oidcLoginTTL))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return oc.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), nil
+	return oc.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), bind, nil
 }
 
 // Claims are the ID-token claims the controller uses.
@@ -111,14 +116,17 @@ type Claims struct {
 // Callback completes a login: it consumes the state, exchanges the code,
 // verifies the ID token and its nonce, maps groups to a role, and creates or
 // updates the user. It returns the user and the path to return to.
-func (o *OIDC) Callback(ctx context.Context, state, code string) (*User, string, error) {
+func (o *OIDC) Callback(ctx context.Context, state, code, bind string) (*User, string, error) {
 	p, oc, err := o.client(ctx)
 	if err != nil {
 		return nil, "", err
 	}
 	var nonce, verifier, returnTo string
-	err = o.Store.Pool.QueryRow(ctx, "DELETE FROM oidc_login WHERE state_hash = $1 AND expires_at > $2 RETURNING nonce, code_verifier, return_to",
-		HashToken(state), o.Store.now()).Scan(&nonce, &verifier, &returnTo)
+	if bind == "" {
+		return nil, "", ErrOIDCState // the cookie that binds the login to the browser is missing
+	}
+	err = o.Store.Pool.QueryRow(ctx, "DELETE FROM oidc_login WHERE state_hash = $1 AND browser_hash = $2 AND expires_at > $3 RETURNING nonce, code_verifier, return_to",
+		HashToken(state), HashToken(bind), o.Store.now()).Scan(&nonce, &verifier, &returnTo)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", ErrOIDCState
 	}

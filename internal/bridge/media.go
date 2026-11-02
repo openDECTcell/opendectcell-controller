@@ -123,10 +123,10 @@ func (m *Manager) openFlow(ctx context.Context, ev core.CallEvent, sipCodec *cod
 	m.nextID++
 	id := m.nextID
 	if m.pending == nil {
-		m.pending, m.sessions = map[uint32]chan wire.MediaOpenAckMsg{}, map[uint32]*mediaSession{}
+		m.pending, m.sessions = map[uint32]pendingOpen{}, map[uint32]*mediaSession{}
 	}
 	ack := make(chan wire.MediaOpenAckMsg, 1)
-	m.pending[id] = ack
+	m.pending[id] = pendingOpen{cell: ev.Cell, ch: ack}
 	m.mu.Unlock()
 	drop := func() {
 		m.mu.Lock()
@@ -231,26 +231,35 @@ func (m *Manager) closeMedia(s *mediaSession) {
 	_ = s.leg.Close()
 }
 
-// MediaOpened is the cell's answer to MEDIA_OPEN (cell.MediaSink).
-func (m *Manager) MediaOpened(_ uuid.UUID, a wire.MediaOpenAckMsg) {
+// pendingOpen is a MEDIA_OPEN sent and not yet answered: the cell it went to, which alone may answer it
+// (media ids are a counter, so another cell could guess one), and where the answer goes.
+type pendingOpen struct {
+	cell uuid.UUID
+	ch   chan wire.MediaOpenAckMsg
+}
+
+// MediaOpened is the cell's answer to MEDIA_OPEN (cell.MediaSink). An answer from a cell the request did
+// not go to is dropped.
+func (m *Manager) MediaOpened(cell uuid.UUID, a wire.MediaOpenAckMsg) {
 	m.mu.Lock()
-	ch := m.pending[a.MediaID]
+	p := m.pending[a.MediaID]
 	m.mu.Unlock()
-	if ch != nil {
-		select {
-		case ch <- a:
-		default:
-		}
+	if p.ch == nil || p.cell != cell {
+		return
+	}
+	select {
+	case p.ch <- a:
+	default:
 	}
 }
 
 // MediaClosed is a flow the cell ended (cell.MediaSink): the call goes on
 // silent, ending it is the handset's or the far end's business.
-func (m *Manager) MediaClosed(_ uuid.UUID, c wire.MediaClosedMsg) {
+func (m *Manager) MediaClosed(cell uuid.UUID, c wire.MediaClosedMsg) {
 	m.mu.Lock()
 	s := m.sessions[c.MediaID]
 	m.mu.Unlock()
-	if s != nil && c.Reason != wire.MediaClosedRequested {
+	if s != nil && s.cell == cell && c.Reason != wire.MediaClosedRequested {
 		m.log().Info("the cell ended a call's speech", "media", c.MediaID, "reason", c.Reason)
 		s.cancel()
 	}

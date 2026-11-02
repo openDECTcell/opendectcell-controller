@@ -49,7 +49,7 @@ func TestMessageWaiting(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, err := sip.New(sip.Config{UDP: conn, RTP: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 42200, Max: 42299},
-		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AllowLocal: true,
 		OnMWI: func(id uuid.UUID, s sip.MWI) { ids <- id; got <- s }}, &endpoint{calls: make(chan *sip.Call, 1)})
 	if err != nil {
 		t.Fatal(err)

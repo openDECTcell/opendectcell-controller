@@ -201,12 +201,21 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// oidcBindCookie holds the token that ties an OIDC login to the browser that started it.
+const oidcBindCookie = "dw_oidc_bind"
+
 func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 	if s.OIDC == nil {
 		s.notFound(w, r, nil)
 		return
 	}
-	u, err := s.OIDC.Begin(r.Context(), r.FormValue("next"))
+	u, bind, err := s.OIDC.Begin(r.Context(), r.FormValue("next"))
+	if err == nil {
+		// binds the login to this browser; SameSite=Lax still sends it on the IdP's redirect back
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure follows the base URL, as for the session cookie
+			Name: oidcBindCookie, Value: bind, Path: "/auth/oidc", HttpOnly: true, Secure: s.SecureCookies,
+			SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	}
 	if err != nil {
 		s.Log.Error("oidc start", "err", err)
 		s.render(w, http.StatusBadGateway, "login.html", page{Title: "Log in", Error: "The sign-on provider is not reachable. Try again later.", Data: s.loginData(r)})
@@ -225,7 +234,14 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusUnauthorized, "login.html", page{Title: "Log in", Error: "Sign-on was cancelled or refused by the provider.", Data: d})
 		return
 	}
-	u, next, err := s.OIDC.Callback(r.Context(), r.FormValue("state"), r.FormValue("code"))
+	bind := ""
+	if c, err := r.Cookie(oidcBindCookie); err == nil {
+		bind = c.Value
+	}
+	// one login, one try: the cookie goes whatever the result
+	http.SetCookie(w, &http.Cookie{Name: oidcBindCookie, Value: "", Path: "/auth/oidc", MaxAge: -1, HttpOnly: true, //nolint:gosec // G124: as above
+		Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode})
+	u, next, err := s.OIDC.Callback(r.Context(), r.FormValue("state"), r.FormValue("code"), bind)
 	switch {
 	case errors.Is(err, auth.ErrNotAuthorized):
 		s.render(w, http.StatusForbidden, "login.html", page{Title: "Log in", Error: "Your account is not authorised for this controller. Ask an administrator.", Data: d})

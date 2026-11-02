@@ -54,7 +54,7 @@ func newManagerRoots(t *testing.T, ep sip.Endpoint, dns resolve.DNS, roots *x509
 		t.Fatal(err)
 	}
 	m, err := sip.New(sip.Config{UDP: conn, RTP: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 42000, Max: 42199},
-		DNS: dns, TLSRoots: roots, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
+		DNS: dns, TLSRoots: roots, AllowLocal: true, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
 	if err != nil {
 		t.Fatal(err)
 	}

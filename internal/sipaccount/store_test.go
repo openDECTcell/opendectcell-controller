@@ -371,3 +371,45 @@ func TestUses(t *testing.T) {
 		t.Errorf("no ids: %+v %v", u, err)
 	}
 }
+
+// Texts that go into SIP headers cannot carry a line break or a quote, which would let a user write
+// the rest of the request; a user who is not an admin has a bounded number of accounts.
+func TestHeaderInjectionAndQuota(t *testing.T) {
+	s, admin, anna, _, _ := setup(t)
+	for _, c := range []struct {
+		field string
+		set   func(*sipaccount.Input)
+	}{
+		{"display_name", func(in *sipaccount.Input) { in.DisplayName = ptr("x\"\r\nFLUSHALL\r\n") }},
+		{"display_name", func(in *sipaccount.Input) { in.DisplayName = ptr("Paula\nVia: evil") }},
+		{"auth_username", func(in *sipaccount.Input) { in.AuthUsername = ptr("a\"b") }},
+		{"advanced.user_agent", func(in *sipaccount.Input) { in.Advanced = &sipaccount.Advanced{UserAgent: "ua\r\nX: y"} }},
+		{"label", func(in *sipaccount.Input) { in.Label = ptr(strings.Repeat("l", 300)) }},
+	} {
+		in := input()
+		c.set(&in)
+		_, err := s.Create(ctx, anna, in)
+		var v sipaccount.ValidationError
+		if !errors.As(err, &v) || v[c.field] == "" {
+			t.Errorf("%s: accepted or wrong error: %v", c.field, err)
+		}
+	}
+	// a plain name with an umlaut and an apostrophe is fine
+	ok := input()
+	ok.DisplayName = ptr("Büro O'Neil")
+	if _, err := s.Create(ctx, anna, ok); err != nil {
+		t.Fatalf("a plain name was refused: %v", err)
+	}
+	for i := 1; i < sipaccount.MaxAccountsPerUser; i++ {
+		if _, err := s.Create(ctx, anna, input()); err != nil {
+			t.Fatalf("account %d: %v", i+1, err)
+		}
+	}
+	var v sipaccount.ValidationError
+	if _, err := s.Create(ctx, anna, input()); !errors.As(err, &v) {
+		t.Errorf("the account over the limit was created: %v", err)
+	}
+	if _, err := s.Create(ctx, admin, input()); err != nil {
+		t.Errorf("an admin is bound by the user limit: %v", err)
+	}
+}

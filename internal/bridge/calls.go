@@ -140,7 +140,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	nextID   uint32
-	pending  map[uint32]chan wire.MediaOpenAckMsg
+	pending  map[uint32]pendingOpen
 	sessions map[uint32]*mediaSession
 	mwi      map[uuid.UUID]uint // new messages in an account's mailbox, as it last said
 }

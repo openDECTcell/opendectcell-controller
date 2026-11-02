@@ -283,8 +283,8 @@ func (s *Store) deleteFromHandset(ctx context.Context, handset uuid.UUID, id int
 	if err != nil {
 		return err
 	}
-	if cur.OwnerID == nil {
-		return ErrReadOnly // the shared contacts are read-only from a handset
+	if cur.OwnerID == nil || *cur.OwnerID != owner {
+		return ErrReadOnly // the shared contacts, and other users', are read-only from a handset
 	}
 	return s.Delete(ctx, u, id)
 }
@@ -316,7 +316,15 @@ type callRow struct {
 // outgoing by the handset), one entry for a call several of them see, with the line each sees it on.
 // Newest first, at most 40 per list.
 func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error) {
-	rows := map[[2]int64]*callRow{} // list, call
+	// One entry per call and name: the name is looked up in each handset's own owner's contacts, so two
+	// handsets of different owners on one shared account may see one call under two names, and a private
+	// contact's name must not reach the other owner's handset.
+	type rowKey struct {
+		list int
+		call int64
+		name string
+	}
+	rows := map[rowKey]*callRow{}
 	for _, h := range hs {
 		if h.Slot < 1 || h.Slot >= terminals {
 			continue
@@ -334,7 +342,7 @@ func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error)
 				return "", err
 			}
 			for _, e := range entries {
-				k := [2]int64{int64(l.list), e.ID}
+				k := rowKey{l.list, e.ID, e.Name}
 				r := rows[k]
 				if r == nil {
 					r = &callRow{list: l.list, e: e}
@@ -349,9 +357,6 @@ func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error)
 					ln = lines[*e.SIPAccount]
 				}
 				r.lines[h.Slot] = ln
-				if r.e.Name == "" {
-					r.e.Name = e.Name
-				}
 			}
 		}
 	}
@@ -368,6 +373,7 @@ func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error)
 	var b strings.Builder
 	b.WriteString("#opendectcell-calls 1\n")
 	n := map[int]int{}
+	used := map[[2]int]bool{} // list, entry id: two rows of one call (two names) need two ids
 	for _, r := range all {
 		if n[r.list] == callsPerList {
 			continue
@@ -381,7 +387,12 @@ func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error)
 		for _, v := range r.lines {
 			fmt.Fprintf(&lines, "%02x", v)
 		}
-		fmt.Fprintf(&b, "%d\t%d\t%d\t1\t%s\t0\t%s\t%s\t%s\n", r.list, r.e.ID%16383+1, unread,
+		id := int(r.e.ID%16383) + 1
+		for used[[2]int{r.list, id}] {
+			id = id%16383 + 1
+		}
+		used[[2]int{r.list, id}] = true
+		fmt.Fprintf(&b, "%d\t%d\t%d\t1\t%s\t0\t%s\t%s\t%s\n", r.list, id, unread,
 			r.e.StartedAt.UTC().Format("060102150405"), lines.String(), dectField(cut(r.e.Number)), dectField(cut(r.e.Name)))
 	}
 	return b.String(), nil

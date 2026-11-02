@@ -232,7 +232,7 @@ func TestLoginRateLimitAndDisabled(t *testing.T) {
 // callback's result.
 func runOIDC(t *testing.T, o *auth.OIDC, returnTo string) (*auth.User, string, error) {
 	t.Helper()
-	start, err := o.Begin(ctx, returnTo)
+	start, bind, err := o.Begin(ctx, returnTo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func runOIDC(t *testing.T, o *auth.OIDC, returnTo string) (*auth.User, string, e
 	}
 	resp.Body.Close()
 	loc, _ := url.Parse(resp.Header.Get("Location"))
-	return o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"))
+	return o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"), bind)
 }
 
 func TestOIDCLogin(t *testing.T) {
@@ -291,14 +291,21 @@ func TestOIDCLogin(t *testing.T) {
 
 	// Replayed state and a bad nonce are refused.
 	p.SetUser(oidctest.User{Subject: "s-1", Groups: []string{"staff"}})
-	start, _ := o.Begin(ctx, "/")
+	start, bind, _ := o.Begin(ctx, "/")
 	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, _ := c.Get(start)
 	loc, _ := url.Parse(resp.Header.Get("Location"))
-	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code")); err != nil {
+	// the callback of somebody else's browser, or with no binding at all, is refused and does not use the login up
+	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"), "another browser's token"); !errors.Is(err, auth.ErrOIDCState) {
+		t.Errorf("a callback from another browser: %v", err)
+	}
+	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"), ""); !errors.Is(err, auth.ErrOIDCState) {
+		t.Errorf("a callback without the binding: %v", err)
+	}
+	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"), bind); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code")); !errors.Is(err, auth.ErrOIDCState) {
+	if _, _, err := o.Callback(ctx, loc.Query().Get("state"), loc.Query().Get("code"), bind); !errors.Is(err, auth.ErrOIDCState) {
 		t.Errorf("replayed state: %v", err)
 	}
 	p.WrongNonce = true

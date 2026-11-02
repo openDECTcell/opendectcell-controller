@@ -168,3 +168,68 @@ func TestCallsFile(t *testing.T) {
 		t.Errorf("no handsets: %q", s2)
 	}
 }
+
+// A shared account on two users' handsets: the name of a caller comes from each handset's own
+// owner's contacts, so one user's private contact is never shown to the other user's handset.
+func TestCallsFileKeepsPrivateNamesApart(t *testing.T) {
+	s, _, anna, ben := setup(t)
+	pool := s.Pool
+	a, b := handset(t, pool, anna.ID, 1), handset(t, pool, ben.ID, 3)
+	var acct uuid.UUID
+	pool.QueryRow(ctx, "INSERT INTO sip_account (label, username, domain) VALUES ('shared', 'u', 'd') RETURNING id").Scan(&acct)
+	pool.Exec(ctx, "INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, 1, $2), ($3, 1, $2)", a, acct, b)
+	if _, err := s.Create(ctx, anna, contacts.Contact{LastName: "Dr Meyer", Numbers: []contacts.Number{{Number: "0301234", Kind: "fixed"}}}, false); err != nil {
+		t.Fatal(err)
+	}
+	pool.Exec(ctx, `INSERT INTO call_log (sip_account_id, direction, remote_party, started_at) VALUES ($1, 'in', '0301234', now())`, acct)
+
+	got, err := s.CallsFile(ctx, []contacts.HandsetSlot{{Handset: a, Slot: 1}, {Handset: b, Slot: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(strings.TrimRight(got, "\n"), "\n")[1:]
+	if len(rows) != 2 {
+		t.Fatalf("one call under two names is two entries:\n%s", got)
+	}
+	seen := map[string]string{} // name -> lines
+	ids := map[string]bool{}
+	for _, r := range rows {
+		f := strings.Split(r, "\t")
+		name := ""
+		if len(f) > 8 {
+			name = f[8]
+		}
+		seen[name] = f[6]
+		ids[f[1]] = true
+	}
+	zeros := func(n int) string { return strings.Repeat("00", n) }
+	if seen["Dr Meyer"] != zeros(1)+"01"+zeros(31) {
+		t.Errorf("anna's name is on %q, want her handset (terminal 1) only", seen["Dr Meyer"])
+	}
+	if seen[""] != zeros(3)+"01"+zeros(29) {
+		t.Errorf("ben's handset (terminal 3) should see the call with no name, got %q", seen[""])
+	}
+	if len(ids) != 2 {
+		t.Errorf("two entries share an entry id: %v", ids)
+	}
+}
+
+// A handset owned by an admin edits and deletes only the admin's own contacts, never another user's
+// (an admin may see every contact in the web interface, a handset's radio path must not).
+func TestHandsetOfAnAdminCannotChangeAnotherUsersContact(t *testing.T) {
+	s, admin, anna, _ := setup(t)
+	h := handset(t, s.Pool, admin.ID, 1)
+	theirs, err := s.Create(ctx, anna, contacts.Contact{LastName: "Private", Numbers: []contacts.Number{{Number: "0301"}}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ApplyChange(ctx, h, "1\tput\t9\t"+hex8(theirs.ID)+"\tHacked\t\t0\t*\t08:1"); !errors.Is(err, contacts.ErrReadOnly) {
+		t.Errorf("an admin's handset edited another user's contact: %v", err)
+	}
+	if _, err := s.ApplyChange(ctx, h, "2\tdel\t9\t"+hex8(theirs.ID)); !errors.Is(err, contacts.ErrReadOnly) {
+		t.Errorf("an admin's handset deleted another user's contact: %v", err)
+	}
+	if got, err := s.Get(ctx, anna, theirs.ID); err != nil || got.LastName != "Private" {
+		t.Errorf("the contact changed: %+v %v", got, err)
+	}
+}

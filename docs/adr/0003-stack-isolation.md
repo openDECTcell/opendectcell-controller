@@ -80,8 +80,9 @@ protocol below does not change if it is wanted later.
   seccomp later, if wanted.
 - **What it buys beyond crashes:** the controller binary no longer needs
   the stack in-process, and `libopendectcell-integration.md` §8's "crash in C
-  ends the controller" row goes away. The keys of all cells no longer share
-  one address space.
+  ends the controller" row goes away. The keys of cells in different workers no longer share
+  one address space; **cells in one worker do** (`OPENDECTCELL_CELLS_STACK_WORKERS` workers serve all cells), so a takeover of a worker
+  exposes the keys of every cell it holds.
 - **What it does not change:** S7 (the maintainers' notes point 1). The worker
   is a libopendectcell host like today's `host.c`; as each S7 stage lands, the
   worker calls the library instead of `host.c`. The IPC protocol sits
@@ -167,7 +168,13 @@ What differs from the proposal above, and why:
   the worker with the fewest; a ping every 2 s, a worker that misses one is killed; restart with backoff 1 s to 60 s (reset after
   5 minutes up); the worker's crash report is logged once. A call to a stack that does not answer in 5 s declares the worker dead.
   Hardening in the worker: no core file, not dumpable, dies with the controller (`PR_SET_PDEATHSIG`), empty environment. Not
-  done: `RLIMIT_AS` (the Go runtime reserves address space and does not start under a small one), seccomp.
+  done: `RLIMIT_AS` (the Go runtime reserves address space and does not start under a small one).
+  **Confinement (2026-11-02, security review F-03):** the worker is the controller's own binary under the same uid, so "no database, no
+  master key, no network" was not true of a taken-over worker (it could read `/secrets` and connect to the database). Once it has its
+  socket it now installs a seccomp filter on every thread (`worker/seccomp_linux.go`, `NO_NEW_PRIVS`, TSYNC) that makes opening files,
+  creating sockets, `connect`/`bind`/`listen`, `execve`, `ptrace`, `process_vm_*`, `pidfd_getfd`, mounts and namespace changes fail with
+  EPERM, and refuses the 32-bit system call ABI. It is a deny-list by design (an allow-list would break with each Go runtime); the files
+  and sockets it keeps are the ones already open. Only on Linux amd64 and arm64; elsewhere the worker runs unconfined.
 - **Tested:** in process over a socket pair (round trip, death, hang, ping) and with real child processes (a crash, a hung process
   stopped with SIGSTOP, no worker at all); the core (waking, a dead worker, no stack); **on air, 2026-11-02:** the lab controller
   with two workers, the 7520 and the 7412 each in one, a handset paged through each; then `SIGSEGV` sent to the 7520's worker:
