@@ -77,6 +77,7 @@ type alawDec struct{}
 type ulawEnc struct{}
 type ulawDec struct{}
 
+// Encode appends one A-law octet per sample (G.711).
 func (alawEnc) Encode(dst []byte, pcm []int16) []byte {
 	for _, s := range pcm {
 		dst = append(dst, AlawEncode(s))
@@ -84,6 +85,7 @@ func (alawEnc) Encode(dst []byte, pcm []int16) []byte {
 	return dst
 }
 
+// Decode appends one 16-bit sample per A-law octet.
 func (alawDec) Decode(dst []int16, p []byte) []int16 {
 	for _, c := range p {
 		dst = append(dst, AlawDecode(c))
@@ -91,6 +93,7 @@ func (alawDec) Decode(dst []int16, p []byte) []int16 {
 	return dst
 }
 
+// Encode appends one mu-law octet per sample (G.711).
 func (ulawEnc) Encode(dst []byte, pcm []int16) []byte {
 	for _, s := range pcm {
 		dst = append(dst, UlawEncode(s))
@@ -98,6 +101,7 @@ func (ulawEnc) Encode(dst []byte, pcm []int16) []byte {
 	return dst
 }
 
+// Decode appends one 16-bit sample per mu-law octet.
 func (ulawDec) Decode(dst []int16, p []byte) []int16 {
 	for _, c := range p {
 		dst = append(dst, UlawDecode(c))

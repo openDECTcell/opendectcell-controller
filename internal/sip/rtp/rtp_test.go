@@ -55,13 +55,13 @@ func TestMediaPlainAndSRTP(t *testing.T) {
 		for i := range payload {
 			payload[i] = byte(i)
 		}
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if err := a.Write(9, payload, 160, i == 0); err != nil {
 				t.Fatalf("%q write: %v", suite, err)
 			}
 		}
 		var first Packet
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			p, err := b.Read(time.Now().Add(time.Second))
 			if err != nil {
 				t.Fatalf("%q read %d: %v", suite, i, err)
@@ -186,7 +186,7 @@ func TestPortsExhaust(t *testing.T) {
 func TestRTCP(t *testing.T) {
 	for _, suite := range []string{"", "AES_CM_128_HMAC_SHA1_80"} {
 		a, b := pair(t, suite)
-		for i := 0; i < 50; i++ {
+		for i := range 50 {
 			if i == 20 || i == 30 {
 				a.mu.Lock()
 				a.seq++ // a packet that never leaves: the peer sees a gap
@@ -197,7 +197,7 @@ func TestRTCP(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		for i := 0; i < 48; i++ {
+		for range 48 {
 			if _, err := b.Read(time.Now().Add(time.Second)); err != nil {
 				t.Fatalf("%q read: %v", suite, err)
 			}

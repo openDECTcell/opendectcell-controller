@@ -15,7 +15,7 @@ var t0 = time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
 // feed sends n packets of a 20 ms stream from seq0, skipping those for
 // which skip is true, with arrival offsets from jitter.
 func feed(r *Receiver, seq0 uint16, n int, skip func(i int) bool, jitter func(i int) time.Duration) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if skip != nil && skip(i) {
 			continue
 		}

@@ -123,7 +123,7 @@ func TestEnrollment(t *testing.T) {
 
 	// Rate limit: 5 rejected tokens from one address, then RATE_LIMITED.
 	// The reused token above was the first.
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if st, err := c.EnrollWithToken(e.ctx, make([]byte, 20)); st != wire.EnrollTokenRejected {
 			t.Fatalf("attempt %d: %d %v", i, st, err)
 		}

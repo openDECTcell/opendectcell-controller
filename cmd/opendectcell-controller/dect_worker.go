@@ -5,7 +5,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 
@@ -15,7 +14,7 @@ import (
 // cellWorker is the `cellworker` command: a worker process of the DECT stacks (ADR 0003).
 // serve starts it with the socket to the controller as file 3, nothing else
 // inherited: it has no database, no master key and no network.
-func cellWorker(stderr io.Writer) error {
+func cellWorker() error {
 	if dectStack == nil {
 		return errors.New("cellworker: this binary has no libopendectcell")
 	}

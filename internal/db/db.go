@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,7 +21,7 @@ func Open(ctx context.Context, url string, maxConns int32) (*pgxpool.Pool, error
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		// pgx's message can include the URL; don't pass it on.
-		return nil, fmt.Errorf("db: invalid database URL")
+		return nil, errors.New("db: invalid database URL")
 	}
 	if maxConns > 0 {
 		cfg.MaxConns = maxConns

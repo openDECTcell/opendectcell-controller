@@ -176,21 +176,21 @@ func (rs *routes) find(cell uuid.UUID, call string) callSink {
 
 // outgoingLine is a line the stack wrote about a handset's call. The caller
 // holds rs.mu.
-func (rs *routes) outgoingLine(c *Core, o *Outgoing, verb string, kv map[string]string) {
-	switch verb {
-	case "released":
-		// the handset hung up, or the call failed on the DECT side
-		if o.over {
-			return
-		}
-		o.over = true
-		delete(rs.out, outKey{o.Cell, o.Call})
-		reason := "hs"
-		if r := kv["reason"]; r != "" && kv["by"] != "hs" {
-			reason = r
-		}
-		o.finish(reason)
+func (rs *routes) outgoingLine(o *Outgoing, verb string, kv map[string]string) {
+	if verb != "released" {
+		return
 	}
+	// the handset hung up, or the call failed on the DECT side
+	if o.over {
+		return
+	}
+	o.over = true
+	delete(rs.out, outKey{o.Cell, o.Call})
+	reason := "hs"
+	if r := kv["reason"]; r != "" && kv["by"] != "hs" {
+		reason = r
+	}
+	o.finish(reason)
 }
 
 // audioUp is an `audio` line: the call's speech is bound on a chip channel.

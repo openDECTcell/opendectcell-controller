@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,7 +107,7 @@ func Open(ctx context.Context, pool *pgxpool.Pool, kr *secret.Keyring, publicAdd
 }
 
 func caLoc(id int32) secret.Location {
-	return secret.Location{Table: "cell_ca", Column: "key_enc", RowID: fmt.Sprint(id)}
+	return secret.Location{Table: "cell_ca", Column: "key_enc", RowID: strconv.FormatInt(int64(id), 10)}
 }
 
 func installationID(ctx context.Context, q db.Querier) (uuid.UUID, error) {
@@ -151,7 +152,7 @@ func createCA(ctx context.Context, tx pgx.Tx, kr *secret.Keyring, inst uuid.UUID
 		return nil, err
 	}
 	return ca, audit.RecordAs(ctx, tx, audit.System, audit.Entry{Action: "cell_ca.create", ObjectType: "cell_ca",
-		ObjectID: fmt.Sprint(id), Details: map[string]any{"ca_spki_sha256": ca.Pin(), "not_after": ca.Cert.NotAfter}})
+		ObjectID: strconv.FormatInt(int64(id), 10), Details: map[string]any{"ca_spki_sha256": ca.Pin(), "not_after": ca.Cert.NotAfter}})
 }
 
 // enrollment tokens

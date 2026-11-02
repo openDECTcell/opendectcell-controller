@@ -451,7 +451,7 @@ func (c *Core) bridgeLine(cell uuid.UUID, line string) {
 		return
 	}
 	if o := rs.out[outKey{cell, kv["call"]}]; o != nil && verb != "" {
-		rs.outgoingLine(c, o, verb, kv)
+		rs.outgoingLine(o, verb, kv)
 		return
 	}
 	var rt *route

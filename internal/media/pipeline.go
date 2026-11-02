@@ -96,6 +96,7 @@ type converter interface {
 
 type identity struct{}
 
+// Process appends in unchanged: source and sink run at the same sample rate.
 func (identity) Process(dst, in []int16) []int16 { return append(dst, in...) }
 
 func newConverter(from, to int) converter {
@@ -207,15 +208,16 @@ func (d *direction) produce(now time.Time) {
 			pcm = d.plc.Conceal(d.pcm[:0], d.samples(n))
 			d.count(func(s *DirStats) { s.Concealed++ })
 		default:
-			pcm = append(d.pcm[:0], make([]int16, d.samples(n))...)
+			d.pcm = append(d.pcm[:0], make([]int16, d.samples(n))...) // silence, in the reused buffer
+			pcm = d.pcm
 			d.plc.Good(pcm)
 			d.count(func(s *DirStats) { s.Silence++ })
 		}
 		d.pcm = pcm
 		d.fifo = d.toInt.Process(d.fifo, pcm)
 	}
-	frame := append(d.frameBuf[:0], d.fifo[:d.frame]...)
-	d.frameBuf = frame
+	d.frameBuf = append(d.frameBuf[:0], d.fifo[:d.frame]...)
+	frame := d.frameBuf
 	d.fifo = d.fifo[:copy(d.fifo, d.fifo[d.frame:])]
 	if d.dtmf != nil {
 		d.mu.Lock()

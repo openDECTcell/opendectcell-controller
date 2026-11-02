@@ -20,6 +20,8 @@ type Class uint8
 // Service is the low nibble.
 type Service uint8
 
+// The classes of the high nibble of <<BASIC-SERVICE>> (EN 300 175-5 §7.6.4). The
+// controller bridges only Normal and Emergency; see Bridge.
 const (
 	ListAccess    Class = 0x2 // CAT-iq list access (LiA service setup)
 	ULE           Class = 0x3
@@ -34,6 +36,10 @@ const (
 	OAM           Class = 0xE
 )
 
+// The services of the low nibble of <<BASIC-SERVICE>>. BasicSpeech is narrowband
+// G.726 speech; WidebandSpeech and DTAMWideband ask for G.722 (see Wideband);
+// SUOTA1 and SUOTA2 are the software-update (SUOTA) data services; Other is any
+// service not named here.
 const (
 	BasicSpeech    Service = 0x0
 	WidebandSpeech Service = 0x8

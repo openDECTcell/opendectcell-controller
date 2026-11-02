@@ -395,6 +395,8 @@ func (e *workerEnv) call(typ uint8, w *wbuf) ([]byte, bool) {
 	return e.h.s.call(frame{typ: typ, id: e.h.id, body: b})
 }
 
+// Send implements stack.Env.Send: the controller takes the mail, and the worker
+// waits for its answer, because the stack must know whether it was accepted.
 func (e *workerEnv) Send(m stack.Mail) error {
 	var w wbuf
 	w.u8(m.Src)
@@ -412,19 +414,23 @@ func (e *workerEnv) Send(m stack.Mail) error {
 	return nil
 }
 
+// Room implements stack.Env.Room by asking the controller; false if it did not answer.
 func (e *workerEnv) Room() bool {
 	body, ok := e.call(mEnvRoom, nil)
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// Random implements stack.Env.Random from the worker's own crypto/rand.
 func (e *workerEnv) Random(b []byte) { fillRandom(b) }
 
+// Log implements stack.Env.Log: the line goes to the controller's log; no answer is awaited.
 func (e *workerEnv) Log(line string) {
 	var w wbuf
 	w.str(line)
 	e.send(mEnvLog, &w)
 }
 
+// Event implements stack.Env.Event: the bridge line goes to the controller; no answer is awaited.
 func (e *workerEnv) Event(to stack.To, line string) {
 	var w wbuf
 	w.u8(uint8(to))
@@ -432,6 +438,8 @@ func (e *workerEnv) Event(to stack.To, line string) {
 	e.send(mEnvEvent, &w)
 }
 
+// Save implements stack.Env.Save: the record, UAK included, goes to the controller
+// gob-encoded over the worker's private socket pair; no answer is awaited.
 func (e *workerEnv) Save(i int, rec stack.Record) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -439,12 +447,15 @@ func (e *workerEnv) Save(i int, rec stack.Record) {
 	e.send(mEnvSave, &w)
 }
 
+// Fetch implements stack.Env.Fetch; no answer is awaited. The controller answers
+// later through proxy.AddRecord and proxy.Resume.
 func (e *workerEnv) Fetch(ipui []byte) {
 	var w wbuf
 	w.bytes(ipui)
 	e.send(mEnvFetch, &w)
 }
 
+// Forget implements stack.Env.Forget; no answer is awaited.
 func (e *workerEnv) Forget(i int, why string) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -452,6 +463,7 @@ func (e *workerEnv) Forget(i int, why string) {
 	e.send(mEnvForget, &w)
 }
 
+// Named implements stack.Env.Named; no answer is awaited.
 func (e *workerEnv) Named(i int, name string) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -459,6 +471,8 @@ func (e *workerEnv) Named(i int, name string) {
 	e.send(mEnvNamed, &w)
 }
 
+// NameVisible implements stack.Env.NameVisible by asking the controller, which
+// knows the owners; false if it did not answer.
 func (e *workerEnv) NameVisible(viewer, slot uint) bool {
 	var w wbuf
 	w.u32(uint32(viewer))
@@ -467,6 +481,7 @@ func (e *workerEnv) NameVisible(viewer, slot uint) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// Switched implements stack.Env.Switched; no answer is awaited.
 func (e *workerEnv) Switched(cur int, why string) {
 	var w wbuf
 	w.u32(uint32(cur))
@@ -474,12 +489,14 @@ func (e *workerEnv) Switched(cur int, why string) {
 	e.send(mEnvSwitched, &w)
 }
 
+// Registered implements stack.Env.Registered; no answer is awaited.
 func (e *workerEnv) Registered(cur int) {
 	var w wbuf
 	w.u32(uint32(cur))
 	e.send(mEnvRegisted, &w)
 }
 
+// CapLearned implements stack.Env.CapLearned; no answer is awaited.
 func (e *workerEnv) CapLearned(i int, c stack.Capability) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -487,6 +504,8 @@ func (e *workerEnv) CapLearned(i int, c stack.Capability) {
 	e.send(mEnvCapLearn, &w)
 }
 
+// Clock implements stack.Env.Clock by asking the controller, whose clock is the
+// trusted one. An unanswered or malformed reply gives the zero time and false.
 func (e *workerEnv) Clock() (time.Time, bool) {
 	body, ok := e.call(mEnvClock, nil)
 	r := &rbuf{b: body}
@@ -498,6 +517,7 @@ func (e *workerEnv) Clock() (time.Time, bool) {
 	return time.Unix(0, ns), good
 }
 
+// ContactsChanged implements stack.Env.ContactsChanged; no answer is awaited.
 func (e *workerEnv) ContactsChanged(i int, line string) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -505,6 +525,7 @@ func (e *workerEnv) ContactsChanged(i int, line string) {
 	e.send(mEnvContacts, &w)
 }
 
+// Media implements stack.Env.Media; no answer is awaited.
 func (e *workerEnv) Media(handle, channel uint8, wideband, up bool) {
 	var w wbuf
 	w.u8(handle)

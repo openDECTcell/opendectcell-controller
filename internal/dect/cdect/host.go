@@ -54,7 +54,10 @@ const (
 	ToAll    = stack.ToAll
 )
 
-// The two numberings must agree: a mismatch fails to compile.
+// The two numberings must agree: a mismatch fails to compile. An array length
+// cannot be negative, so each pair of declarations, the difference taken both
+// ways round, builds only when the difference is zero. The repeated operands are
+// intended (gocritic's dupSubExpr cannot tell).
 var (
 	_ [stack.ToAsker - C.CDECT_TO_ASKER]struct{}
 	_ [C.CDECT_TO_ASKER - stack.ToAsker]struct{}

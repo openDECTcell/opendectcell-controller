@@ -19,6 +19,8 @@ import (
 // Transport is a SIP transport.
 type Transport string
 
+// The transports, in the lower-case form of SRV and the account settings. TLS
+// is SIPS over TCP; its certificate is checked against Target.Host.
 const (
 	UDP Transport = "udp"
 	TCP Transport = "tcp"

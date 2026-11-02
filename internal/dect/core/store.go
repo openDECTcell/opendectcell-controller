@@ -35,10 +35,10 @@ type Handset struct {
 
 // Records is where the core keeps handset records (Store in production).
 type Records interface {
-	// CellRecords is what cell holds, at most max records, placed by
+	// CellRecords is what cell holds, at most limit records, placed by
 	// cell-protocol.md §7.4 rules 1 and 2 (home set, no eviction). unplaced
 	// lists home-set handsets that found no free slot.
-	CellRecords(ctx context.Context, cell uuid.UUID, max int) (hs []Handset, unplaced []uuid.UUID, err error)
+	CellRecords(ctx context.Context, cell uuid.UUID, limit int) (hs []Handset, unplaced []uuid.UUID, err error)
 	// SaveRecord stores a record the stack changed. id uuid.Nil is a
 	// handset that just enrolled on cell through owner's registration
 	// window; its id is returned. owner is ignored for a known id.
@@ -171,7 +171,8 @@ func poolTPUI(t [3]byte) (int32, bool) {
 
 func tpuiBytes(v int32) [3]byte { return [3]byte{byte(v >> 16), byte(v >> 8), byte(v)} }
 
-// ErrPoolFull: every TPUI of the pool is held in this cell (poolSize handsets).
+// ErrPoolFull means every TPUI of the pool is held in this cell's table (poolSize
+// handsets). The limit is per cell: the pool is not shared across cells.
 var ErrPoolFull = errors.New("core: the TPUI pool of the cell is full (90 handsets)")
 
 // cellTPUIs is the low bytes of the pool TPUIs the pooled handsets in cell's
@@ -213,6 +214,10 @@ func pickPoolByte(used map[int]bool) (uint8, bool, error) {
 	return free[k.Int64()], true, nil
 }
 
+// ReserveTPUI picks a pool TPUI that no pooled handset in cell's table holds
+// and no other reservation of that cell has taken, and remembers it until
+// ReleaseTPUI or the enrolment's SaveRecord. It returns all zero when the pool is
+// off (NoPool) and ErrPoolFull when none is free. Reservations are kept in memory.
 func (s *Store) ReserveTPUI(ctx context.Context, cell uuid.UUID) ([3]byte, error) {
 	if s.NoPool {
 		return [3]byte{}, nil
@@ -243,6 +248,8 @@ func (s *Store) ReserveTPUI(ctx context.Context, cell uuid.UUID) ([3]byte, error
 	return [3]byte{0, 0x11, n}, nil
 }
 
+// ReleaseTPUI gives back a TPUI that ReserveTPUI offered and nobody used. A TPUI
+// that is not a pool one is ignored.
 func (s *Store) ReleaseTPUI(cell uuid.UUID, t [3]byte) {
 	if t[1] != 0x11 {
 		return
@@ -309,8 +316,14 @@ func (s *Store) uniqueTPUIs(ctx context.Context, tx pgx.Tx, cell, newcomer uuid.
 	return nil
 }
 
-func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Handset, []uuid.UUID, error) {
-	max = min(max, maxSlot)
+// CellRecords loads what cell holds for its stack. It places the home set
+// that has no slot yet into the lowest free chip slot, up to limit (never more
+// than maxSlot), empties the host-only records that a stack does not keep across
+// a start, and makes the pooled TPUIs unique. The handsets that found no slot
+// are returned as unplaced. The UAKs in the result are decrypted.
+// One placement per cell runs at a time (an advisory lock).
+func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, limit int) ([]Handset, []uuid.UUID, error) {
+	limit = min(limit, maxSlot)
 	var hs []Handset
 	var unplaced []uuid.UUID
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
@@ -337,10 +350,10 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 		}
 		for _, id := range homeless {
 			slot := int16(1)
-			for used[slot] && slot <= int16(max) {
+			for used[slot] && slot <= int16(limit) {
 				slot++
 			}
-			if slot > int16(max) {
+			if slot > int16(limit) {
 				unplaced = append(unplaced, id)
 				continue
 			}
@@ -374,7 +387,7 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 	return hs, unplaced, nil
 }
 
-// ErrCellFull: every record number above the chip's slots holds a handset.
+// ErrCellFull means every record number above the chip's slots holds a handset.
 var ErrCellFull = errors.New("core: the cell's table is full")
 
 // PlaceHandset puts a handset in cell's table to page it there: it has not been
@@ -448,6 +461,10 @@ func (s *Store) place(ctx context.Context, cell uuid.UUID, heard bool, find func
 	return out[0], true, nil
 }
 
+// CellOrder ranks cells for a call to handset id: first those it was heard on in
+// the last seven days (the moves that Seen records), the latest first, then by squared distance from anchor's
+// position (an equirectangular approximation, enough to rank cells of one site),
+// cells without a position last, ties by id; at most limit.
 func (s *Store) CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error) {
 	var a any // a nil uuid is no anchor
 	if anchor != uuid.Nil {
@@ -469,18 +486,23 @@ func (s *Store) CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uui
 	return pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
 }
 
+// Unplace frees the host-only record number (above the chip's slots) that the
+// handset held in cell's table.
 func (s *Store) Unplace(ctx context.Context, cell, id uuid.UUID) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
 		WHERE cell_id = $1 AND handset_id = $2 AND slot > $3`, cell, id, int16(maxSlot))
 	return err
 }
 
+// ReleaseChipSlot frees the chip slot the handset held in cell. The row stays and
+// is empty, so the next Installed or CellRecords can reuse it.
 func (s *Store) ReleaseChipSlot(ctx context.Context, cell, id uuid.UUID) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now()
 		WHERE cell_id = $1 AND handset_id = $2 AND slot <= $3`, cell, id, int16(maxSlot))
 	return err
 }
 
+// HandsetKnown reports whether a handset with this id exists.
 func (s *Store) HandsetKnown(ctx context.Context, id uuid.UUID) (bool, error) {
 	var ok bool
 	err := s.Pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM handset WHERE id = $1)", id).Scan(&ok)
@@ -622,6 +644,12 @@ func nullIfEmpty(b []byte) []byte {
 	return b
 }
 
+// SaveRecord stores a record the stack changed, in one transaction: the handset
+// row (key sealed with the keyring, identity, call-control identifiers) and the
+// cell slot that holds it. With id uuid.Nil it is an enrolment: a new row is
+// created for owner, or, for an IPUI that is already known, its key is replaced;
+// a known IPUI of another owner is an error, because a change of owner is not built.
+// Record numbers outside 1 to maxRecord are refused.
 func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r stack.Record) (Saved, error) {
 	if r.Slot < 1 || r.Slot > maxRecord {
 		return Saved{}, fmt.Errorf("core: record number %d", r.Slot)
@@ -649,7 +677,8 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 			if err == nil && was != owner {
 				return errOtherOwner
 			}
-			if errors.Is(err, pgx.ErrNoRows) {
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
 				id = uuid.New()
 				tpui := pt
 				if !pooled {
@@ -670,9 +699,9 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 					ON CONFLICT DO NOTHING`, id, cell); err != nil {
 					return err
 				}
-			} else if err != nil {
+			case err != nil:
 				return err
-			} else {
+			default:
 				out.Again = true
 				if pooled {
 					// It holds the TPUI this enrolment assigned from now on.
@@ -725,10 +754,11 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 	return out, nil
 }
 
-// Forget: the handset is deregistered on cell. Its slot there is free, and
-// the cell leaves its home set, or the next load would place it again. The
-// handset's row stays; deleting it is an admin's decision. A pooled handset
-// is deregistered on every cell: it is the handset that forgot the system.
+// Forget records that the handset is deregistered on cell. Its slot there is free,
+// and the cell leaves its home set, or the next load would place it again. The
+// handset's row stays: deleting it is an admin's decision. A pooled handset is
+// deregistered on every cell, because it is the handset that forgot the system;
+// the result says so, so the caller can tell the other cells.
 func (s *Store) Forget(ctx context.Context, cell, id uuid.UUID) (bool, error) {
 	var pooled bool
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
@@ -757,11 +787,13 @@ func (s *Store) Forget(ctx context.Context, cell, id uuid.UUID) (bool, error) {
 	return pooled, err
 }
 
+// Rename sets the handset's display name.
 func (s *Store) Rename(ctx context.Context, id uuid.UUID, name string) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE handset SET display_name = $2 WHERE id = $1", id, name)
 	return err
 }
 
+// SetCapabilities stores what the handset said of itself, as JSON, for its page.
 func (s *Store) SetCapabilities(ctx context.Context, id uuid.UUID, caps map[string]any) error {
 	b, err := json.Marshal(caps)
 	if err != nil {
@@ -771,11 +803,16 @@ func (s *Store) SetCapabilities(ctx context.Context, id uuid.UUID, caps map[stri
 	return err
 }
 
+// SetSignal stores the last field strength measured on a link to the handset,
+// in dBm, and the time of the measurement.
 func (s *Store) SetSignal(ctx context.Context, id uuid.UUID, dbm int, at time.Time) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE handset SET signal_dbm = $2, signal_at = $3 WHERE id = $1", id, int16(dbm), at)
 	return err
 }
 
+// HandsetInfo returns the handset's display name and the id of its device
+// profile ("" for the standard behaviour). The boolean is false, with a nil
+// error, for a handset that does not exist.
 func (s *Store) HandsetInfo(ctx context.Context, id uuid.UUID) (string, string, bool, error) {
 	var name, profile string
 	err := s.Pool.QueryRow(ctx, "SELECT display_name, coalesce(profile, '') FROM handset WHERE id = $1", id).Scan(&name, &profile)
@@ -785,6 +822,8 @@ func (s *Store) HandsetInfo(ctx context.Context, id uuid.UUID) (string, string, 
 	return name, profile, err == nil, err
 }
 
+// Installed records that the cell's chip was written: the listed slots that hold
+// a handset are "present", every other slot of the cell is "empty".
 func (s *Store) Installed(ctx context.Context, cell uuid.UUID, slots []uint) error {
 	in := make([]int16, len(slots))
 	for i, v := range slots {
@@ -796,6 +835,8 @@ func (s *Store) Installed(ctx context.Context, cell uuid.UUID, slots []uint) err
 	return err
 }
 
+// SlotUnknown marks a slot whose write was not delivered (MAIL_REJECT): what the
+// chip holds there is not known.
 func (s *Store) SlotUnknown(ctx context.Context, cell uuid.UUID, slot uint) error {
 	_, err := s.Pool.Exec(ctx, "UPDATE cell_slot SET state = 'unknown' WHERE cell_id = $1 AND slot = $2", cell, int16(slot))
 	return err
@@ -826,6 +867,8 @@ func (s *Store) Seen(ctx context.Context, cell, id uuid.UUID, at time.Time) (uui
 	return *prev, nil
 }
 
+// LastSeenCell returns the cell the handset was last heard on, uuid.Nil if none
+// or if the handset does not exist.
 func (s *Store) LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	var c *uuid.UUID
 	err := s.Pool.QueryRow(ctx, "SELECT last_seen_cell_id FROM handset WHERE id = $1", id).Scan(&c)
@@ -835,6 +878,8 @@ func (s *Store) LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, erro
 	return *c, err
 }
 
+// Directory lists the handsets of these owners that are not in exclude, ordered by
+// name and then id, at most limit.
 func (s *Store) Directory(ctx context.Context, owners, exclude []uuid.UUID, limit int) ([]DirHandset, error) {
 	rows, err := s.Pool.Query(ctx,
 		`SELECT id, owner_user_id, display_name FROM handset
@@ -855,6 +900,9 @@ func (s *Store) Directory(ctx context.Context, owners, exclude []uuid.UUID, limi
 	return out, rows.Err()
 }
 
+// InternalByNumber finds the handset of owner with internal number n. The
+// boolean is false, with a nil error, when there is none; numbers are unique
+// per owner, not across owners.
 func (s *Store) InternalByNumber(ctx context.Context, owner uuid.UUID, n int) (uuid.UUID, bool, error) {
 	var id uuid.UUID
 	err := s.Pool.QueryRow(ctx, "SELECT id FROM handset WHERE owner_user_id = $1 AND internal_number = $2", owner, n).Scan(&id)
@@ -864,6 +912,9 @@ func (s *Store) InternalByNumber(ctx context.Context, owner uuid.UUID, n int) (u
 	return id, err == nil, err
 }
 
+// InternalIdentity returns the handset's internal number (0 when it has none),
+// display name and owner. The boolean is false, with a nil error, for a handset
+// that does not exist.
 func (s *Store) InternalIdentity(ctx context.Context, id uuid.UUID) (int, string, uuid.UUID, bool, error) {
 	var n *int16
 	var name string

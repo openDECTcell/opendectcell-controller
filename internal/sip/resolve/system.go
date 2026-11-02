@@ -31,15 +31,21 @@ func (s *System) resolver() *net.Resolver {
 	return net.DefaultResolver
 }
 
+// LookupSRV returns the SRV records of _service._proto.name from the system resolver.
 func (s *System) LookupSRV(ctx context.Context, service, proto, name string) ([]*net.SRV, error) {
 	_, srvs, err := s.resolver().LookupSRV(ctx, service, proto, name)
 	return srvs, err
 }
 
+// LookupNetIP returns the addresses of host, IPv4 and IPv6.
 func (s *System) LookupNetIP(ctx context.Context, host string) ([]netip.Addr, error) {
 	return s.resolver().LookupNetIP(ctx, "ip", host)
 }
 
+// LookupNAPTR asks the servers of /etc/resolv.conf in turn for the NAPTR records
+// of name, because net.Resolver has no NAPTR lookup. A truncated UDP answer is
+// repeated over TCP. The first server that answers decides: its answer may be an
+// empty list. The error is the last one seen, when no server answered.
 func (s *System) LookupNAPTR(ctx context.Context, name string) ([]NAPTR, error) {
 	s.once.Do(func() {
 		cfg, err := dns.ClientConfigFromFile("/etc/resolv.conf")

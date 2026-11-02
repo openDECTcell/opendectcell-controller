@@ -75,6 +75,9 @@ type (
 
 type dialerOf struct{ d Dialer }
 
+// Dial places an outgoing call through the wrapped Dialer. It converts the
+// concrete call to the SIPCall interface only on success, so an error returns
+// a nil interface and not a typed nil.
 func (x dialerOf) Dial(ctx context.Context, account uuid.UUID, number string) (SIPCall, error) {
 	c, err := x.d.Dial(ctx, account, number)
 	if err != nil {
@@ -88,11 +91,16 @@ func DialerOf(d Dialer) Caller { return dialerOf{d} }
 
 type offerOf struct{ o *core.Offer }
 
+// Events returns the offer's event channel (see core.Offer).
 func (x offerOf) Events() <-chan core.CallEvent { return x.o.Events }
-func (x offerOf) Cancel()                       { x.o.Cancel() }
+
+// Cancel is the SIP caller hanging up: the legs still ringing are released.
+func (x offerOf) Cancel() { x.o.Cancel() }
 
 type routerOf struct{ c *core.Core }
 
+// Ring rings handset hid for an incoming call and returns the offer; see
+// core.Core.Ring. On error it returns a nil Offer, not a typed nil.
 func (x routerOf) Ring(ctx context.Context, hid uuid.UUID, call core.Call) (Offer, error) {
 	o, err := x.c.Ring(ctx, hid, call)
 	if err != nil {
@@ -106,11 +114,24 @@ func RouterOf(c *core.Core) Router { return routerOf{c} }
 
 type outgoingOf struct{ o *core.Outgoing }
 
-func (x outgoingOf) Info() core.OutCall            { return x.o.OutCall }
+// Info returns what the cell's stack reported of the call: cell, handset,
+// line, dialled number and whether the handset's codec is wideband.
+func (x outgoingOf) Info() core.OutCall { return x.o.OutCall }
+
+// Events returns the channel of what happens to the call on the DECT side.
 func (x outgoingOf) Events() <-chan core.CallEvent { return x.o.Events }
-func (x outgoingOf) Ringing()                      { x.o.Ringing() }
-func (x outgoingOf) Answered(narrowband bool)      { x.o.Answered(narrowband) }
-func (x outgoingOf) Release(reason string)         { x.o.Release(reason) }
+
+// Ringing tells the handset that the far end rings (the ring-back tone).
+func (x outgoingOf) Ringing() { x.o.Ringing() }
+
+// Answered tells the handset that the far end answered; narrowband is true when
+// the far end took a narrowband codec, so the handset's leg is narrowband too and
+// nothing is transcoded.
+func (x outgoingOf) Answered(narrowband bool) { x.o.Answered(narrowband) }
+
+// Release ends the call from the far side; reason is busy, normal, unreachable
+// or rejected. The Events channel closes.
+func (x outgoingOf) Release(reason string) { x.o.Release(reason) }
 
 // Manager runs the calls between handsets and SIP: a handset's call goes out
 // on its line's account (HandsetCall, set as core.Core.Originate), a call to an
@@ -544,7 +565,7 @@ func (m *Manager) listenMedia() (*net.UDPConn, uint16, error) {
 	n := hi - lo + 1
 	start := int(time.Now().UnixNano() % int64(n))
 	var last error
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c, p, err := try(lo + (start+i)%n)
 		if err == nil {
 			return c, p, nil

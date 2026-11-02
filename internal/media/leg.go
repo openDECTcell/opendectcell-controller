@@ -47,15 +47,19 @@ func SIPLeg(e *rtp.Endpoint) Leg { return sipLeg{e} }
 
 type sipLeg struct{ e *rtp.Endpoint }
 
+// ReadPacket returns the next RTP packet of the SIP endpoint, waiting until deadline.
 func (l sipLeg) ReadPacket(deadline time.Time) (Packet, error) {
 	p, err := l.e.Read(deadline)
 	return Packet{PT: p.PT, Seq: p.Seq, TS: p.Timestamp, SSRC: p.SSRC, Marker: p.Marker, Payload: p.Payload}, err
 }
 
+// WritePacket sends one RTP packet and advances the endpoint's timestamp by units
+// (RTP clock ticks).
 func (l sipLeg) WritePacket(pt uint8, payload []byte, units uint32, marker bool) error {
 	return l.e.Write(pt, payload, units, marker)
 }
 
+// Skip advances the endpoint's timestamp by units without sending.
 func (l sipLeg) Skip(units uint32) { l.e.Skip(units) }
 
 // CellLeg is the controller's end of one media flow with a cell

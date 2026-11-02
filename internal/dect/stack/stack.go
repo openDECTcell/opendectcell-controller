@@ -48,6 +48,7 @@ type Capability struct {
 // Recycled is what Stack.Recycle came to.
 type Recycled int
 
+// The results of Stack.Recycle. Only RecycleBusy is a reason to call again.
 const (
 	RecycleDone Recycled = iota // the record is a free store again
 	RecycleBusy                 // the stack is not quiet: try again later
@@ -57,6 +58,7 @@ const (
 // To says where a bridge line goes (docs/bridge-interface.md §2).
 type To int
 
+// The destinations of a bridge line (docs/bridge-interface.md §2).
 const (
 	ToAsker  To = iota // the reply to the client that sent the verb
 	ToBridge           // call traffic, to the bridge

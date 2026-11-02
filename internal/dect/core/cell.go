@@ -791,12 +791,12 @@ func (r *cellRun) restart() {
 		}
 		return
 	}
-	max := int(r.up.CapSubRecords)
-	if max == 0 || max > maxSlot {
-		max = maxSlot
+	slots := int(r.up.CapSubRecords) // what the chip's firmware holds
+	if slots == 0 || slots > maxSlot {
+		slots = maxSlot
 	}
 	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-	hs, unplaced, err := r.core.Records.CellRecords(ctx, r.id, max)
+	hs, unplaced, err := r.core.Records.CellRecords(ctx, r.id, slots)
 	cancel()
 	if err != nil {
 		r.log.Error("handset records not loaded: no DECT stack yet", "err", err, "retry", r.core.Retry)
@@ -857,7 +857,7 @@ func (r *cellRun) restart() {
 		r.next++
 	}
 	free := 0
-	for ; chipRecs+free < max; free++ {
+	for ; chipRecs+free < slots; free++ {
 		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
 		t, err := r.core.Records.ReserveTPUI(ctx, r.id)
 		cancel()
@@ -1157,15 +1157,25 @@ func (g *gen) stop() { close(g.jobs) }
 
 // stack.Env, on the cell's goroutine.
 
+// Send hands a mail to the cell's tunnel (stack.Env.Send) through cellRun.send,
+// which gives slot writes a correlation number so that a MAIL_REJECT can be traced
+// to its slot.
 func (g *gen) Send(m stack.Mail) error { return g.r.send(0, m) }
-func (g *gen) Room() bool              { return true }
 
+// Room always says yes: the controller does not hold LAPC frames back (stack.Env.Room).
+func (g *gen) Room() bool { return true }
+
+// Random fills b from crypto/rand. A failure is fatal: a stack without
+// randomness would make predictable keys and challenges.
 func (g *gen) Random(b []byte) {
 	if _, err := rand.Read(b); err != nil {
 		panic("core: no randomness: " + err.Error())
 	}
 }
 
+// Log writes one stack log line at info level (stack.Env.Log). The library has no
+// callback for a failed registration, so a line that says one was rejected is also
+// passed to the registration windows (ADR 0005).
 func (g *gen) Log(line string) {
 	g.r.log.Info(line)
 	// The library has no callback for a failed registration; its log line
@@ -1176,6 +1186,10 @@ func (g *gen) Log(line string) {
 	}
 }
 
+// Event takes one bridge line from the stack (stack.Env.Event). Handsets' own
+// dialling (call-out) is resolved here, because the number's meaning depends on
+// the handset; everything else goes to the core's bridge-line handler. The
+// destination is not used here.
 func (g *gen) Event(to stack.To, line string) {
 	line = strings.TrimSpace(line)
 	g.r.log.Debug("bridge line", "line", line)
@@ -1205,6 +1219,10 @@ func (r *cellRun) handsetBySlot(slot string) uuid.UUID {
 	return uuid.Nil
 }
 
+// Save stores record i, which the stack changed (stack.Env.Save). The first save of
+// a record the controller does not know is an enrolment: it must prove a live
+// registration PIN, and without one the record is refused and wiped. Otherwise the
+// record is written to the database by the cell's writer goroutine, not here.
 func (g *gen) Save(i int, rec stack.Record) {
 	var owner, window uuid.UUID
 	if _, ok := g.slotOf[i]; !ok {
@@ -1228,8 +1246,12 @@ func (g *gen) Save(i int, rec stack.Record) {
 	g.job(job{kind: jobSave, i: i, rec: rec, owner: owner, window: window})
 }
 
+// Fetch asks the core to find the handset with this IPUI (stack.Env.Fetch): the
+// cell holds no record of it, and the stack waits for Resume.
 func (g *gen) Fetch(ipui []byte) { g.r.core.fetch(g.r.id, ipui) }
 
+// Forget drops record i from the cell's maps and queues the database change
+// (stack.Env.Forget): the handset deregistered.
 func (g *gen) Forget(i int, why string) {
 	g.r.log.Info("handset deregistered", "record", i, "why", why)
 	if hid, ok := g.r.hidOf[i]; ok { // not recycled: the stack made the index a free store
@@ -1244,10 +1266,12 @@ func (g *gen) Forget(i int, why string) {
 	g.job(job{kind: jobForget, i: i})
 }
 
+// Named queues the new name of record i for the database (stack.Env.Named).
 func (g *gen) Named(i int, name string) { g.job(job{kind: jobRename, i: i, name: name}) }
 
-// NameVisible: a handset sees the handsets of its own user's account
-// (list-access.md §1.1).
+// NameVisible says whether the handset in chip slot viewer may see slot's entry in
+// its Internal Names List (stack.Env.NameVisible): a handset sees the handsets of
+// its own user's account, itself included (list-access.md §1.1).
 func (g *gen) NameVisible(viewer, slot uint) bool {
 	if viewer == slot {
 		return true
@@ -1257,9 +1281,12 @@ func (g *gen) NameVisible(viewer, slot uint) bool {
 	return ok1 && ok2 && ov == os
 }
 
+// Switched logs that record cur is now the one the main link serves.
 func (g *gen) Switched(cur int, why string) {
 	g.r.log.Debug("record current", "record", cur, "why", why)
 }
+
+// Registered logs that record cur enrolled (stack.Env.Registered).
 func (g *gen) Registered(cur int) {
 	g.r.log.Info("handset registered", "record", cur)
 	// A handset that enrolled again (its record was known) completes the
@@ -1269,14 +1296,21 @@ func (g *gen) Registered(cur int) {
 		g.job(job{kind: jobReenrol, i: cur, pin: pin, owner: g.owner[g.slotOf[cur]]})
 	}
 }
+
+// CapLearned queues the terminal capability of record i for its handset page
+// (stack.Env.CapLearned).
 func (g *gen) CapLearned(i int, c stack.Capability) {
 	g.r.log.Debug("handset capability learned", "record", i)
 	g.job(job{kind: jobCaps, i: i, caps: capabilityText(c)})
 }
 
-// Clock: the controller's clock is trusted (NTP on its host).
+// Clock gives the controller's clock and says it is right: the host keeps it with
+// NTP, unlike a cell (stack.Env.Clock).
 func (g *gen) Clock() (time.Time, bool) { return time.Now(), true }
 
+// Media logs that the audio of a call was bound to a channel or released
+// (stack.Env.Media). The cell's media flow is opened elsewhere
+// (internal/bridge/media.go), not here.
 func (g *gen) Media(handle, channel uint8, wideband, up bool) {
 	// MEDIA_OPEN and MEDIA_CLOSE are step 6 of C3.
 	g.r.log.Debug("audio", "handle", handle, "channel", channel, "wideband", wideband, "up", up)

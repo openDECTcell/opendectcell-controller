@@ -273,7 +273,7 @@ func TestPassthroughConcealsG711(t *testing.T) {
 // the marker bit on the first packet only.
 func TestSilenceBeforeMedia(t *testing.T) {
 	s := newSim(t, nbPlan, nil)
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		s.p.Tick(s.start.Add(time.Duration(i) * tick))
 	}
 	if len(s.cell.sent) != 25 || len(s.sip.sent) != 25 {
@@ -329,7 +329,7 @@ func TestEventDTMF(t *testing.T) {
 	if d := <-ev.called; d != '#' {
 		t.Fatalf("event for %q", d)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		s.p.Tick(s.start.Add(time.Duration(i) * tick))
 	}
 	if len(s.sip.sent) != 0 {
@@ -365,7 +365,7 @@ func TestPtimeMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		p.Tick(start.Add(time.Duration(i) * tick))
 	}
 	if len(cell.sent) != 30 || len(sip.sent) != 20 || len(sip.sent[0].payload) != 240 {

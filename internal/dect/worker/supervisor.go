@@ -72,7 +72,7 @@ func (s *Supervisor) Start(ctx context.Context) {
 		n = runtime.NumCPU()
 	}
 	s.mu.Lock()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		s.workers = append(s.workers, &slot{n: i})
 	}
 	s.mu.Unlock()

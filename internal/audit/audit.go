@@ -8,6 +8,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -121,7 +122,7 @@ func Record(ctx context.Context, q db.Querier, e Entry) error {
 // RecordAs writes an entry for an explicit actor.
 func RecordAs(ctx context.Context, q db.Querier, a Actor, e Entry) error {
 	if e.Action == "" || a.Name == "" {
-		return fmt.Errorf("audit: action and actor name are required")
+		return errors.New("audit: action and actor name are required")
 	}
 	if err := checkDetails(e.Details); err != nil {
 		return err

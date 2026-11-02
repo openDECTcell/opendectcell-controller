@@ -24,6 +24,10 @@ import (
 // RegState is an account's registration state (docs/sip-ua.md §3).
 type RegState string
 
+// The registration states. RegDisabled: the account is off or does not register,
+// or its line has been closed. RegRegistering: a REGISTER is in flight. RegRegistered: the
+// server accepted it, until RegStatus.RegisteredUntil. RegFailed: the server
+// or the transport refused it. RegBackoff: waiting before the next attempt after a failure.
 const (
 	RegDisabled    RegState = "disabled"
 	RegRegistering RegState = "registering"

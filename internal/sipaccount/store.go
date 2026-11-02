@@ -30,6 +30,8 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/sdp"
 )
 
+// Errors of the account store. ErrNotFound: no such account. ErrInUse: a handset line still uses the account,
+// so it cannot be deleted.
 var (
 	ErrNotFound = errors.New("sipaccount: not found")
 	ErrInUse    = errors.New("sipaccount: the account is used by a handset line")

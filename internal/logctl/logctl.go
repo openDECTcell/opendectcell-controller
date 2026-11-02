@@ -227,10 +227,16 @@ type handler struct {
 	lv    *slog.LevelVar
 }
 
+// Enabled implements slog.Handler with the level of this handler's component, so
+// a component's override applies without touching the others.
 func (h *handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.lv.Level() }
 
+// Handle implements slog.Handler by passing the record to the wrapped handler.
 func (h *handler) Handle(ctx context.Context, r slog.Record) error { return h.inner.Handle(ctx, r) }
 
+// WithAttrs implements slog.Handler. A "component" attribute picks that
+// component's level variable for the returned handler, which is how a logger
+// made with slog.With("component", "sip") obeys the "sip" override.
 func (h *handler) WithAttrs(as []slog.Attr) slog.Handler {
 	n := &handler{c: h.c, inner: h.inner.WithAttrs(as), lv: h.lv}
 	for _, a := range as {
@@ -243,6 +249,7 @@ func (h *handler) WithAttrs(as []slog.Attr) slog.Handler {
 	return n
 }
 
+// WithGroup implements slog.Handler; the level variable carries over.
 func (h *handler) WithGroup(name string) slog.Handler {
 	return &handler{c: h.c, inner: h.inner.WithGroup(name), lv: h.lv}
 }
@@ -257,7 +264,7 @@ func MaskNumber(s string) string {
 	}
 	r := []rune(user)
 	if len(r) > 3 {
-		for i := 0; i < len(r)-3; i++ {
+		for i := range len(r) - 3 {
 			r[i] = '*'
 		}
 	}

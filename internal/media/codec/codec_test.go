@@ -14,7 +14,7 @@ import (
 )
 
 func TestG711Exhaustive(t *testing.T) {
-	for c := 0; c < 256; c++ {
+	for c := range 256 {
 		if got := AlawEncode(AlawDecode(byte(c))); got != byte(c) {
 			t.Errorf("A-law %#02x decodes to %d, which encodes to %#02x", c, AlawDecode(byte(c)), got)
 		}

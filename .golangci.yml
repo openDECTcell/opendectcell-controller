@@ -10,6 +10,7 @@ linters:
     - misspell
     - nilerr
     - noctx
+    - revive
     - sqlclosecheck
     - unconvert
     - usestdlibvars
@@ -30,6 +31,16 @@ linters:
         - (*crypto/tls.Conn).SetDeadline
         - (*crypto/tls.Conn).SetReadDeadline
         - (*crypto/tls.Conn).SetWriteDeadline
+    revive:
+      # Only the documentation rules: every exported identifier has a doc
+      # comment that starts with its name, and every package has a package
+      # comment. revive's other default rules are off.
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers # methods that implement an interface need a comment too
+            - disableStutteringCheck # cell.CellUp and the like: renaming churns the public API
+        - name: package-comments
     gosec:
       excludes:
         - G104 # unhandled errors: errcheck covers this, with the exclusions above
@@ -40,7 +51,7 @@ linters:
       - std-error-handling
     rules:
       - path: _test\.go
-        linters: [errcheck, gosec, noctx, bodyclose]
+        linters: [errcheck, gosec, noctx, bodyclose, revive]
       - path: internal/auth/oidctest/
         linters: [errcheck, gosec]
       # SIP status codes look like HTTP ones but are not.

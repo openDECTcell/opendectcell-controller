@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/mail"
 	"strings"
 	"sync"
@@ -30,6 +29,8 @@ import (
 // Role is a user's role.
 type Role string
 
+// The two roles. An admin manages users, cells and settings; a user sees and
+// changes only their own handsets and accounts (AGENTS.md §5).
 const (
 	RoleAdmin Role = "admin"
 	RoleUser  Role = "user"
@@ -75,6 +76,16 @@ func (u *User) Actor() audit.Actor {
 	return audit.Actor{UserID: &id, Name: u.Username}
 }
 
+// Errors of the user and session store.
+//
+//   - ErrNotFound: no such user, or no local password to check or change
+//     (OIDC users have none).
+//   - ErrBadLogin: unknown user or wrong password, deliberately not told
+//     apart, so a login does not reveal which usernames exist.
+//   - ErrRateLimited: too many failed attempts for this key within RateWindow.
+//   - ErrUsernameTaken: the username is already in use.
+//   - ErrNoSession: the cookie names no live session (unknown, expired,
+//     idle too long, or its user is disabled).
 var (
 	ErrNotFound      = errors.New("auth: not found")
 	ErrBadLogin      = errors.New("auth: invalid username or password")
@@ -156,7 +167,7 @@ func (s *Store) CreateLocalUser(ctx context.Context, n NewLocalUser) (*User, err
 		return nil, err
 	}
 	if n.Role != RoleAdmin && n.Role != RoleUser {
-		return nil, fmt.Errorf("role must be admin or user")
+		return nil, errors.New("role must be admin or user")
 	}
 	if err := CheckNewPassword(n.Password); err != nil {
 		return nil, err

@@ -99,7 +99,7 @@ func (u *Up2) Process(dst, in []int16) []int16 {
 		// Zero-stuffed input filtered with gain 2, split into its two
 		// phases: even taps for one output, odd taps for the other.
 		var a, b float64
-		for k := 0; k < halfbandTaps; k++ {
+		for k := range halfbandTaps {
 			x := u.hist[len(u.hist)-1-k/2]
 			if k%2 == 0 {
 				a += halfband[k] * x

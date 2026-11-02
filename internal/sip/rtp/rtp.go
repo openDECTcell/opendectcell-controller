@@ -430,7 +430,7 @@ func (e *Endpoint) SendDTMF(ctx context.Context, digit rune, d time.Duration) er
 			reps = 3
 		}
 		e.mu.Lock()
-		for i := 0; i < reps; i++ {
+		for range reps {
 			if err := e.writeLocked(pt, body(dur, end), ts, dur == 0); err != nil {
 				e.mu.Unlock()
 				return err

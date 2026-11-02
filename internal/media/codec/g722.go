@@ -25,6 +25,9 @@ type g722Dec struct{ d *g722.Decoder }
 func newG722Enc() Encoder { return g722Enc{g722.NewEncoder(g722.Rate64000, 0), new([]int16)} }
 func newG722Dec() Decoder { return g722Dec{g722.NewDecoder(g722.Rate64000, 0)} }
 
+// Encode appends the G.722 encoding of pcm (16 kHz): one octet per two samples,
+// rounded up. Samples beyond +-G722Headroom are clipped first; the encoder keeps
+// its state across calls, so one Encoder serves one direction of one call.
 func (e g722Enc) Encode(dst []byte, pcm []int16) []byte {
 	lim := (*e.buf)[:0]
 	for _, s := range pcm {
@@ -37,6 +40,8 @@ func (e g722Enc) Encode(dst []byte, pcm []int16) []byte {
 	return dst[:n+m]
 }
 
+// Decode appends two 16 kHz samples per G.722 octet. The decoder keeps its state
+// across calls, so one Decoder serves one direction of one call.
 func (d g722Dec) Decode(dst []int16, p []byte) []int16 {
 	n := len(dst)
 	dst = append(dst, make([]int16, 2*len(p))...)

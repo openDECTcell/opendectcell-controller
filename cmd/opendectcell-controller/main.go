@@ -137,7 +137,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	case "healthcheck":
 		return healthcheck(rest)
 	case "cellworker":
-		return cellWorker(stderr)
+		return cellWorker()
 	case "init-secrets":
 		return initSecrets(rest, stdout)
 	case "help", "-h", "--help":
@@ -722,7 +722,7 @@ func initSecrets(args []string, out io.Writer) error {
 	if _, err := write("master_key", 0o600, secret.GenerateMasterKey); err != nil {
 		return err
 	}
-	pw, err := write("db_password", 0o644, func() (string, error) { return auth.NewToken() })
+	pw, err := write("db_password", 0o644, auth.NewToken)
 	if err != nil {
 		return err
 	}

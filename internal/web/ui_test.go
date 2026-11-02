@@ -145,7 +145,7 @@ func TestSelfRegistration(t *testing.T) {
 	// rate limit per address: the limit is 5 attempts in the test environment
 	e.post(t, a, "/admin/settings/registration", url.Values{"enabled": {"on"}})
 	var last int
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		last = e.post(t, e.browser(), "/register", url.Values{"username": {"x"}, "email": {"bad"}, "password": {"p"}}).StatusCode
 	}
 	if last != http.StatusTooManyRequests {

@@ -18,44 +18,50 @@ const MaxBody = 4096
 // Type is a message type (§3.3).
 type Type uint16
 
+// The message types of §3.3. The high byte groups them: 0x00 link,
+// 0x01 STUB tunnel, 0x02 cell management, 0x03 media; 0x04xx-0x05xx and
+// 0x0Fxx are reserved (§12) and not defined here. "up" is cell to
+// controller, "down" the reverse.
 const (
-	Hello          Type = 0x0001
-	HelloAck       Type = 0x0002
-	Heartbeat      Type = 0x0003
-	HeartbeatEcho  Type = 0x0004
-	Goodbye        Type = 0x0005
-	Error          Type = 0x0006
-	Flow           Type = 0x0007
-	EnrollRequest  Type = 0x0010
-	EnrollResponse Type = 0x0011
-	MailUp         Type = 0x0100
-	MailDown       Type = 0x0101
-	MailReject     Type = 0x0102
-	CellState      Type = 0x0200
-	ConfigSet      Type = 0x0201
-	ConfigAck      Type = 0x0202
-	Status         Type = 0x0203
-	StatusRequest  Type = 0x0204
-	StatsRequest   Type = 0x0205
-	Stats          Type = 0x0206
-	StateSnapshot  Type = 0x0207
-	RenewRequest   Type = 0x0210
-	RenewResponse  Type = 0x0211
-	TrustUpdate    Type = 0x0212
-	TrustAck       Type = 0x0213
-	MediaOpen      Type = 0x0300
-	MediaOpenAck   Type = 0x0301
-	MediaClose     Type = 0x0302
-	MediaClosed    Type = 0x0303
+	Hello          Type = 0x0001 // up, §6.1: first frame of a session
+	HelloAck       Type = 0x0002 // down, §6.1: answer to Hello, carries timers and state
+	Heartbeat      Type = 0x0003 // both, §6.3: 4-octet sender time
+	HeartbeatEcho  Type = 0x0004 // both, §6.3: the Heartbeat body sent back
+	Goodbye        Type = 0x0005 // both, §11: orderly close with a reason
+	Error          Type = 0x0006 // both, §11: a frame was refused, the link stays
+	Flow           Type = 0x0007 // up, §9.3: the cell's chip queue state
+	EnrollRequest  Type = 0x0010 // up, §5.2: unauthenticated connections only
+	EnrollResponse Type = 0x0011 // down, §5.2
+	MailUp         Type = 0x0100 // up, §7.1: one STUB mail from the chip
+	MailDown       Type = 0x0101 // down, §7.1: one STUB mail for the chip
+	MailReject     Type = 0x0102 // up, §7.2: a Mail Down could not reach the chip
+	CellState      Type = 0x0200 // down, §6.2: pending, active, disabled or revoked
+	ConfigSet      Type = 0x0201 // down, §10: settings, so far only the RFPI
+	ConfigAck      Type = 0x0202 // up, §10: answer to ConfigSet
+	Status         Type = 0x0203 // up, §10: radio and chip state
+	StatusRequest  Type = 0x0204 // down, §10: asks for Status; empty body
+	StatsRequest   Type = 0x0205 // down, §10: asks for Stats; empty body
+	Stats          Type = 0x0206 // up, §10: counters
+	StateSnapshot  Type = 0x0207 // up, §6.4: the cell's state for a resume
+	RenewRequest   Type = 0x0210 // up, §5.4: CSR for a new certificate
+	RenewResponse  Type = 0x0211 // down, §5.4
+	TrustUpdate    Type = 0x0212 // down, §5.6: new CA during rotation
+	TrustAck       Type = 0x0213 // up, §5.6
+	MediaOpen      Type = 0x0300 // down, §8.1: start an audio flow
+	MediaOpenAck   Type = 0x0301 // up, §8.1
+	MediaClose     Type = 0x0302 // down, §8.1: end an audio flow
+	MediaClosed    Type = 0x0303 // up, §8.1: a flow ended, asked for or not
 )
 
 // Class is a send priority (§9.1).
 type Class uint8
 
+// The send classes: each side sends with strict priority, P0 before P1
+// before P2 (§9.1).
 const (
-	P0 Class = iota // urgent
-	P1              // management
-	P2              // bulk
+	P0 Class = iota // urgent: heartbeat, mail, media control
+	P1              // management: handshake, state, status
+	P2              // bulk: statistics
 )
 
 // Info is a registry entry: the type's class and body bound.
@@ -196,14 +202,23 @@ func (w *Builder) Bytes(tag uint8, v []byte) *Builder {
 	return w
 }
 
+// String adds a tag whose value is the bytes of s, without a terminator.
 func (w *Builder) String(tag uint8, s string) *Builder { return w.Bytes(tag, []byte(s)) }
-func (w *Builder) U8(tag uint8, v uint8) *Builder      { return w.Bytes(tag, []byte{v}) }
+
+// U8 adds a one-octet integer tag.
+func (w *Builder) U8(tag uint8, v uint8) *Builder { return w.Bytes(tag, []byte{v}) }
+
+// U16 adds a two-octet integer tag, big endian like every multi-octet field (§3.2).
 func (w *Builder) U16(tag uint8, v uint16) *Builder {
 	return w.Bytes(tag, binary.BigEndian.AppendUint16(nil, v))
 }
+
+// U32 adds a four-octet big-endian integer tag.
 func (w *Builder) U32(tag uint8, v uint32) *Builder {
 	return w.Bytes(tag, binary.BigEndian.AppendUint32(nil, v))
 }
+
+// U64 adds an eight-octet big-endian integer tag.
 func (w *Builder) U64(tag uint8, v uint64) *Builder {
 	return w.Bytes(tag, binary.BigEndian.AppendUint64(nil, v))
 }
@@ -225,6 +240,7 @@ func need(t TLV, tag uint8, n int) ([]byte, error) {
 	return v, nil
 }
 
+// U8 returns a required one-octet tag; a missing tag or another length is ErrMalformed.
 func (t TLV) U8(tag uint8) (uint8, error) {
 	v, err := need(t, tag, 1)
 	if err != nil {
@@ -233,6 +249,7 @@ func (t TLV) U8(tag uint8) (uint8, error) {
 	return v[0], nil
 }
 
+// U16 returns a required two-octet big-endian tag; a missing tag or another length is ErrMalformed.
 func (t TLV) U16(tag uint8) (uint16, error) {
 	v, err := need(t, tag, 2)
 	if err != nil {
@@ -241,6 +258,7 @@ func (t TLV) U16(tag uint8) (uint16, error) {
 	return binary.BigEndian.Uint16(v), nil
 }
 
+// U32 returns a required four-octet big-endian tag; a missing tag or another length is ErrMalformed.
 func (t TLV) U32(tag uint8) (uint32, error) {
 	v, err := need(t, tag, 4)
 	if err != nil {
@@ -249,6 +267,7 @@ func (t TLV) U32(tag uint8) (uint32, error) {
 	return binary.BigEndian.Uint32(v), nil
 }
 
+// U64 returns a required eight-octet big-endian tag; a missing tag or another length is ErrMalformed.
 func (t TLV) U64(tag uint8) (uint64, error) {
 	v, err := need(t, tag, 8)
 	if err != nil {
@@ -260,24 +279,24 @@ func (t TLV) U64(tag uint8) (uint64, error) {
 // Fixed returns a required tag of exactly n bytes.
 func (t TLV) Fixed(tag uint8, n int) ([]byte, error) { return need(t, tag, n) }
 
-// Str returns a required string tag of at most max bytes.
-func (t TLV) Str(tag uint8, max int) (string, error) {
+// Str returns a required string tag of at most maxLen bytes.
+func (t TLV) Str(tag uint8, maxLen int) (string, error) {
 	v, err := need(t, tag, -1)
 	if err != nil {
 		return "", err
 	}
-	if len(v) > max {
-		return "", fmt.Errorf("%w: tag %d longer than %d", ErrMalformed, tag, max)
+	if len(v) > maxLen {
+		return "", fmt.Errorf("%w: tag %d longer than %d", ErrMalformed, tag, maxLen)
 	}
 	return string(v), nil
 }
 
-// OptStr returns an optional string tag of at most max bytes ("" if absent).
-func (t TLV) OptStr(tag uint8, max int) (string, error) {
+// OptStr returns an optional string tag of at most maxLen bytes ("" if absent).
+func (t TLV) OptStr(tag uint8, maxLen int) (string, error) {
 	if _, ok := t.Get(tag); !ok {
 		return "", nil
 	}
-	return t.Str(tag, max)
+	return t.Str(tag, maxLen)
 }
 
 // Has reports whether tag is present.

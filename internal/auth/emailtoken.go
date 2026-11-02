@@ -88,7 +88,9 @@ func (s *Store) VerifyEmail(ctx context.Context, tok string) (*User, error) {
 
 // RequestReset finds the local user who may be sent a reset link for email,
 // or nil. Every request counts against the client address, whether or not
-// the address exists, so the answer does not tell.
+// the address exists, so the answer does not tell. A nil user with a nil error
+// is the "no such user" answer, not a failure: the caller shows the same page
+// as for a user it found.
 func (s *Store) RequestReset(ctx context.Context, email, addr string) (*User, error) {
 	keys := []string{"reset:" + addr}
 	if addr != "" {
@@ -138,7 +140,8 @@ func (s *Store) ResetPassword(ctx context.Context, tok, password string) error {
 }
 
 // RequestVerification finds the sign-up waiting for confirmation under email,
-// or nil. It counts against the client address like RequestReset.
+// or nil. It counts against the client address like RequestReset, and nil with
+// a nil error likewise means "nobody waiting under that address".
 func (s *Store) RequestVerification(ctx context.Context, email, addr string) (*User, error) {
 	keys := []string{"verify:" + addr}
 	if addr != "" {

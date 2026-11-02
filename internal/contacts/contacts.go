@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,10 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 )
 
+// Errors of the contact and call-list store. ErrNotFound: no such contact or call, or
+// one the caller may not see; the two are not told apart, so ids cannot be probed.
+// ErrReadOnly: a handset tried to change a list it may only read. ErrNotMissed:
+// the call is not an unanswered incoming one, so it has no missed-call read mark.
 var (
 	ErrNotFound  = errors.New("contacts: not found")
 	ErrReadOnly  = errors.New("contacts: read-only for this handset")
@@ -36,7 +41,7 @@ const MaxContactsPerOwner = 500
 type ValidationError map[string]string
 
 func (v ValidationError) Error() string {
-	var parts []string
+	parts := make([]string, 0, len(v))
 	for k, m := range v {
 		parts = append(parts, k+": "+m)
 	}
@@ -246,7 +251,7 @@ func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bo
 		if err := writeNumbers(ctx, tx, id, c.Numbers); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Action: "contact.create", ObjectType: "contact", ObjectID: fmt.Sprint(id),
+		return audit.Record(ctx, tx, audit.Entry{Action: "contact.create", ObjectType: "contact", ObjectID: strconv.FormatInt(id, 10),
 			Details: map[string]any{"scope": scope(owner)}})
 	})
 	if err != nil {
@@ -277,7 +282,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id int64, c Contact) (
 		if err := writeNumbers(ctx, tx, id, c.Numbers); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Action: "contact.update", ObjectType: "contact", ObjectID: fmt.Sprint(id)})
+		return audit.Record(ctx, tx, audit.Entry{Action: "contact.update", ObjectType: "contact", ObjectID: strconv.FormatInt(id, 10)})
 	})
 	if err != nil {
 		return nil, err
@@ -299,7 +304,7 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 		if _, err := tx.Exec(ctx, "DELETE FROM contact WHERE id = $1", id); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Action: "contact.delete", ObjectType: "contact", ObjectID: fmt.Sprint(id),
+		return audit.Record(ctx, tx, audit.Entry{Action: "contact.delete", ObjectType: "contact", ObjectID: strconv.FormatInt(id, 10),
 			Details: map[string]any{"scope": scope(old.OwnerID)}})
 	})
 	if err == nil {
@@ -355,6 +360,9 @@ func (s *Store) SaveFromHandset(ctx context.Context, handset uuid.UUID, id int64
 // CallList names a call list.
 type CallList string
 
+// The call lists of CAT-iq list access (docs/list-access.md §1). The incoming
+// lists are filled from the call log by the SIP accounts on the handset's lines;
+// Outgoing by the handset itself. The values are the names the API uses.
 const (
 	Missed           CallList = "missed_calls"
 	IncomingAccepted CallList = "incoming_accepted_calls"

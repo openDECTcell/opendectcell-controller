@@ -127,6 +127,7 @@ type CellUp struct {
 	HasRFPI bool
 }
 
+// watcher returns Server.Mails as a CellWatcher, or nil if it is not one.
 func (s *Server) watcher() CellWatcher {
 	w, _ := s.Mails.(CellWatcher)
 	return w
@@ -135,9 +136,6 @@ func (s *Server) watcher() CellWatcher {
 // ErrNoCell means the cell has no active session to carry a mail.
 var ErrNoCell = errors.New("cell: not connected or not active")
 
-// SendMail queues a MAIL_DOWN for an active cell (§7.1). corr 0 means the
-// cell drops it silently if the chip cannot take it; any other corr comes
-// back in a MAIL_REJECT (§7.2). Mails of one caller keep their order.
 // SetIdentity asks an active cell to broadcast rfpi (CONFIG_SET tag 6), or, with
 // nil, to go back to its own identity. The cell reloads its chip if it differs
 // from what it broadcasts now, and reconnects.
@@ -161,6 +159,10 @@ func (s *Server) SetIdentity(id uuid.UUID, rfpi *[5]byte) error {
 	return nil
 }
 
+// SendMail queues a MAIL_DOWN for an active cell (§7.1). corr 0 means the
+// cell drops it silently if the chip cannot take it; any other corr comes
+// back in a MAIL_REJECT (§7.2). Mails of one caller keep their order.
+// It returns ErrNoCell when the cell has no active session.
 func (s *Server) SendMail(id uuid.UUID, corr uint16, m wire.MailDownMsg) error {
 	s.mu.Lock()
 	var ss *session

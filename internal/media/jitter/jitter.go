@@ -68,13 +68,12 @@ const (
 // Status is the outcome of a Pop.
 type Status int
 
+// The values of Status. Waiting: nothing to play yet (before the buffer has
+// filled to its target, or in a gap): play silence. OK: a packet to decode.
+// Lost: no packet to play; conceal the returned number of timestamp units.
 const (
-	// Waiting: nothing to play yet (before the buffer has filled to its
-	// target, or in a gap). Play silence.
 	Waiting Status = iota
-	// OK: a packet to decode.
 	OK
-	// Lost: no packet to play; conceal the returned number of units.
 	Lost
 )
 

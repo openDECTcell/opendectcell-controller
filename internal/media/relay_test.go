@@ -92,7 +92,7 @@ func TestRelayJoinsTwoPipelines(t *testing.T) {
 	// A speaks a 440 Hz tone, 20 ms at a time, for one second
 	pcm := func(n, rate int) []byte {
 		b := make([]byte, 0, 2*n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			v := int16(8000 * math.Sin(2*math.Pi*440*float64(i)/float64(rate)))
 			b = append(b, byte(uint16(v)>>8), byte(v))
 		}
@@ -128,7 +128,7 @@ func TestRelayJoinsTwoPipelines(t *testing.T) {
 			}
 		}
 	}()
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		_ = a2.WritePacket(96, pcm(160, 8000), 160, i == 0)
 		time.Sleep(20 * time.Millisecond)
 	}

@@ -63,7 +63,7 @@ func run(b *Buffer, pkts []Packet, dur time.Duration) result {
 
 func stream(n int, delay func(i int) time.Duration) []Packet {
 	var ps []Packet
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ps = append(ps, pkt(i, delay(i)))
 	}
 	return ps
@@ -184,7 +184,7 @@ func TestLateAndDuplicate(t *testing.T) {
 func TestTalkSpurt(t *testing.T) {
 	b := newBuf()
 	var ps []Packet
-	for i := 0; i < 400; i++ {
+	for i := range 400 {
 		if i >= 100 && i < 200 {
 			continue
 		}
@@ -223,7 +223,7 @@ func TestSSRCChange(t *testing.T) {
 func TestPacketSize(t *testing.T) {
 	b := newBuf()
 	var ps []Packet
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		ps = append(ps, Packet{TS: uint32(i * 240), SSRC: 1, Payload: make([]byte, 240), Arrival: t0.Add(time.Duration(i) * 30 * time.Millisecond)})
 	}
 	r := run(b, ps, 4*time.Second)

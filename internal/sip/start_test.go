@@ -16,7 +16,7 @@ import (
 // address, and accounts registering at start-up race it: in the interop run
 // with two accounts, one never sent its REGISTER.
 func TestStartRegistersTheListenerFirst(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)

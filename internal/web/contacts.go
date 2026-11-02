@@ -52,7 +52,7 @@ func (s *Server) contactsPage(w http.ResponseWriter, r *http.Request, u *auth.Us
 func (s *Server) contactAdd(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	c := contacts.Contact{LastName: r.PostFormValue("last_name"), FirstName: r.PostFormValue("first_name")}
-	for i := 0; i < contacts.MaxNumbers; i++ {
+	for i := range contacts.MaxNumbers {
 		n := strings.TrimSpace(r.PostFormValue("number" + strconv.Itoa(i)))
 		if n != "" {
 			c.Numbers = append(c.Numbers, contacts.Number{Number: n, Kind: r.PostFormValue("kind" + strconv.Itoa(i))})

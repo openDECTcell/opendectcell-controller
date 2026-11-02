@@ -24,7 +24,7 @@ func TestFrameRoundTrip(t *testing.T) {
 		}
 		buf.Write(b)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		f, err := ReadFrame(&buf)
 		if err != nil {
 			t.Fatalf("frame %d: %v", i, err)

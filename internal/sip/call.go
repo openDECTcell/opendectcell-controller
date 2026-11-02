@@ -25,6 +25,8 @@ import (
 // Direction of a call.
 type Direction string
 
+// The two directions: a call the controller placed for a handset (Outgoing), and
+// one that arrived for an account (Incoming). The values are what the call log stores.
 const (
 	Outgoing Direction = "out"
 	Incoming Direction = "in"
@@ -33,11 +35,14 @@ const (
 // EventKind is what happened on a call.
 type EventKind string
 
+// The kinds of call event. Which ones occur depends on the direction: only
+// outgoing calls see EvRinging and EvEarlyMedia.
 const (
 	// EvRinging is a 180 from the far end (outgoing calls). It can be
 	// missing when the far end answers at once: sipgo passes only the
 	// latest response up, so a 200 right behind a 180 overtakes it.
-	EvRinging    EventKind = "ringing"
+	EvRinging EventKind = "ringing"
+	// EvEarlyMedia is a 183 with SDP: the network plays its own ringback tone.
 	EvEarlyMedia EventKind = "early_media" // 183 with SDP: play the network's ringback
 	EvAnswered   EventKind = "answered"
 	EvHeld       EventKind = "held"    // the far end put us on hold
@@ -212,12 +217,12 @@ func (c *Call) runOutgoing(ctx context.Context, number string, ts []resolve.Targ
 	fromTag := sip.GenerateTagN(16)
 	cseq := uint32(1)
 	var lastErr error
-	for i := 0; i < len(ts); i++ {
+	for i := range ts {
 		t := ts[i]
 		c.target = t
 		req := c.buildInvite(number, t, body, fromTag, cseq)
 		var res *sip.Response
-		for auth := 0; auth <= 2; auth++ {
+		for auth := range 3 {
 			res, err = c.invite(ctx, req)
 			if err != nil || res == nil || (res.StatusCode != 401 && res.StatusCode != 407) || c.l.acct.Password == "" {
 				break
@@ -303,7 +308,7 @@ func (c *Call) invite(ctx context.Context, req *sip.Request) (*sip.Response, err
 	var derr *sipgo.ErrDialogResponse
 	switch {
 	case err == nil:
-		return nil, nil
+		return nil, nil // answered: the (nil, nil) of the contract above
 	case errors.As(err, &derr):
 		return derr.Res, nil
 	case ctx.Err() != nil:

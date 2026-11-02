@@ -89,14 +89,14 @@ func Correlation(a, b []float64) float64 {
 		return 0
 	}
 	var ma, mb float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ma += a[i]
 		mb += b[i]
 	}
 	ma /= float64(n)
 	mb /= float64(n)
 	var sab, saa, sbb float64
-	for i := 0; i < n; i++ {
+	for i := range n {
 		da, db := a[i]-ma, b[i]-mb
 		sab += da * db
 		saa += da * da

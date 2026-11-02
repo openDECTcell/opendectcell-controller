@@ -52,6 +52,10 @@ var (
 // State is a window's state, as openapi.yaml names it.
 type State string
 
+// The states of a window. Open turns into Completed when a handset enrols with
+// the window's PIN (an Expired window still completes within Grace), into
+// Expired when ExpiresAt passes, or into Cancelled when its owner or an admin
+// closes it. Closed windows stay visible for polling for keepClosed.
 const (
 	Open      State = "open"
 	Completed State = "completed"
@@ -176,12 +180,9 @@ func (g *Registry) Open(owner, caller uuid.UUID, digits int) (Window, string, er
 // newPIN draws digits decimal digits, unequal to every PIN the lists may
 // still name. Called with mu held.
 func (g *Registry) newPIN(digits int) (string, error) {
-	max := big.NewInt(1)
-	for range digits {
-		max.Mul(max, big.NewInt(10))
-	}
+	bound := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(digits)), nil) // 10^digits, exclusive
 	for range 100 {
-		n, err := rand.Int(g.rand, max)
+		n, err := rand.Int(g.rand, bound)
 		if err != nil {
 			return "", fmt.Errorf("regwin: no randomness: %w", err)
 		}

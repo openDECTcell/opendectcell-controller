@@ -272,7 +272,7 @@ func newRig(t *testing.T, lines fakeLines) *rig {
 
 func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Helper()
-	for i := 0; i < 300; i++ {
+	for range 300 {
 		if ok() {
 			return
 		}

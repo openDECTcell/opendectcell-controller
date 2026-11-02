@@ -310,7 +310,7 @@ func TestOIDCBrowserFlowAndAudit(t *testing.T) {
 	next := "/admin/audit"
 	// Follow: controller → IdP → controller callback.
 	loc := e.srv.URL + "/auth/oidc/start?next=" + url.QueryEscape(next)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, err := c.Get(loc)
 		if err != nil {
 			t.Fatal(err)

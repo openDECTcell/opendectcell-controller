@@ -93,7 +93,7 @@ func TestRandomIdentity(t *testing.T) {
 		t.Fatalf("got %+v", id)
 	}
 	seen := map[uint16]bool{}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		id, err := cell.RandomIdentity(nil)
 		if err != nil || id.Validate() != nil {
 			t.Fatalf("%+v: %v", id, err)

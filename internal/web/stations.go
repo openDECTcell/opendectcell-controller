@@ -88,6 +88,8 @@ func (s *Server) stationPage(w http.ResponseWriter, r *http.Request, u *auth.Use
 	s.render(w, http.StatusOK, "station.html", page{Title: c.Name, User: u, Data: s.stationView(r, c), Notice: r.FormValue("done"), Leaflet: true})
 }
 
+// parseCoord reads a latitude or longitude in decimal degrees. An empty value
+// is no coordinate: nil with a nil error, the cell then has no position.
 func parseCoord(v string) (*float64, error) {
 	v = strings.TrimSpace(strings.ReplaceAll(v, ",", "."))
 	if v == "" {

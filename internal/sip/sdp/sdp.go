@@ -24,7 +24,8 @@ type Codec struct {
 	Clock int    // RTP clock rate (8000 for G.722, RFC 3551 §4.5.2)
 }
 
-// Known codecs. Opus is listed in the API as "later" and not offered yet.
+// Codecs lists the codecs the controller can carry, by the name used in an
+// account's codec list. Opus is listed in the API as "later" and not offered yet.
 var Codecs = map[string]Codec{
 	"G722": {"G722", 9, 8000},
 	"PCMA": {"PCMA", 8, 8000},
@@ -37,6 +38,8 @@ const TelephoneEventPT = 101
 // Direction is a media direction attribute.
 type Direction string
 
+// The values of the SDP direction attribute (RFC 4566 §6). A call put on hold
+// is offered SendOnly; an offer without the attribute means SendRecv.
 const (
 	SendRecv Direction = "sendrecv"
 	SendOnly Direction = "sendonly"
@@ -58,6 +61,10 @@ func (d Direction) Reverse() Direction {
 // Encryption is the account's media-encryption policy.
 type Encryption string
 
+// The media-encryption policies of an account. EncOff offers RTP/AVP only and
+// refuses an offer that demands SRTP. EncOptional offers RTP/AVP with a=crypto
+// lines and takes either answer. EncMandatory offers RTP/SAVP and refuses a peer
+// without keys. SRTP without TLS is allowed, but Account.Warnings flags it.
 const (
 	EncOff       Encryption = "off"
 	EncOptional  Encryption = "optional"

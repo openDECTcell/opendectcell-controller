@@ -192,7 +192,7 @@ func (m *Manager) Start(ctx context.Context) {
 	// address, and the accounts registering at start-up would race it
 	// (found by the interop test with two accounts).
 	laddr := m.cfg.UDP.LocalAddr().String()
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		if c, err := m.ua.TransportLayer().GetConnection("udp", laddr); err == nil && c != nil {
 			break
 		}

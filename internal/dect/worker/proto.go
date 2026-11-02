@@ -20,7 +20,7 @@ import (
 
 // Message types. A reply to a request has type mRet and the request's number.
 const (
-	// controller -> worker
+	// Controller -> worker.
 	mNew         uint8 = iota + 1 // gob(stack.Config), u64 core clock now
 	mAddRecord                    // u32 i, gob(stack.Record)
 	mAddFree                      // u32 i, tpui[3]
@@ -43,7 +43,7 @@ const (
 	mSetDir                       // request: u32 n, n x (u32 id, str name) -> mRet(u8)
 	mClose                        // request: -> mRet()
 	mPing                         // -> mPong
-	// worker -> controller
+	// Worker -> controller.
 	mState                   // the snapshot, see state
 	mEnvSend                 // request: mail -> mRet(str error)
 	mEnvRoom                 // request: -> mRet(u8)

@@ -282,9 +282,9 @@ func (c *Core) enrolled(origin, hid uuid.UUID, i int, again bool) {
 	}
 }
 
-// HandsetChanged: the name or the device profile of the handset was changed
-// (the web UI, a registration's wizard). Every cell that holds it tells its
-// stack, so the handsets' name lists and the model's habits follow.
+// HandsetChanged tells the core that the name or the device profile of the
+// handset changed (the web UI, a registration wizard). Every cell that holds
+// it tells its stack, so the handsets' name lists and the model's habits follow.
 func (c *Core) HandsetChanged(hid uuid.UUID) {
 	c.mu.Lock()
 	ctx := c.ctx
@@ -397,6 +397,9 @@ func (c *Core) MailUp(id uuid.UUID, m wire.MailUpMsg) {
 		Param: append([]byte(nil), m.Param...)}})
 }
 
+// MailReject takes a MAIL_REJECT from the cell (§7.2): a mail the controller
+// sent with a correlation number did not reach the chip. A rejection of RejectChipDown
+// restarts the cell's stack; one for a slot write marks that slot unknown.
 func (c *Core) MailReject(id uuid.UUID, m wire.MailRejectMsg) {
 	c.post(id, event{kind: evReject, reject: m})
 }
@@ -407,9 +410,17 @@ func (c *Core) CellRadio(id uuid.UUID, radio, chip uint8) {
 	c.post(id, event{kind: evRadio, radio: radio, chip: chip})
 }
 
+// CellUp is cell.CellWatcher: the cell's tunnel opened or resumed. The stack
+// starts on a new session and carries on on a resumed one.
 func (c *Core) CellUp(id uuid.UUID, up cell.CellUp) { c.post(id, event{kind: evUp, up: up}) }
-func (c *Core) CellDown(id uuid.UUID)               { c.post(id, event{kind: evDown}) }
-func (c *Core) CellGone(id uuid.UUID)               { c.post(id, event{kind: evGone}) }
+
+// CellDown is cell.CellWatcher: the link is lost, the grace period runs, and the
+// stack and its calls stay.
+func (c *Core) CellDown(id uuid.UUID) { c.post(id, event{kind: evDown}) }
+
+// CellGone is cell.CellWatcher: the grace period ended, or the cell is no longer
+// active. Its stack ends and its calls with it.
+func (c *Core) CellGone(id uuid.UUID) { c.post(id, event{kind: evGone}) }
 
 // chipConfig is the per-build chip settings (hosting-dect-base.md §6,
 // the maintainers' notes, §0i): the STUB build's UAK table, and how long the

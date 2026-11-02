@@ -308,13 +308,13 @@ func listName(s string) string {
 		}
 		return c
 	}, s))
-	const max = 15
-	if len(s) <= max {
+	const maxLen = 15 // octets
+	if len(s) <= maxLen {
 		return s
 	}
 	n := 0
 	for i := range s {
-		if i > max {
+		if i > maxLen {
 			break
 		}
 		n = i

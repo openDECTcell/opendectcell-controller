@@ -127,7 +127,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		},
 		"atoi": func(s string) int { n, _ := strconv.Atoi(s); return n },
 		"join": strings.Join,
-		"has":  func(xs []string, x string) bool { return slices.Contains(xs, x) },
+		"has":  slices.Contains[[]string, string],
 		"list": func(xs ...string) []string { return xs },
 		"fieldErr": func(m map[string]string, k string) string {
 			if m == nil {

@@ -31,11 +31,13 @@ const (
 // CellStateValue is a cell state (§6.2).
 type CellStateValue uint8
 
+// The cell states of §6.2, numbered as on the wire (CELL_STATE tag 1, HELLO_ACK
+// tag 3). The database stores the lower-case names (see ParseCellState).
 const (
-	StatePending CellStateValue = iota
-	StateActive
-	StateDisabled
-	StateRevoked
+	StatePending  CellStateValue = iota // enrolled, not yet approved: no radio traffic
+	StateActive                         // approved: radio traffic allowed
+	StateDisabled                       // switched off by an admin: no radio traffic, beacon off
+	StateRevoked                        // revoked by an admin: the controller refuses the connection
 )
 
 var stateNames = [...]string{"pending", "active", "disabled", "revoked"}
@@ -81,6 +83,9 @@ type HelloMsg struct {
 	HasRFPI bool
 }
 
+// Encode builds the HELLO body: tags 1, 2 and 5 to 11 and 14 always, the others
+// (3, 4, 12, 13, 15 to 17) only when set. Tag numbers are in cell-protocol.md
+// §6.1. The cell sends HELLO; the controller encodes it only in tests.
 func (m HelloMsg) Encode() []byte {
 	w := new(Builder).Bytes(1, []byte{m.Major, m.Minor}).String(2, m.SWVersion)
 	if m.StubVersion != "" {
@@ -199,6 +204,8 @@ type HelloAckMsg struct {
 	ControllerTimeMs uint64
 }
 
+// Encode builds the HELLO_ACK body, every tag of §6.1 always present: the
+// timers are in milliseconds except OrphanS, which is in seconds.
 func (m HelloAckMsg) Encode() []byte {
 	r := uint8(0)
 	if m.Resumed {
@@ -209,6 +216,8 @@ func (m HelloAckMsg) Encode() []byte {
 		U16(9, m.OrphanS).U32(10, m.Capabilities).U64(11, m.ControllerTimeMs).Build()
 }
 
+// DecodeHelloAck parses a HELLO_ACK body. It is used by the cell side (and the
+// tests); every tag is required, so a short body is ErrMalformed.
 func DecodeHelloAck(b []byte) (HelloAckMsg, error) {
 	var m HelloAckMsg
 	t, err := ParseTLV(b)
@@ -264,6 +273,8 @@ type EnrollRequestMsg struct {
 // TokenLen is the raw enrollment token length (§5.1).
 const TokenLen = 20
 
+// Encode builds the ENROLL_REQUEST body (§5.2): token, CSR and software
+// version always, hardware model and name hint only when set.
 func (m EnrollRequestMsg) Encode() []byte {
 	w := new(Builder).Bytes(1, m.Token).Bytes(2, m.CSR)
 	if m.HWModel != "" {
@@ -276,6 +287,10 @@ func (m EnrollRequestMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeEnrollRequest parses an ENROLL_REQUEST body. The token must be exactly
+// TokenLen octets, the CSR at most 1024, the strings at most 64; anything else
+// is ErrMalformed. Nothing is verified here: the token and the CSR are checked
+// by the enrollment handler.
 func DecodeEnrollRequest(b []byte) (EnrollRequestMsg, error) {
 	var m EnrollRequestMsg
 	t, err := ParseTLV(b)
@@ -321,6 +336,8 @@ type EnrollResponseMsg struct {
 	State  CellStateValue
 }
 
+// Encode builds the ENROLL_RESPONSE body: the status, and on EnrollOK also the
+// cell id, its certificate, the CA certificate (both DER) and the cell's state.
 func (m EnrollResponseMsg) Encode() []byte {
 	w := new(Builder).U16(1, m.Status)
 	if m.Status == EnrollOK {
@@ -329,6 +346,10 @@ func (m EnrollResponseMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeEnrollResponse parses an ENROLL_RESPONSE body (cell side: celltest and
+// the tests use it). A status other than
+// EnrollOK returns early with only Status set and a nil error: the other tags
+// are absent then (§5.2).
 func DecodeEnrollResponse(b []byte) (EnrollResponseMsg, error) {
 	var m EnrollResponseMsg
 	t, err := ParseTLV(b)
@@ -371,6 +392,7 @@ type GoodbyeMsg struct {
 	Text   string
 }
 
+// Encode builds the GOODBYE body; Text is cut to 128 octets on a rune boundary.
 func (m GoodbyeMsg) Encode() []byte {
 	w := new(Builder).U16(1, m.Reason)
 	if m.Text != "" {
@@ -379,6 +401,7 @@ func (m GoodbyeMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeGoodbye parses a GOODBYE body; the text is optional and at most 128 octets.
 func DecodeGoodbye(b []byte) (GoodbyeMsg, error) {
 	var m GoodbyeMsg
 	t, err := ParseTLV(b)
@@ -412,6 +435,8 @@ type ErrorMsg struct {
 	Text    string
 }
 
+// Encode builds the ERROR body (§11). RefType and RefCorr are left out when
+// zero, so an error that answers no particular frame carries only the code.
 func (m ErrorMsg) Encode() []byte {
 	w := new(Builder).U16(1, m.Code)
 	if m.RefType != 0 {
@@ -426,6 +451,7 @@ func (m ErrorMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeError parses an ERROR body; only the code is required.
 func DecodeError(b []byte) (ErrorMsg, error) {
 	var m ErrorMsg
 	t, err := ParseTLV(b)
@@ -457,6 +483,7 @@ type CellStateMsg struct {
 	Reason string
 }
 
+// Encode builds the CELL_STATE body (§6.2); Reason is cut to 128 octets.
 func (m CellStateMsg) Encode() []byte {
 	w := new(Builder).U8(1, uint8(m.State))
 	if m.Reason != "" {
@@ -465,6 +492,8 @@ func (m CellStateMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeCellState parses a CELL_STATE body; only the state is required. A
+// state value the registry does not know is passed on, not rejected.
 func DecodeCellState(b []byte) (CellStateMsg, error) {
 	var m CellStateMsg
 	t, err := ParseTLV(b)
@@ -491,6 +520,9 @@ type StatusMsg struct {
 	HasRFPI bool
 }
 
+// Encode builds the STATUS body. This is the cell's side; the controller uses
+// it in tests. Radio and chip state are written only when the Has flag is set,
+// epoch and uptime always.
 func (m StatusMsg) Encode() []byte {
 	w := new(Builder)
 	if m.HasRadio {
@@ -509,6 +541,9 @@ func (m StatusMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeStatus parses a STATUS body. Every tag is optional, because a cell
+// reports what it knows; the Has flags say which of radio state, chip state and
+// RFPI were present.
 func DecodeStatus(b []byte) (StatusMsg, error) {
 	var m StatusMsg
 	t, err := ParseTLV(b)
@@ -562,6 +597,8 @@ type ConfigSetMsg struct {
 	Revert bool
 }
 
+// Encode builds the CONFIG_SET body: tag 6 with the RFPI, tag 6 empty for
+// Revert, or an empty body when neither is set. HasRFPI wins over Revert.
 func (m ConfigSetMsg) Encode() []byte {
 	w := new(Builder)
 	switch {
@@ -583,7 +620,9 @@ func DecodeConfigAck(b []byte) (uint16, error) {
 	return t.U16(1)
 }
 
-// Stats counter ids (§10).
+// StatsCounterNames names the counter ids of STATS (§10), for the status page
+// and the log. Ids not listed are valid: DecodeStats keeps them by number, so
+// a cell newer than the controller needs no version bump.
 var StatsCounterNames = map[uint16]string{
 	1: "mails_up", 2: "mails_down", 3: "mails_rejected", 4: "control_bytes_up", 5: "control_bytes_down",
 	6: "reconnects", 7: "chip_restarts", 8: "rtt_p50_ms", 9: "rtt_p95_ms", 10: "rtp_sent",
@@ -635,6 +674,8 @@ type FlowMsg struct {
 	State      uint8
 }
 
+// DecodeFlow parses the fixed three-octet FLOW body: the cell's chip queue depth
+// in bytes, and a state of 0 (ok), 1 (above 2 KiB) or 2 (full), §9.3.
 func DecodeFlow(b []byte) (FlowMsg, error) {
 	if len(b) != 3 {
 		return FlowMsg{}, fmt.Errorf("%w: FLOW body of %d bytes", ErrMalformed, len(b))
@@ -642,11 +683,13 @@ func DecodeFlow(b []byte) (FlowMsg, error) {
 	return FlowMsg{QueueBytes: binary.BigEndian.Uint16(b), State: b[2]}, nil
 }
 
+// Encode builds the fixed FLOW body; this is the cell's side, used in tests.
 func (m FlowMsg) Encode() []byte {
 	return append(binary.BigEndian.AppendUint16(nil, m.QueueBytes), m.State)
 }
 
-// RenewRequest/Response (§5.4).
+// DecodeRenewRequest returns the DER CSR of a RENEW_REQUEST (§5.4), at most 1024
+// octets; a longer one is ErrMalformed.
 func DecodeRenewRequest(b []byte) ([]byte, error) {
 	t, err := ParseTLV(b)
 	if err != nil {
@@ -659,6 +702,8 @@ func DecodeRenewRequest(b []byte) ([]byte, error) {
 	return csr, err
 }
 
+// EncodeRenewResponse builds a RENEW_RESPONSE (§5.4): the status (0 = renewed),
+// and the new DER certificate when cert is not nil.
 func EncodeRenewResponse(status uint16, cert []byte) []byte {
 	w := new(Builder).U16(1, status)
 	if cert != nil {
@@ -732,6 +777,10 @@ func (m MediaOpenMsg) Uplink() uint8 {
 	return m.Format
 }
 
+// Encode builds the MEDIA_OPEN body (§8.1). CtlAddr is written as a family octet
+// (4 or 6), the address and the port, and an IPv4-mapped IPv6 address is sent
+// as IPv4. Tag 13 (the uplink format) is written only when it differs from
+// Format, so a cell that predates it sees the same body as before.
 func (m MediaOpenMsg) Encode() []byte {
 	w := new(Builder).U32(1, m.MediaID).U8(2, m.AudioChannel).U8(3, m.Format)
 	if m.PtimeMs != 0 {
@@ -739,11 +788,15 @@ func (m MediaOpenMsg) Encode() []byte {
 	}
 	w.U8(5, m.PayloadType)
 	a := m.CtlAddr.Addr().Unmap()
-	fam := []byte{4}
+	fam := byte(4)
 	if a.Is6() {
-		fam = []byte{6}
+		fam = 6
 	}
-	addr := append(append(fam, a.AsSlice()...), byte(m.CtlAddr.Port()>>8), byte(m.CtlAddr.Port()))
+	ip := a.AsSlice()
+	addr := make([]byte, 0, 1+len(ip)+2) // family, address, port
+	addr = append(addr, fam)
+	addr = append(addr, ip...)
+	addr = append(addr, byte(m.CtlAddr.Port()>>8), byte(m.CtlAddr.Port()))
 	w.Bytes(6, addr).U32(7, m.SSRCUp).U32(8, m.SSRCDown).U8(9, m.SRTPProfile)
 	if m.SRTPProfile != SRTPNone {
 		w.Bytes(10, m.KeyUp).Bytes(11, m.KeyDown)
@@ -757,6 +810,10 @@ func (m MediaOpenMsg) Encode() []byte {
 	return w.Build()
 }
 
+// DecodeMediaOpen parses a MEDIA_OPEN body; this is the cell's side, used by
+// celltest and the tests. Required tags are the id, channel, format, payload type, address, both
+// SSRCs and the SRTP profile; with a profile other than SRTPNone both keys must
+// have exactly SRTPKeyLen octets.
 func DecodeMediaOpen(b []byte) (MediaOpenMsg, error) {
 	var m MediaOpenMsg
 	t, err := ParseTLV(b)
@@ -832,10 +889,12 @@ type MediaOpenAckMsg struct {
 	Status  uint16
 }
 
+// Encode builds the MEDIA_OPEN_ACK body: the media id and a Media* status.
 func (m MediaOpenAckMsg) Encode() []byte {
 	return new(Builder).U32(1, m.MediaID).U16(2, m.Status).Build()
 }
 
+// DecodeMediaOpenAck parses a MEDIA_OPEN_ACK body; both tags are required.
 func DecodeMediaOpenAck(b []byte) (MediaOpenAckMsg, error) {
 	var m MediaOpenAckMsg
 	t, err := ParseTLV(b)
@@ -867,10 +926,12 @@ type MediaClosedMsg struct {
 	Reason  uint8
 }
 
+// Encode builds the MEDIA_CLOSED body: the media id and a MediaClosed* reason.
 func (m MediaClosedMsg) Encode() []byte {
 	return new(Builder).U32(1, m.MediaID).U8(2, m.Reason).Build()
 }
 
+// DecodeMediaClosed parses a MEDIA_CLOSED body; both tags are required.
 func DecodeMediaClosed(b []byte) (MediaClosedMsg, error) {
 	var m MediaClosedMsg
 	t, err := ParseTLV(b)
@@ -897,6 +958,10 @@ type MailUpMsg struct {
 	Param    []byte
 }
 
+// DecodeMailUp parses the fixed MAIL_UP layout: a four-octet receive time, then
+// source, destination, a two-octet primitive, a length octet and that many
+// parameter octets. The length must match the body exactly and not exceed
+// MailParamMax. Param aliases b.
 func DecodeMailUp(b []byte) (MailUpMsg, error) {
 	if len(b) < 9 || len(b) != 9+int(b[8]) || b[8] > MailParamMax {
 		return MailUpMsg{}, fmt.Errorf("%w: MAIL_UP body of %d bytes", ErrMalformed, len(b))
@@ -918,6 +983,8 @@ type MailDownMsg struct {
 	Param    []byte
 }
 
+// DecodeMailDown parses the fixed MAIL_DOWN layout (MAIL_UP without the receive
+// time); the same length rules as DecodeMailUp. Param aliases b.
 func DecodeMailDown(b []byte) (MailDownMsg, error) {
 	if len(b) < 5 || len(b) != 5+int(b[4]) || b[4] > MailParamMax {
 		return MailDownMsg{}, fmt.Errorf("%w: MAIL_DOWN body of %d bytes", ErrMalformed, len(b))
@@ -948,6 +1015,7 @@ type MailRejectMsg struct {
 	Reason  uint8
 }
 
+// DecodeMailReject parses the fixed three-octet MAIL_REJECT body.
 func DecodeMailReject(b []byte) (MailRejectMsg, error) {
 	if len(b) != 3 {
 		return MailRejectMsg{}, fmt.Errorf("%w: MAIL_REJECT body of %d bytes", ErrMalformed, len(b))
@@ -955,6 +1023,7 @@ func DecodeMailReject(b []byte) (MailRejectMsg, error) {
 	return MailRejectMsg{RefCorr: binary.BigEndian.Uint16(b), Reason: b[2]}, nil
 }
 
+// Encode builds the fixed MAIL_REJECT body; this is the cell's side.
 func (m MailRejectMsg) Encode() []byte {
 	return append(binary.BigEndian.AppendUint16(nil, m.RefCorr), m.Reason)
 }

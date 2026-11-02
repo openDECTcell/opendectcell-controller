@@ -156,7 +156,7 @@ func TestLocalLoginAndSessions(t *testing.T) {
 		t.Fatalf("idle session survived: %v", err)
 	}
 	tok, _ = s.CreateSession(ctx, got, "local")
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		clk.t = clk.t.Add(59 * time.Minute)
 		if _, err := s.LookupSession(ctx, tok); err != nil {
 			if i < 23 {
@@ -189,7 +189,7 @@ func TestLocalLoginAndSessions(t *testing.T) {
 func TestLoginRateLimitAndDisabled(t *testing.T) {
 	s, clk := newStore(t)
 	s.CreateLocalUser(ctx, auth.NewLocalUser{Username: "carol", Password: "long enough pw", Role: auth.RoleUser})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, err := s.LoginLocal(ctx, "carol", "wrong password", "192.0.2.9"); !errors.Is(err, auth.ErrBadLogin) {
 			t.Fatalf("attempt %d: %v", i, err)
 		}

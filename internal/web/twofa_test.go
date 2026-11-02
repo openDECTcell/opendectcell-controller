@@ -120,7 +120,7 @@ func TestTwoFactorWrongCodesAreLimited(t *testing.T) {
 	c2 := e.browser()
 	ch := challengeRE.FindStringSubmatch(readBody(e.login(t, c2, "user", "user password")))
 	var last int
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		last = e.post(t, c2, "/login/2fa", url.Values{"challenge": {ch[1]}, "code": {"000000"}}).StatusCode
 	}
 	if last != http.StatusTooManyRequests {

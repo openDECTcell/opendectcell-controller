@@ -44,8 +44,9 @@ type profileMaker struct {
 }
 
 func profileMakers() []profileMaker {
-	var out []profileMaker
-	for _, m := range profiles.Default.Manufacturers() {
+	makers := profiles.Default.Manufacturers()
+	out := make([]profileMaker, 0, len(makers))
+	for _, m := range makers {
 		out = append(out, profileMaker{ID: m.ID, Name: m.Name, Models: profiles.Default.Models(m.ID)})
 	}
 	return out

@@ -256,8 +256,13 @@ type snapshot struct {
 var _ stack.Stack = (*proxy)(nil)
 var _ stack.Pumper = (*proxy)(nil)
 
+// SetWake implements stack.Pumper: f is called, from any goroutine, when a
+// callback from the worker is queued for Pump, and when the worker died.
 func (p *proxy) SetWake(f func()) { p.wake.Store(&f) }
-func (p *proxy) Alive() bool      { return !p.isDead() }
+
+// Alive implements stack.Pumper: false once the worker has ended, after which
+// the core rebuilds the stack.
+func (p *proxy) Alive() bool { return !p.isDead() }
 
 func (p *proxy) isDead() bool {
 	select {
@@ -447,6 +452,9 @@ func readSnapshot(r *rbuf) snapshot {
 
 // stack.Stack
 
+// AddRecord forwards stack.Stack.AddRecord to the worker. The record travels
+// gob-encoded, UAK included, over the worker's private socket pair. It does not
+// wait for an answer.
 func (p *proxy) AddRecord(i int, rec stack.Record) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -454,6 +462,7 @@ func (p *proxy) AddRecord(i int, rec stack.Record) {
 	p.send(mAddRecord, &w)
 }
 
+// AddFreeStore forwards stack.Stack.AddFreeStore to the worker; no answer is awaited.
 func (p *proxy) AddFreeStore(i int, tpui [3]byte) {
 	var w wbuf
 	w.u32(uint32(i))
@@ -461,6 +470,8 @@ func (p *proxy) AddFreeStore(i int, tpui [3]byte) {
 	p.send(mAddFree, &w)
 }
 
+// Start forwards stack.Stack.Start and waits for the answer. ErrDead means the
+// worker ended before it answered; otherwise the error is the stack's own.
 func (p *proxy) Start() error {
 	body, ok := p.call(mStart, nil)
 	if !ok {
@@ -473,12 +484,14 @@ func (p *proxy) Start() error {
 	return nil
 }
 
+// RadioUp forwards stack.Stack.RadioUp; no answer is awaited.
 func (p *proxy) RadioUp(up bool) {
 	var w wbuf
 	w.bool(up)
 	p.send(mRadioUp, &w)
 }
 
+// SetRegPINs forwards stack.Stack.SetRegPINs; no answer is awaited.
 func (p *proxy) SetRegPINs(pins []string) {
 	var w wbuf
 	w.u32(uint32(len(pins)))
@@ -488,6 +501,8 @@ func (p *proxy) SetRegPINs(pins []string) {
 	p.send(mRegPINs, &w)
 }
 
+// RegWindow forwards stack.Stack.RegWindow; no answer is awaited. The result
+// shows in RegState with the worker's next snapshot.
 func (p *proxy) RegWindow(open bool, secs uint, now uint64) {
 	var w wbuf
 	w.bool(open)
@@ -496,12 +511,15 @@ func (p *proxy) RegWindow(open bool, secs uint, now uint64) {
 	p.send(mRegWindow, &w)
 }
 
+// RegState returns the registration state from the last snapshot the worker sent
+// (mState), not a fresh answer: the call never blocks on the worker.
 func (p *proxy) RegState() (open, free bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.st.regOpen, p.st.regFree
 }
 
+// Mail forwards one chip mail (stack.Stack.Mail) to the worker; no answer is awaited.
 func (p *proxy) Mail(m stack.Mail, now uint64) {
 	var w wbuf
 	w.u8(m.Src)
@@ -515,20 +533,27 @@ func (p *proxy) Mail(m stack.Mail, now uint64) {
 // Tick runs the callbacks that wait; the worker runs the stack's timers itself.
 func (p *proxy) Tick(uint64) { p.Pump() }
 
+// Seen returns when record i last had C-plane traffic, from the last snapshot
+// the worker sent (see stack.Stack.Seen); 0 if never.
 func (p *proxy) Seen(i int) uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.st.seen[i]
 }
 
+// Detached returns when record i's handset last sent {DETACH}, from the last
+// snapshot (see stack.Stack.Detached); 0 if never.
 func (p *proxy) Detached(i int) uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.st.detached[i]
 }
 
+// Hello forwards stack.Stack.Hello to the worker; no answer is awaited.
 func (p *proxy) Hello() { p.send(mHello, nil) }
 
+// Ctl forwards one bridge-interface line and waits for the answer: true if the
+// client has just become the bridge. False also when the worker died.
 func (p *proxy) Ctl(line string, now uint64, isBridge bool) bool {
 	var w wbuf
 	w.str(line)
@@ -538,12 +563,15 @@ func (p *proxy) Ctl(line string, now uint64, isBridge bool) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// Resume forwards stack.Stack.Resume to the worker; no answer is awaited.
 func (p *proxy) Resume(now uint64) {
 	var w wbuf
 	w.u64(now)
 	p.send(mResume, &w)
 }
 
+// Drop forwards stack.Stack.Drop and waits for the answer. False means the stack
+// is not idle, or the worker died.
 func (p *proxy) Drop(i int) bool {
 	var w wbuf
 	w.u32(uint32(i))
@@ -551,6 +579,8 @@ func (p *proxy) Drop(i int) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// Recycle forwards stack.Stack.Recycle and waits for the answer. A dead worker or
+// a malformed answer is RecycleBusy: the caller tries again, and meets a rebuilt stack.
 func (p *proxy) Recycle(i int, tpui [3]byte) stack.Recycled {
 	var w wbuf
 	w.u32(uint32(i))
@@ -562,12 +592,15 @@ func (p *proxy) Recycle(i int, tpui [3]byte) stack.Recycled {
 	return stack.Recycled(body[0])
 }
 
+// Quiet returns whether the stack was idle at the last snapshot.
 func (p *proxy) Quiet() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.st.quiet
 }
 
+// Signal returns the last field strength of record i from the last snapshot
+// (stack.Stack.Signal); ok is false if none was measured.
 func (p *proxy) Signal(i int) (dbm int, at uint64, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -575,6 +608,8 @@ func (p *proxy) Signal(i int) (dbm int, at uint64, ok bool) {
 	return s.dbm, s.at, s.ok
 }
 
+// SetRFPI forwards stack.Stack.SetRFPI and remembers locally that the stack
+// has one, so HasRFPI is right before the next snapshot arrives.
 func (p *proxy) SetRFPI(rfpi [5]byte) {
 	p.mu.Lock()
 	p.rfpi = true
@@ -584,12 +619,16 @@ func (p *proxy) SetRFPI(rfpi [5]byte) {
 	p.send(mSetRFPI, &w)
 }
 
+// HasRFPI reports whether the stack knows the chip's RFPI: set through SetRFPI
+// here, or reported by the worker's last snapshot.
 func (p *proxy) HasRFPI() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.rfpi || p.st.hasRFPI
 }
 
+// SetName forwards stack.Stack.SetName and waits for the answer; false if the
+// stack refuses the name or the worker died.
 func (p *proxy) SetName(i int, name string) bool {
 	var w wbuf
 	w.u32(uint32(i))
@@ -598,6 +637,8 @@ func (p *proxy) SetName(i int, name string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// SetProfile forwards stack.Stack.SetProfile and waits for the answer; false if
+// the stack cannot read the profile texts or the worker died.
 func (p *proxy) SetProfile(i int, mfr, dev string) bool {
 	var w wbuf
 	w.u32(uint32(i))
@@ -607,6 +648,8 @@ func (p *proxy) SetProfile(i int, mfr, dev string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// SetContacts forwards stack.Stack.SetContacts and waits for the answer. A text
+// too large for one message is refused here (false) without asking the worker.
 func (p *proxy) SetContacts(i int, text string) bool {
 	if len(text) > maxFrame-64 {
 		return false // does not fit one message
@@ -618,6 +661,8 @@ func (p *proxy) SetContacts(i int, text string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// SetCalls forwards stack.Stack.SetCalls and waits for the answer. A text too
+// large for one message is refused here (false) without asking the worker.
 func (p *proxy) SetCalls(text string) bool {
 	if len(text) > maxFrame-64 {
 		return false // does not fit one message
@@ -628,6 +673,8 @@ func (p *proxy) SetCalls(text string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// SetDirectory forwards stack.Stack.SetDirectory and waits for the answer; false
+// if the stack refuses an entry or the worker died.
 func (p *proxy) SetDirectory(entries []stack.DirEntry) bool {
 	var w wbuf
 	w.u32(uint32(len(entries)))
@@ -639,12 +686,16 @@ func (p *proxy) SetDirectory(entries []stack.DirEntry) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+// SetLocateValidity forwards stack.Stack.SetLocateValidity (units of 40.96 s); no
+// answer is awaited.
 func (p *proxy) SetLocateValidity(units uint) {
 	var w wbuf
 	w.u32(uint32(units))
 	p.send(mSetValidity, &w)
 }
 
+// Close asks the worker to wipe and free the stack (once; later calls do
+// nothing) and marks the proxy dead. A worker that is already dead is not asked.
 func (p *proxy) Close() {
 	p.shut.Do(func() {
 		if !p.isDead() {

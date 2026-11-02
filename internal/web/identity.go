@@ -70,7 +70,8 @@ type identityPage struct {
 // ConfirmText is what is typed to confirm replacing the current identity.
 func (p identityPage) ConfirmText() string { return p.Current.ConfirmText() }
 
-// Replaces: saving the proposal would replace a different identity.
+// Replaces reports whether saving the proposal would replace a different
+// identity, so the page asks for the confirmation text first.
 func (p identityPage) Replaces() bool {
 	return p.Current != nil && (p.Current.EIC != p.Proposed.EIC || p.Current.FPN != p.Proposed.FPN || p.Current.FPS != p.Proposed.FPS)
 }

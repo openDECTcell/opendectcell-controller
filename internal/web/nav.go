@@ -198,6 +198,8 @@ type navWriter struct {
 
 func (w *navWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+// Flush passes through to the wrapped writer when it can flush, so streaming
+// responses still work behind the wrapper.
 func (w *navWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()

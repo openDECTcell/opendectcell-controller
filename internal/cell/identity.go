@@ -39,9 +39,11 @@ import (
 const (
 	settingIdentityKey = "dect_system_identity"
 
-	// IdentityRandom: made up on this controller. IdentityAllocated: an
-	// EIC bought from ETSI.
-	IdentityRandom    = "random"
+	// IdentityRandom is the Source of an identity whose EIC was made up on this
+	// controller (see the experiment note above).
+	IdentityRandom = "random"
+	// IdentityAllocated is the Source of an identity with an EIC bought from ETSI.
+	// IdentityDonor, below, marks a class A identity taken from a cell.
 	IdentityAllocated = "allocated"
 
 	// IdentityPLI is the PARK length handsets are given: ARC and EIC, so
@@ -112,7 +114,8 @@ func (id SystemIdentity) donorBytes() ([5]byte, error) {
 	return out, nil
 }
 
-// ErrBadIdentity: a value EN 300 175-6 §5.2 does not allow.
+// ErrBadIdentity means a value that EN 300 175-6 §5.2 does not allow, or a donor
+// RFPI that is not 10 hex digits. Callers wrap it with the reason.
 var ErrBadIdentity = errors.New("cell: invalid system identity")
 
 // Validate checks the ranges of §5.2: EIC 0 "shall not be used", FPS 0 is
@@ -206,6 +209,7 @@ func (id SystemIdentity) RFPI(n uint8) [5]byte {
 	return out
 }
 
+// String describes the identity for the audit log (setting and applying it).
 func (id SystemIdentity) String() string {
 	if id.IsA() {
 		return "class A, taken from a cell (ARI " + id.Donor + ")"
@@ -213,7 +217,9 @@ func (id SystemIdentity) String() string {
 	return fmt.Sprintf("class B, EIC %04X, FPN %d, FPS %d", id.EIC, id.FPN, id.FPS)
 }
 
-// SystemIdentity returns the installation's identity, or nil if none is set.
+// SystemIdentity returns the installation's identity. A nil identity with a nil
+// error is the documented "not set yet" answer, not a failure: Want treats it
+// as "apply nothing" and the admin page shows an empty form.
 func (s *Store) SystemIdentity(ctx context.Context) (*SystemIdentity, error) {
 	var raw []byte
 	err := s.Pool.QueryRow(ctx, "SELECT value FROM setting WHERE key = $1", settingIdentityKey).Scan(&raw)

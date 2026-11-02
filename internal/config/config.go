@@ -68,6 +68,7 @@ func (s SIP) RTPRange() (lo, hi int) {
 	return lo, hi
 }
 
+// HTTP configures the web UI and API listener (docs/configuration.md).
 type HTTP struct {
 	// Listen is the address of the web UI and API, e.g. ":8080".
 	Listen string `yaml:"listen"`
@@ -82,6 +83,7 @@ type HTTP struct {
 	MetricsToken string `yaml:"metrics_token"`
 }
 
+// Database configures the PostgreSQL connection pool.
 type Database struct {
 	// URL is a PostgreSQL connection URL. Secret: it may contain a password.
 	URL string `yaml:"url"`
@@ -89,6 +91,9 @@ type Database struct {
 	MaxConns int32 `yaml:"max_conns"`
 }
 
+// Secrets holds the keys that protect secrets in the database: DECT keys, SIP
+// credentials and two-factor secrets (docs/threat-model.md §4.1). The values
+// come from the file or the environment, never from the repository.
 type Secrets struct {
 	// MasterKey is the base64 key-encryption key (docs/threat-model.md §4.1).
 	MasterKey string `yaml:"master_key"`
@@ -96,11 +101,15 @@ type Secrets struct {
 	OldMasterKey string `yaml:"old_master_key"`
 }
 
+// Log sets the default log level and output format; logctl can raise the level of
+// single components at run time.
 type Log struct {
 	Level  string `yaml:"level"`  // debug, info, warn, error
 	Format string `yaml:"format"` // text or json
 }
 
+// Auth configures login: local passwords, OpenID Connect and the session lifetimes.
+// SessionIdle and SessionMaxAge are the idle and the absolute lifetime of a session.
 type Auth struct {
 	Local          LocalAuth     `yaml:"local"`
 	OIDC           OIDC          `yaml:"oidc"`
@@ -109,6 +118,7 @@ type Auth struct {
 	LoginRateLimit int           `yaml:"login_rate_limit"` // failed attempts per user and per client address per 15 min
 }
 
+// LocalAuth configures password login with the controller's own user table.
 type LocalAuth struct {
 	Enabled bool `yaml:"enabled"`
 	// Argon2id parameters (docs/threat-model.md §5).
@@ -117,6 +127,8 @@ type LocalAuth struct {
 	ArgonThreads   uint8  `yaml:"argon_threads"`
 }
 
+// OIDC configures login through an OpenID Connect provider (docs/authentik.md).
+// It is off while Issuer is empty.
 type OIDC struct {
 	// Enabled when Issuer is set.
 	Issuer       string   `yaml:"issuer"`
@@ -137,6 +149,8 @@ type OIDC struct {
 // Enabled reports whether OIDC login is configured.
 func (o OIDC) Enabled() bool { return o.Issuer != "" }
 
+// Cells configures the cell control port and the media ports the cells send to
+// (docs/cell-protocol.md).
 type Cells struct {
 	// Listen is the address of the cell control port (docs/cell-protocol.md §1).
 	Listen string `yaml:"listen"`

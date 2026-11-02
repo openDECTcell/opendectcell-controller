@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,7 +77,7 @@ func TOTPCode(secretB32 string, t time.Time) (string, error) {
 // TOTPURI is the otpauth address an authenticator app takes.
 func TOTPURI(issuer, account, secretB32 string) string {
 	label := url.PathEscape(issuer + ":" + account)
-	q := url.Values{"secret": {secretB32}, "issuer": {issuer}, "period": {fmt.Sprint(TOTPPeriod)}, "digits": {"6"}, "algorithm": {"SHA1"}}
+	q := url.Values{"secret": {secretB32}, "issuer": {issuer}, "period": {strconv.Itoa(TOTPPeriod)}, "digits": {"6"}, "algorithm": {"SHA1"}}
 	return "otpauth://totp/" + label + "?" + q.Encode()
 }
 

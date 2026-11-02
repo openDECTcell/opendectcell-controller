@@ -42,11 +42,16 @@ type CA struct {
 	Key  *ecdsa.PrivateKey
 }
 
-// ControllerURI and CellURI are the SAN URIs that identify the two ends.
+// ControllerURI is the SAN URI of the controller's server certificate:
+// urn:opendectcell:controller:<installation uuid>. A cell requires it in the leaf
+// and checks no hostname, so it can reach the controller by IP address
+// (cell-protocol.md §4.2).
 func ControllerURI(installation uuid.UUID) *url.URL {
 	return &url.URL{Scheme: "urn", Opaque: "opendectcell:controller:" + installation.String()}
 }
 
+// CellURI is the SAN URI of a cell's client certificate,
+// urn:opendectcell:cell:<cell uuid>; CellIDFromCert reads the id back from it.
 func CellURI(cell uuid.UUID) *url.URL {
 	return &url.URL{Scheme: "urn", Opaque: "opendectcell:cell:" + cell.String()}
 }

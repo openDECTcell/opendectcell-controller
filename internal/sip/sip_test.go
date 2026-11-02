@@ -227,7 +227,7 @@ func exchangeAudio(t *testing.T, a, b *rtp.Endpoint, pt uint8) {
 			close(got)
 		}(dir[1])
 		// A few packets, in case the first is sent before the reader runs.
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			dir[0].Write(pt, make([]byte, 160), 160, false)
 			time.Sleep(10 * time.Millisecond)
 		}

@@ -80,6 +80,7 @@ func ByName(name string) (*Codec, error) {
 // l16 is RFC 3551 L16: signed 16-bit samples, network byte order.
 type l16 struct{}
 
+// Encode appends the samples big endian, two octets each.
 func (l16) Encode(dst []byte, pcm []int16) []byte {
 	for _, s := range pcm {
 		dst = append(dst, byte(uint16(s)>>8), byte(s))
@@ -87,6 +88,7 @@ func (l16) Encode(dst []byte, pcm []int16) []byte {
 	return dst
 }
 
+// Decode appends one sample per octet pair; a trailing odd octet is dropped.
 func (l16) Decode(dst []int16, p []byte) []int16 {
 	for i := 0; i+1 < len(p); i += 2 {
 		dst = append(dst, int16(uint16(p[i])<<8|uint16(p[i+1])))

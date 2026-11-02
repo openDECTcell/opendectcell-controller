@@ -43,7 +43,7 @@ func (c *Concealer) Good(frame []int16) {
 	if c.period > 0 {
 		n := min(c.ms(4), len(frame))
 		syn := c.synth(n, false)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			w := float64(i+1) / float64(n+1)
 			frame[i] = sat((1-w)*float64(syn[i]) + w*float64(frame[i]))
 		}
