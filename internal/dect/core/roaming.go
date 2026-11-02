@@ -142,6 +142,7 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 	r.replayMWI(h.ID)
 	r.pushContacts(i)
 	r.callsDirty = true // its calls, with the others
+	r.core.DirectoryChanged()
 	return true
 }
 
@@ -167,6 +168,7 @@ func (r *cellRun) dropTransient(hid uuid.UUID, why string) bool {
 	r.gen.unplace(t.idx)
 	r.gen.job(job{kind: jobUntrack, i: t.idx, hid: hid})
 	r.log.Info("a handset left this cell's table", "handset", hid, "why", why, "held", len(r.trans))
+	r.core.DirectoryChanged()
 	return true
 }
 

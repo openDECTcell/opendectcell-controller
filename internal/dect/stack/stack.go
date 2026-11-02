@@ -224,12 +224,29 @@ type Stack interface {
 	// which line. It replaces the lists; a handset with more unread missed calls than before is told.
 	// False: not a call lists file.
 	SetCalls(text string) bool
+	// SetDirectory gives the Internal Names List the handsets of the same account that are on other
+	// cells (libopendectcell's remote directory): it replaces the entries it had. Each entry's ID is its
+	// number there (RemoteFirst..127). False: an entry is refused (bad number, list full).
+	SetDirectory(entries []DirEntry) bool
 	// SetLocateValidity sets the location validity in units of 40.96 s for
 	// the links from now on; 0: none.
 	SetLocateValidity(units uint)
 	// Close wipes and frees the stack.
 	Close()
 }
+
+// DirEntry is a handset on another cell, as the Internal Names List shows it.
+type DirEntry struct {
+	ID   uint
+	Name string
+}
+
+// The numbers a directory entry may have (libopendectcell DECT_BASE_REMOTE_FIRST, and 127).
+const (
+	RemoteFirst = 64
+	RemoteLast  = 127
+	RemoteMax   = 32 // entries
+)
 
 // Pumper is a stack whose callbacks into Env wait for its owner to run them: one
 // that lives in another process (internal/dect/worker). Core calls SetWake

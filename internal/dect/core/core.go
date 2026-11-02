@@ -228,10 +228,11 @@ const (
 	evContacts     // somebody's contacts changed (hid: the owner, uuid.Nil: all): the handsets get a new Contact List
 	evContactsDone // a change a handset made to its Contact List was stored: hid, seq, contact, entry
 	evCalls        // the call lists of these handsets (hids) changed
+	evDirectory    // handsets moved between tables or changed name: the directory is read again
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump", "contacts", "contactsdone", "calls"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump", "contacts", "contactsdone", "calls", "directory"}[k]
 }
 
 type event struct {

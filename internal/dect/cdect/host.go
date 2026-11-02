@@ -77,7 +77,8 @@ type Host struct {
 	h     cgo.Handle
 	env   Env
 	cstrs []*C.char
-	fault *Fault // a panic caught in a callback, raised once C has returned
+	fault *Fault          // a panic caught in a callback, raised once C has returned
+	dir   map[uint]string // the remote directory as set (SetDirectory)
 }
 
 // Fault is a panic in one of the host's callbacks. It is caught there,
@@ -383,6 +384,50 @@ func (x *Host) SetCalls(text string) bool {
 	cs := C.CString(text)
 	defer C.free(unsafe.Pointer(cs))
 	return C.cdect_host_set_calls(x.c, cs, C.size_t(len(text))) == 0
+}
+
+// SetDirectory replaces the remote directory: the handsets of the same account on other cells.
+func (x *Host) SetDirectory(entries []stack.DirEntry) bool {
+	ok, changed := true, false
+	keep := make(map[uint]bool, len(entries))
+	for _, e := range entries {
+		keep[e.ID] = true
+		if name, have := x.dir[e.ID]; have && name == e.Name {
+			continue
+		}
+		cs := C.CString(e.Name)
+		if e.Name == "" || C.cdect_host_remote_set(x.c, C.unsigned(e.ID), cs) != 0 {
+			ok = false
+		} else {
+			if x.dir == nil {
+				x.dir = map[uint]string{}
+			}
+			x.dir[e.ID] = e.Name
+			changed = true
+		}
+		C.free(unsafe.Pointer(cs))
+	}
+	for id := range x.dir {
+		if !keep[id] {
+			C.cdect_host_remote_set(x.c, C.unsigned(id), nil)
+			delete(x.dir, id)
+			changed = true
+		}
+	}
+	if changed { // the handsets are told once
+		C.cdect_host_names_refresh(x.c)
+	}
+	x.raise()
+	return ok
+}
+
+// remoteName is the name the library holds for directory number id, "" if none (tests).
+func (x *Host) remoteName(id uint) string {
+	p := C.dect_base_remote_name(&x.c.b, C.unsigned(id))
+	if p == nil {
+		return ""
+	}
+	return C.GoString(p)
 }
 
 // callsMissed is how many unread missed calls terminal tid has on line (tests).

@@ -980,6 +980,16 @@ int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, 
 	return rc;
 }
 
+int cdect_host_remote_set(struct cdect_host *c, unsigned id, const char *name)
+{
+	return dect_base_remote_set(&c->b, id, name);
+}
+
+void cdect_host_names_refresh(struct cdect_host *c)
+{
+	dect_base_names_refresh(&c->b);
+}
+
 int cdect_host_set_calls(struct cdect_host *c, const char *text, size_t len)
 {
 	unsigned before[DECT_BASE_HS_MAX][2], i, ln;

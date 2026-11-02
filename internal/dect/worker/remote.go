@@ -621,6 +621,17 @@ func (p *proxy) SetCalls(text string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+func (p *proxy) SetDirectory(entries []stack.DirEntry) bool {
+	var w wbuf
+	w.u32(uint32(len(entries)))
+	for _, e := range entries {
+		w.u32(uint32(e.ID))
+		w.str(e.Name)
+	}
+	body, ok := p.call(mSetDir, &w)
+	return ok && len(body) == 1 && body[0] == 1
+}
+
 func (p *proxy) SetLocateValidity(units uint) {
 	var w wbuf
 	w.u32(uint32(units))

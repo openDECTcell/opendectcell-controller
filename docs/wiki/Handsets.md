@@ -42,7 +42,9 @@ On a CAT-iq handset (for example the A540) the lines appear in its Line menu und
 
 ## Calls between handsets
 
-A call from one handset to another handset **is not supported yet**: the controller bridges between DECT and
+The **INT list** of a handset shows the handsets of **your account**, including those that are on **other cells** at the
+moment (they are listed by name, up to 32; the list is read again within seconds of a handset moving or being renamed).
+**(Built, not yet tried on a handset.)** A call from one handset to another handset **is not supported yet**: the controller bridges between DECT and
 SIP, and refuses an internal call with a message on the handset. Use the SIP side (call the other handset's
 line number) if you need it.
 

@@ -42,30 +42,32 @@ type fakeStack struct {
 	blockCtl chan struct{}
 	contacts []string
 	calls    []string
+	dir      []stack.DirEntry
 	closed   atomic.Bool
 }
 
-func (f *fakeStack) AddRecord(i int, r stack.Record)     { f.records[i] = r }
-func (f *fakeStack) AddFreeStore(i int, t [3]byte)       { f.records[i] = stack.Record{TPUI: t} }
-func (f *fakeStack) Start() error                        { return nil }
-func (f *fakeStack) RadioUp(bool)                        {}
-func (f *fakeStack) SetRegPINs([]string)                 {}
-func (f *fakeStack) RegWindow(bool, uint, uint64)        {}
-func (f *fakeStack) RegState() (bool, bool)              { return true, true }
-func (f *fakeStack) Tick(uint64)                         {}
-func (f *fakeStack) Seen(i int) uint64                   { return 1000 + uint64(i) }
-func (f *fakeStack) Hello()                              { f.env.Event(stack.ToAll, "hello\n") }
-func (f *fakeStack) Resume(uint64)                       {}
-func (f *fakeStack) Drop(i int) bool                     { return i == 1 }
-func (f *fakeStack) Recycle(int, [3]byte) stack.Recycled { return stack.RecycleBusy }
-func (f *fakeStack) Quiet() bool                         { return true }
-func (f *fakeStack) Signal(i int) (int, uint64, bool)    { return -50 - i, 77, true }
-func (f *fakeStack) SetRFPI([5]byte)                     {}
-func (f *fakeStack) HasRFPI() bool                       { return false }
-func (f *fakeStack) SetName(i int, n string) bool        { return n != "" }
-func (f *fakeStack) SetProfile(int, string, string) bool { return true }
-func (f *fakeStack) SetLocateValidity(uint)              {}
-func (f *fakeStack) SetCalls(text string) bool           { f.calls = append(f.calls, text); return text != "" }
+func (f *fakeStack) AddRecord(i int, r stack.Record)      { f.records[i] = r }
+func (f *fakeStack) AddFreeStore(i int, t [3]byte)        { f.records[i] = stack.Record{TPUI: t} }
+func (f *fakeStack) Start() error                         { return nil }
+func (f *fakeStack) RadioUp(bool)                         {}
+func (f *fakeStack) SetRegPINs([]string)                  {}
+func (f *fakeStack) RegWindow(bool, uint, uint64)         {}
+func (f *fakeStack) RegState() (bool, bool)               { return true, true }
+func (f *fakeStack) Tick(uint64)                          {}
+func (f *fakeStack) Seen(i int) uint64                    { return 1000 + uint64(i) }
+func (f *fakeStack) Hello()                               { f.env.Event(stack.ToAll, "hello\n") }
+func (f *fakeStack) Resume(uint64)                        {}
+func (f *fakeStack) Drop(i int) bool                      { return i == 1 }
+func (f *fakeStack) Recycle(int, [3]byte) stack.Recycled  { return stack.RecycleBusy }
+func (f *fakeStack) Quiet() bool                          { return true }
+func (f *fakeStack) Signal(i int) (int, uint64, bool)     { return -50 - i, 77, true }
+func (f *fakeStack) SetRFPI([5]byte)                      {}
+func (f *fakeStack) HasRFPI() bool                        { return false }
+func (f *fakeStack) SetName(i int, n string) bool         { return n != "" }
+func (f *fakeStack) SetProfile(int, string, string) bool  { return true }
+func (f *fakeStack) SetLocateValidity(uint)               {}
+func (f *fakeStack) SetCalls(text string) bool            { f.calls = append(f.calls, text); return text != "" }
+func (f *fakeStack) SetDirectory(e []stack.DirEntry) bool { f.dir = e; return true }
 func (f *fakeStack) SetContacts(i int, text string) bool {
 	f.contacts = append(f.contacts, text)
 	f.env.ContactsChanged(i, "1\tput\t5\t0\tAnna")
@@ -223,6 +225,11 @@ func TestRemoteStackRoundTrip(t *testing.T) {
 
 	if !st.SetCalls("#opendectcell-calls 1\n") || st.SetCalls("") || len(fs.calls) != 2 {
 		t.Errorf("SetCalls: %q", fs.calls)
+	}
+
+	want := []stack.DirEntry{{ID: 64, Name: "AS690H"}, {ID: 65, Name: "Büro"}}
+	if !st.SetDirectory(want) || len(fs.dir) != 2 || fs.dir[1] != want[1] {
+		t.Errorf("SetDirectory: %v", fs.dir)
 	}
 
 	st.Close()

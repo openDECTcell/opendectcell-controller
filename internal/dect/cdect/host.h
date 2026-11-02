@@ -152,6 +152,9 @@ int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, 
  * text is not a call lists file.
  */
 int cdect_host_set_calls(struct cdect_host *c, const char *text, size_t len);
+/* One entry of the remote directory (empty name: remove it), and the handsets told of the change (API 152). 0, or -1. */
+int cdect_host_remote_set(struct cdect_host *c, unsigned id, const char *name);
+void cdect_host_names_refresh(struct cdect_host *c);
 /* The oldest journalled change of record i's Contact List as a line in c->out (no newline): its length, 0 if none. */
 size_t cdect_host_contact_change(struct cdect_host *c, unsigned i);
 /* Tests: a contact "name" put into record i's list as a handset would (journalled). */

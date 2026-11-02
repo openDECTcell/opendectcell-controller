@@ -40,6 +40,7 @@ const (
 	mSetValidity                  // u32 units
 	mSetContacts                  // request: u32 i, bytes text -> mRet(u8)
 	mSetCalls                     // request: bytes text -> mRet(u8)
+	mSetDir                       // request: u32 n, n x (u32 id, str name) -> mRet(u8)
 	mClose                        // request: -> mRet()
 	mPing                         // -> mPong
 	// worker -> controller

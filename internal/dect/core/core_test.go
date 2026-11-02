@@ -34,6 +34,8 @@ type fakeStack struct {
 	started  bool
 	// the Contact List text each record was given (SetContacts)
 	contactsOf map[int]string
+	// the directory each SetDirectory gave
+	dirSets [][]stack.DirEntry
 	// the call lists text each SetCalls gave
 	callsText []string
 	radio     bool
@@ -224,6 +226,13 @@ func (f *fakeStack) SetName(i int, name string) bool {
 	return true
 }
 
+func (f *fakeStack) SetDirectory(e []stack.DirEntry) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dirSets = append(f.dirSets, e)
+	return true
+}
+
 func (f *fakeStack) SetCalls(text string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -339,6 +348,7 @@ type fakeRecords struct {
 	known        map[uuid.UUID]bool
 	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
+	dirHs        []DirHandset // Directory
 	saved        []stack.Record
 	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
 }
@@ -512,6 +522,19 @@ func (r *fakeRecords) Seen(_ context.Context, cell, id uuid.UUID, at time.Time) 
 	r.seenOn[id] = cell
 	r.seenTimes = append(r.seenTimes, at)
 	return prev, nil
+}
+
+// Directory: the handsets of those owners that are not excluded, from dirHs.
+func (r *fakeRecords) Directory(_ context.Context, owners, exclude []uuid.UUID, limit int) ([]DirHandset, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []DirHandset
+	for _, h := range r.dirHs {
+		if slices.Contains(owners, h.Owner) && !slices.Contains(exclude, h.ID) && len(out) < limit {
+			out = append(out, h)
+		}
+	}
+	return out, nil
 }
 
 // CellOrder: the cells as they come, the limit applied.

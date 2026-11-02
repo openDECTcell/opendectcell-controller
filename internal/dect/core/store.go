@@ -88,6 +88,9 @@ type Records interface {
 	// nearest to anchor (the cell it was last on; uuid.Nil: none), cells with
 	// no position last; at most limit.
 	CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error)
+	// Directory lists the handsets of these owners that are not among exclude, by name, at most limit:
+	// what the Internal Names List shows of handsets on other cells.
+	Directory(ctx context.Context, owners, exclude []uuid.UUID, limit int) ([]DirHandset, error)
 	// Seen: the handset had contact on cell at the given time. It returns the
 	// cell it was last seen on before, uuid.Nil if none, so a move between
 	// cells can be told.
@@ -821,4 +824,24 @@ func (s *Store) LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, erro
 		return uuid.Nil, nil
 	}
 	return *c, err
+}
+
+func (s *Store) Directory(ctx context.Context, owners, exclude []uuid.UUID, limit int) ([]DirHandset, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id, owner_user_id, display_name FROM handset
+		  WHERE owner_user_id = ANY($1) AND NOT (id = ANY($2))
+		  ORDER BY display_name, id LIMIT $3`, owners, exclude, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DirHandset
+	for rows.Next() {
+		var h DirHandset
+		if err := rows.Scan(&h.ID, &h.Owner, &h.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }

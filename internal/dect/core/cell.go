@@ -77,8 +77,12 @@ type cellRun struct {
 	// it gave to contacts it made (contacts.go)
 	callsDirty bool // the call lists are to be given to the stack again
 	callsAt    time.Time
-	cseq       map[int]uint32
-	chints     map[int]map[int64]uint16
+	// the directory: handsets of the account that are on other cells (directory.go)
+	dirDirty bool
+	dirAt    time.Time
+	dirIDs   map[uuid.UUID]uint
+	cseq     map[int]uint32
+	chints   map[int]map[int64]uint16
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
 	seenAt    map[int]time.Time
@@ -198,6 +202,8 @@ func (r *cellRun) handle(ev event) {
 		r.contactsDone(ev)
 	case evCalls:
 		r.callsFor(ev.hids)
+	case evDirectory:
+		r.dirDirty = true
 	case evPump:
 		r.pumpPending.Store(false)
 		if p, ok := r.st.(stack.Pumper); ok && r.st != nil {
@@ -586,6 +592,7 @@ func (r *cellRun) tick() {
 		return
 	}
 	r.pushCalls(now)
+	r.pushDirectory(now)
 	r.syncRFPI(now)
 	r.recycle(now)
 	r.nudge(now)
@@ -612,6 +619,7 @@ func (r *cellRun) tick() {
 				r.pushContacts(i)
 			}
 			r.callsDirty = true
+			r.dirDirty = true
 		}
 	}
 	r.registration(now)
@@ -880,6 +888,7 @@ func (r *cellRun) drop() {
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.cseq, r.chints = nil, nil
 	r.callsDirty = false
+	r.dirDirty, r.dirAt, r.dirIDs = true, time.Time{}, nil
 	r.reloadAt = time.Time{}
 	r.recycleDue, r.nudgeDue, r.forgetDue = nil, nil, nil
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false

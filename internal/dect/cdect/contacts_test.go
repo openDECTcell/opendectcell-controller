@@ -5,6 +5,8 @@ package cdect
 import (
 	"strings"
 	"testing"
+
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 )
 
 // A record gets a Contact List of its own from a contacts file, the library refuses text that is
@@ -69,5 +71,27 @@ func TestSetCalls(t *testing.T) {
 	}
 	if !h.SetCalls("#opendectcell-calls 1\n") || h.callsMissed(3, 1) != 0 {
 		t.Error("an empty file did not empty the lists")
+	}
+}
+
+// The remote directory goes to the library, a changed entry is replaced and a missing one removed;
+// a number outside 64..127 is refused.
+func TestSetDirectory(t *testing.T) {
+	e := fetchEnv(t)
+	h := e.host
+	if !h.SetDirectory([]stack.DirEntry{{ID: 64, Name: "AS690H"}, {ID: 65, Name: "Büro"}}) {
+		t.Fatal("SetDirectory refused two entries")
+	}
+	if h.remoteName(64) != "AS690H" || h.remoteName(65) != "Büro" {
+		t.Errorf("names %q %q", h.remoteName(64), h.remoteName(65))
+	}
+	if !h.SetDirectory([]stack.DirEntry{{ID: 65, Name: "Lager"}}) || h.remoteName(64) != "" || h.remoteName(65) != "Lager" {
+		t.Errorf("after the change: %q %q", h.remoteName(64), h.remoteName(65))
+	}
+	if h.SetDirectory([]stack.DirEntry{{ID: 3, Name: "Slot"}}) || h.remoteName(3) != "" {
+		t.Error("a record's number was taken")
+	}
+	if !h.SetDirectory(nil) || h.remoteName(65) != "" {
+		t.Error("an empty directory did not empty it")
 	}
 }

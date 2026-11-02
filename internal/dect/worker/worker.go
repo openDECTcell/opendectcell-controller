@@ -322,6 +322,18 @@ func (h *hosted) handle(f frame) bool {
 	case mSetCalls:
 		text := r.str()
 		h.reply(f, b2u(r.err == nil && h.st.SetCalls(text)))
+	case mSetDir:
+		n := int(r.u32())
+		if n < 0 || n > stack.RemoteMax {
+			h.reply(f, b2u(false))
+			break
+		}
+		es := make([]stack.DirEntry, 0, n)
+		for range n {
+			id := uint(r.u32())
+			es = append(es, stack.DirEntry{ID: id, Name: r.str()})
+		}
+		h.reply(f, b2u(r.err == nil && h.st.SetDirectory(es)))
 	case mClose:
 		h.st.Close()
 		h.reply(f, nil)
