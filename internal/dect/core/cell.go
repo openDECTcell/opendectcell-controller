@@ -85,6 +85,7 @@ type cellRun struct {
 	chints   map[int]map[int64]uint16
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
+	detMs     map[int]uint64 // the {DETACH} last acted on, per record
 	seenAt    map[int]time.Time
 	seenPend  map[int]time.Time
 	seenCheck time.Time
@@ -382,6 +383,7 @@ func (r *cellRun) recycle(now time.Time) {
 	}
 	r.gen.unplace(p.idx)
 	delete(r.seenMs, p.idx)
+	delete(r.detMs, p.idx)
 	delete(r.seenAt, p.idx)
 	delete(r.seenPend, p.idx)
 	r.gen.job(job{kind: jobRelease, i: p.idx, hid: p.hid})
@@ -431,6 +433,7 @@ func (r *cellRun) forgetNow() {
 		r.offered = append(r.offered, t)
 	}
 	delete(r.seenMs, i)
+	delete(r.detMs, i)
 	delete(r.seenAt, i)
 	delete(r.seenPend, i)
 	r.gen.Forget(i, "removed by the user without the handset")
@@ -652,6 +655,9 @@ func (r *cellRun) seen(now time.Time) {
 	if r.seenAt == nil {
 		r.seenAt, r.seenMs, r.seenPend = map[int]time.Time{}, map[int]uint64{}, map[int]time.Time{}
 	}
+	if r.detMs == nil {
+		r.detMs = map[int]uint64{}
+	}
 	if r.sigAt == nil {
 		r.sigAt, r.sigMs = map[int]time.Time{}, map[int]uint64{}
 	}
@@ -666,6 +672,15 @@ func (r *cellRun) seen(now time.Time) {
 				if t := r.trans[hid]; t != nil {
 					t.heard = at
 				}
+			}
+		}
+		// a handset that says it is switched off is shown so at once, not at the next write above
+		if d := r.st.Detached(i); d != 0 && d != r.detMs[i] {
+			r.detMs[i] = d
+			if d >= r.seenMs[i] {
+				at := now.Add(-time.Duration(r.core.now()-d) * time.Millisecond)
+				r.log.Info("a handset says it is switched off", "handset", r.hidOf[i])
+				r.gen.job(job{kind: jobDetached, i: i, at: at})
 			}
 		}
 		// the database hears of it at most every seenEvery per handset
@@ -884,7 +899,7 @@ func (r *cellRun) drop() {
 	}
 	r.st, r.gen = nil, nil
 	r.bring, r.install = nil, false
-	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
+	r.seenMs, r.seenAt, r.seenPend, r.detMs = nil, nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.cseq, r.chints = nil, nil
 	r.callsDirty = false
@@ -954,6 +969,7 @@ const (
 	jobInstalled
 	jobUnknown
 	jobSeen
+	jobDetached      // the handset sent {DETACH}: it is off
 	jobTrack         // a record added to the running stack: its handset
 	jobContacts      // a handset changed its Contact List: store the change (name is the journal line)
 	jobUntrack       // a record dropped from it: the handset leaves the cell's table
@@ -1117,6 +1133,10 @@ func (g *gen) write(ids map[int]uuid.UUID, j job) {
 		err = core.Records.Installed(ctx, id, j.slots)
 	case jobUnknown:
 		err = core.Records.SlotUnknown(ctx, id, j.slot)
+	case jobDetached:
+		if hid, ok := ids[j.i]; ok {
+			err = core.Records.Detached(ctx, hid, j.at)
+		}
 	case jobSeen:
 		if hid, ok := ids[j.i]; ok {
 			var prev uuid.UUID
@@ -1158,7 +1178,12 @@ func (g *gen) Event(to stack.To, line string) {
 	line = strings.TrimSpace(line)
 	g.r.log.Debug("bridge line", "line", line)
 	if verb, kv := parseBridgeLine(line); verb == "call-out" {
-		g.r.core.callOut(g.r.id, kv, g.r.handsetBySlot(kv["hs"]))
+		hid := g.r.handsetBySlot(kv["hs"])
+		var target uuid.UUID
+		if kv["class"] == "int" {
+			target = g.r.resolveInternal(hid, cleanNumber(kv["number"]))
+		}
+		g.r.core.callOut(g.r.id, kv, hid, target)
 		return
 	}
 	g.r.core.bridgeLine(g.r.id, line)

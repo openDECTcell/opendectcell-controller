@@ -88,6 +88,15 @@ type Records interface {
 	// nearest to anchor (the cell it was last on; uuid.Nil: none), cells with
 	// no position last; at most limit.
 	CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uuid.UUID, limit int) ([]uuid.UUID, error)
+	// InternalByNumber is the handset of owner that has internal number n (docs/internal-calls.md).
+	InternalByNumber(ctx context.Context, owner uuid.UUID, n int) (id uuid.UUID, ok bool, err error)
+	// InternalIdentity is what a handset shows of itself in an internal call: its internal number (0:
+	// it has none), its name, and its owner. ok is false for a handset that is gone.
+	InternalIdentity(ctx context.Context, id uuid.UUID) (number int, name string, owner uuid.UUID, ok bool, err error)
+	// Detached: the handset sent {DETACH} (it is switched off) at the given time. PageFailed:
+	// nobody answered a page for it. Both only say what is shown of the handset (presence).
+	Detached(ctx context.Context, id uuid.UUID, at time.Time) error
+	PageFailed(ctx context.Context, id uuid.UUID, at time.Time) error
 	// Directory lists the handsets of these owners that are not among exclude, by name, at most limit:
 	// what the Internal Names List shows of handsets on other cells.
 	Directory(ctx context.Context, owners, exclude []uuid.UUID, limit int) ([]DirHandset, error)
@@ -844,4 +853,44 @@ func (s *Store) Directory(ctx context.Context, owners, exclude []uuid.UUID, limi
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) InternalByNumber(ctx context.Context, owner uuid.UUID, n int) (uuid.UUID, bool, error) {
+	var id uuid.UUID
+	err := s.Pool.QueryRow(ctx, "SELECT id FROM handset WHERE owner_user_id = $1 AND internal_number = $2", owner, n).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, nil
+	}
+	return id, err == nil, err
+}
+
+func (s *Store) InternalIdentity(ctx context.Context, id uuid.UUID) (int, string, uuid.UUID, bool, error) {
+	var n *int16
+	var name string
+	var owner uuid.UUID
+	err := s.Pool.QueryRow(ctx, "SELECT internal_number, display_name, owner_user_id FROM handset WHERE id = $1", id).Scan(&n, &name, &owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", uuid.Nil, false, nil
+	}
+	if err != nil {
+		return 0, "", uuid.Nil, false, err
+	}
+	num := 0
+	if n != nil {
+		num = int(*n)
+	}
+	return num, name, owner, true, nil
+}
+
+// Detached notes that the handset said it is off. last_seen_at moves with it: the message is a contact.
+func (s *Store) Detached(ctx context.Context, id uuid.UUID, at time.Time) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE handset SET detached_at = $2, last_seen_at = greatest(last_seen_at, $2)
+		WHERE id = $1 AND (detached_at IS NULL OR detached_at < $2)`, id, at)
+	return err
+}
+
+// PageFailed notes that a page for the handset went unanswered.
+func (s *Store) PageFailed(ctx context.Context, id uuid.UUID, at time.Time) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE handset SET page_failed_at = $2 WHERE id = $1 AND (page_failed_at IS NULL OR page_failed_at < $2)`, id, at)
+	return err
 }

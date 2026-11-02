@@ -55,6 +55,7 @@ func (f *fakeStack) RegWindow(bool, uint, uint64)         {}
 func (f *fakeStack) RegState() (bool, bool)               { return true, true }
 func (f *fakeStack) Tick(uint64)                          {}
 func (f *fakeStack) Seen(i int) uint64                    { return 1000 + uint64(i) }
+func (f *fakeStack) Detached(i int) uint64                { return 2000 + uint64(i) }
 func (f *fakeStack) Hello()                               { f.env.Event(stack.ToAll, "hello\n") }
 func (f *fakeStack) Resume(uint64)                        {}
 func (f *fakeStack) Drop(i int) bool                      { return i == 1 }
@@ -203,7 +204,7 @@ func TestRemoteStackRoundTrip(t *testing.T) {
 	}
 
 	// what the controller reads often comes from the snapshot the worker pushes
-	pumpUntil(t, st, "the snapshot", func() bool { return st.Seen(2) == 1002 })
+	pumpUntil(t, st, "the snapshot", func() bool { return st.Seen(2) == 1002 && st.Detached(2) == 2002 })
 	if dbm, at, ok := st.Signal(2); dbm != -52 || at != 77 || !ok {
 		t.Errorf("signal %d %d %v", dbm, at, ok)
 	}

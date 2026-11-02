@@ -42,11 +42,24 @@ On a CAT-iq handset (for example the A540) the lines appear in its Line menu und
 
 ## Calls between handsets
 
-The **INT list** of a handset shows the handsets of **your account**, including those that are on **other cells** at the
-moment (they are listed by name, up to 32; the list is read again within seconds of a handset moving or being renamed).
-**(Built, not yet tried on a handset.)** A call from one handset to another handset **is not supported yet**: the controller bridges between DECT and
-SIP, and refuses an internal call with a message on the handset. Use the SIP side (call the other handset's
-line number) if you need it.
+Every handset has an **internal number** (200 and up), shown in the handset list and on the handset's page. To
+call another handset of **your account**, press **INT** and:
+
+- on an **NG-DECT Part 3 handset** (A540): choose the handset's name in the list. The list also shows your
+  handsets that are on **other cells** at the moment (up to 32, by name);
+- on a **Part 1 handset** (Gigaset AS690H, C430A, which have no list from the base): type the other handset's
+  internal number.
+
+The other handset rings with the internal pattern and shows your internal number and name. **You can only call
+the handsets of your own account**, never another user's. Internal calls run through the controller, also when both
+handsets are on one cell. **(Built, not yet tried on a handset.)** No transfer, no second call yet.
+
+## Online, unresponsive, offline
+
+The handset list and a handset's page show whether the handset can be reached. **Online**: heard within its
+registration interval (**Administration > Settings**, roaming: 246 s by default). **Unresponsive**: it did not register
+again in time, or did not answer a page. **Offline**: it said it was switched off (many handsets send a message
+when you switch them off), or it has been unresponsive for 10 minutes, or it was never heard. [Details](../internal-calls.md).
 
 ## The phonebook
 

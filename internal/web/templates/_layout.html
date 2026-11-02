@@ -75,6 +75,9 @@
 {{if .Notice}}<div class="alert alert-success" role="status">{{.Notice}}</div>{{end}}
 {{end}}
 
+{{/* A handset's presence: the badge shown in lists and on its page. */}}
+{{define "presence"}}{{if eq .Presence "online"}}<span class="badge bg-success-lt" title="Heard within its registration interval">Online</span>{{else if eq .Presence "unresponsive"}}<span class="badge bg-warning-lt" title="It did not register again in time or did not answer a page; shown as offline after 10 minutes">Unresponsive</span>{{else}}<span class="badge bg-secondary-lt" title="Switched off, out of range, or never heard">Offline</span>{{end}}{{end}}
+
 {{define "foot"}}
 {{if .User}}
       </div>

@@ -540,7 +540,7 @@ static void side_route(struct cdect_host *c, unsigned k, uint64_t now)
 	struct dect_base_link *bl = &c->b.side[k];
 
 	bl->ic_tried = 1;
-	if (dect_base_ic_start(&c->b, (int)k, now) ||
+	if ((!(c->b.bridge && c->b.cfg.bridge_internal) && dect_base_ic_start(&c->b, (int)k, now)) ||
 	    dect_base_call_out(&c->b, (int)k, now) ||
 	    dect_cc_accept(&bl->link.cc) == 0) {
 		dect_link_drain(&bl->link, now);
@@ -644,6 +644,7 @@ struct cdect_host *cdect_host_new(uintptr_t h)
 	c->b.cfg.nlr = 1;
 	c->b.cfg.locauth = 1;
 	c->b.cfg.auth_first = 1;
+	c->b.cfg.bridge_internal = 1; /* the controller routes internal calls, to other cells too */
 	return c;
 }
 
@@ -1184,6 +1185,11 @@ int cdect_host_ctl(struct cdect_host *c, uint64_t now, int is_bridge)
 	}
 	reply(c, m.verb, "unknown", NULL, 0);
 	return CDECT_CTL_DONE;
+}
+
+uint64_t cdect_host_last_detached(const struct cdect_host *c, unsigned i)
+{
+	return i < c->b.n_hs && i < DECT_BASE_HS_MAX ? c->b.detached_ms[i] : 0u;
 }
 
 uint64_t cdect_host_last_seen(const struct cdect_host *c, unsigned i)

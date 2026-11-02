@@ -51,6 +51,9 @@ type Call struct {
 	Number, Name string
 	// Narrowband: the caller offered no G.722.
 	Narrowband bool
+	// Internal: a call from another handset of the same account (the `call-in int=1` of API
+	// 153): Number is the caller's internal number and Name its name; there is no line.
+	Internal bool
 }
 
 // CallEventKind says what happened to a call.
@@ -112,6 +115,8 @@ type leg struct {
 	// dead: the leg is over (or, with no call number yet, to be released
 	// the moment the stack gives one)
 	asked, failed, dead bool
+	// noResp: the stack gave up the page, nobody answered it (`released by=base` before it rang)
+	noResp bool
 }
 
 // route is one offer's state.
@@ -125,6 +130,31 @@ type route struct {
 	winner *leg
 	rang   bool
 	over   bool
+}
+
+// noOneAnswered: every cell the handset was paged on gave up the page. A cell that was not asked
+// (down) or did not say so (an error) is not the handset's silence.
+func (rt *route) noOneAnswered() bool {
+	asked := false
+	for _, l := range rt.legs {
+		if !l.asked {
+			continue
+		}
+		if !l.noResp {
+			return false
+		}
+		asked = true
+	}
+	return asked
+}
+
+// notePageFailed records that nobody answered a page for the handset: it is shown as unresponsive.
+func (c *Core) notePageFailed(hid uuid.UUID) {
+	ctx, cancel := context.WithTimeout(c.ctx, storeTimeout)
+	defer cancel()
+	if err := c.Records.PageFailed(ctx, hid, time.Now()); err != nil {
+		c.Log.Warn("a handset that did not answer its page could not be noted", "handset", hid, "err", err)
+	}
 }
 
 // pending: a call-in is out whose answer has not come. The route stays
@@ -293,6 +323,9 @@ func (c *Core) Ring(ctx context.Context, hid uuid.UUID, call Call) (*Offer, erro
 func (c *Core) offerLeg(rt *route, l *leg) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "call-in line=%d hs={hs} number=%s", rt.call.Line, rt.call.Number)
+	if rt.call.Internal {
+		b.WriteString(" int=1")
+	}
 	if rt.call.Name != "" {
 		fmt.Fprintf(&b, " name=%q", rt.call.Name)
 	}
@@ -482,6 +515,9 @@ func (c *Core) bridgeLine(cell uuid.UUID, line string) {
 		rt.emit(c, CallEvent{Kind: CallAnswered, Cell: cell, Call: l.call})
 	case "released":
 		l.dead = true
+		if kv["by"] == "base" && !rt.rang {
+			l.noResp = true
+		}
 		if rt.winner == l {
 			go rs.finish(c, rt, CallReleased, kv["reason"], false)
 			return
@@ -510,6 +546,9 @@ func (rs *routes) legEnded(c *Core, rt *route, kind CallEventKind, reason string
 	if kind == CallBusy && !rt.rang {
 		go rs.finish(c, rt, CallBusy, reason, false)
 		return
+	}
+	if !rt.rang && rt.noOneAnswered() {
+		go c.notePageFailed(rt.hid)
 	}
 	go rs.finish(c, rt, CallReleased, reason, false)
 }

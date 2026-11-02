@@ -511,3 +511,86 @@ func TestStoreTableFull(t *testing.T) {
 		t.Fatalf("after a number was freed: %+v %v %v", h, ok, err)
 	}
 }
+
+// Every handset gets the lowest free internal number of its owner's, from 200; numbers are per
+// owner; a handset that changes hands takes one of its new owner's; lookups never cross owners.
+func TestStoreInternalNumbers(t *testing.T) {
+	s, ctx := newStore(t)
+	cell := s.newCell(t, ctx, "a")
+	anna, ben := s.newUser(t, ctx, "anna"), s.newUser(t, ctx, "ben")
+	var ids [3]uuid.UUID
+	for i, owner := range []uuid.UUID{anna, anna, ben} {
+		id, err := s.save(ctx, cell, uuid.Nil, owner, rec(uint(i+1), byte(0x20+i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[i] = id
+	}
+	num := func(id uuid.UUID) int {
+		n, _, _, ok, err := s.InternalIdentity(ctx, id)
+		if err != nil || !ok {
+			t.Fatalf("identity of %s: %v %v", id, ok, err)
+		}
+		return n
+	}
+	if num(ids[0]) != 200 || num(ids[1]) != 201 || num(ids[2]) != 200 {
+		t.Fatalf("numbers %d %d %d, want 200 201 200 (per owner)", num(ids[0]), num(ids[1]), num(ids[2]))
+	}
+	got, ok, err := s.InternalByNumber(ctx, anna, 201)
+	if err != nil || !ok || got != ids[1] {
+		t.Errorf("anna's 201: %v %v %v", got, ok, err)
+	}
+	if _, ok, _ := s.InternalByNumber(ctx, ben, 201); ok {
+		t.Error("ben has no 201, anna's was found")
+	}
+	// a freed number is the next one given
+	if _, err := s.Pool.Exec(ctx, "DELETE FROM handset WHERE id = $1", ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.save(ctx, cell, uuid.Nil, anna, rec(4, 0x30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if num(id) != 200 {
+		t.Errorf("the freed 200 was not given again: %d", num(id))
+	}
+	// a handset that changes hands takes a number of its new owner's
+	if _, err := s.Pool.Exec(ctx, "UPDATE handset SET owner_user_id = $2 WHERE id = $1", id, ben); err != nil {
+		t.Fatal(err)
+	}
+	if n := num(id); n != 201 {
+		t.Errorf("a handset moved to ben has %d, want his next, 201", n)
+	}
+	// two handsets of one owner cannot share a number
+	if _, err := s.Pool.Exec(ctx, "UPDATE handset SET internal_number = 200 WHERE id = $1", id); err == nil {
+		t.Error("ben's two handsets were given one number")
+	}
+}
+
+// Detached and PageFailed note the time, the later one wins, and a detach counts as a contact.
+func TestStoreDetachedAndPageFailed(t *testing.T) {
+	s, ctx := newStore(t)
+	cell := s.newCell(t, ctx, "a")
+	anna := s.newUser(t, ctx, "anna")
+	id, err := s.save(ctx, cell, uuid.Nil, anna, rec(1, 0x40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t1 := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	t2 := t1.Add(time.Minute)
+	for _, at := range []time.Time{t2, t1} { // the older one after the newer one changes nothing
+		if err := s.Detached(ctx, id, at); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.PageFailed(ctx, id, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var det, failed, seen *time.Time
+	if err := s.Pool.QueryRow(ctx, "SELECT detached_at, page_failed_at, last_seen_at FROM handset WHERE id = $1", id).Scan(&det, &failed, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if det == nil || !det.Equal(t2) || failed == nil || !failed.Equal(t2) || seen == nil || !seen.Equal(t2) {
+		t.Errorf("detached %v, page failed %v, last seen %v, want all %v", det, failed, seen, t2)
+	}
+}

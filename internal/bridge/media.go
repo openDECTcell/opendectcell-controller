@@ -80,12 +80,34 @@ func (m *Manager) openMedia(ctx context.Context, ev core.CallEvent, c SIPCall) (
 	if neg == nil {
 		return nil, errNoNegotiat
 	}
-	if !m.MediaIP.IsValid() {
-		return nil, errNoMediaIP
-	}
 	sipCodec, err := codec.ByName(neg.Codec.Name)
 	if err != nil {
 		return nil, err
+	}
+	f, err := m.openFlow(ctx, ev, sipCodec)
+	if err != nil {
+		return nil, err
+	}
+	cfg := media.Config{Plan: f.plan, SIP: media.SIPLeg(c.Media()), SIPPayloadType: neg.Codec.PT,
+		SIPPtime: sipPtime(neg.PTime), Cell: f.leg, CellPayload: cellPayloadType(f.plan), Log: m.log()}
+	if neg.TelEventPT != 0 {
+		cfg.Events = c.Media()
+	}
+	return m.startSession(ctx, ev, f, cfg)
+}
+
+// cellFlow is the controller's end of one cell's speech once the cell has taken MEDIA_OPEN.
+type cellFlow struct {
+	id   uint32
+	plan media.Plan
+	leg  *media.CellLeg
+}
+
+// openFlow ties a cell's audio channel to a UDP port here (MEDIA_OPEN, SRTP) for a call whose other
+// side speaks sipCodec, and waits for the cell to accept.
+func (m *Manager) openFlow(ctx context.Context, ev core.CallEvent, sipCodec *codec.Codec) (*cellFlow, error) {
+	if !m.MediaIP.IsValid() {
+		return nil, errNoMediaIP
 	}
 	st := m.Cells.CellStatus(ev.Cell)
 	caps := media.CellCaps{Down: st.AudioDown, Up: st.AudioUp, WidebandEndpoints: st.CapAudioWB}
@@ -150,21 +172,22 @@ func (m *Manager) openMedia(ctx context.Context, ev core.CallEvent, c SIPCall) (
 		leg.Close()
 		return nil, ctx.Err()
 	}
-	cfg := media.Config{Plan: plan, SIP: media.SIPLeg(c.Media()), SIPPayloadType: neg.Codec.PT,
-		SIPPtime: sipPtime(neg.PTime), Cell: leg, CellPayload: cellPayloadType(plan), Log: m.log()}
-	if neg.TelEventPT != 0 {
-		cfg.Events = c.Media()
-	}
+	return &cellFlow{id: id, plan: plan, leg: leg}, nil
+}
+
+// startSession runs the pipeline of an open flow. cfg is complete but for the media's id: a pipeline
+// that cannot be made closes the flow.
+func (m *Manager) startSession(ctx context.Context, ev core.CallEvent, f *cellFlow, cfg media.Config) (*mediaSession, error) {
 	pipe, err := media.New(cfg)
 	if err != nil {
-		_ = m.Cells.CloseMedia(ev.Cell, id)
-		leg.Close()
+		_ = m.Cells.CloseMedia(ev.Cell, f.id)
+		f.leg.Close()
 		return nil, err
 	}
 	rctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	s := &mediaSession{id: id, cell: ev.Cell, plan: plan, leg: leg, pipe: pipe, cancel: cancel, done: make(chan struct{})}
+	s := &mediaSession{id: f.id, cell: ev.Cell, plan: f.plan, leg: f.leg, pipe: pipe, cancel: cancel, done: make(chan struct{})}
 	m.mu.Lock()
-	m.sessions[id] = s
+	m.sessions[f.id] = s
 	m.mu.Unlock()
 	go func() {
 		defer close(s.done)
@@ -172,8 +195,14 @@ func (m *Manager) openMedia(ctx context.Context, ev core.CallEvent, c SIPCall) (
 			m.log().Info("a call's media pipeline ended", "err", err)
 		}
 	}()
-	m.log().Info("a call's speech is open", "cell", ev.Cell, "media", id, "plan", plan.String(), "channel", ev.Channel)
+	m.log().Info("a call's speech is open", "cell", ev.Cell, "media", f.id, "plan", f.plan.String(), "channel", ev.Channel)
 	return s, nil
+}
+
+// dropFlow gives up a flow that no pipeline was made for.
+func (m *Manager) dropFlow(ev core.CallEvent, f *cellFlow) {
+	_ = m.Cells.CloseMedia(ev.Cell, f.id)
+	f.leg.Close()
 }
 
 // sipPtime is the packet time the SIP side negotiated, or 0 (20 ms) for one the

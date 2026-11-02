@@ -179,6 +179,10 @@ type Stack interface {
 	// Seen is when record i last had C-plane traffic (any message of its
 	// handset on any link), on the clock Tick is given; 0 if never.
 	Seen(i int) uint64
+	// Detached is when record i's handset last sent {DETACH} (it is switched off), on the same
+	// clock, 0 if never. The handset is detached while Detached(i) >= Seen(i): any later contact
+	// (also a failed one, a location registration) has it attached again.
+	Detached(i int) uint64
 	// Hello sends a client that connected the `hello` and `hs` lines.
 	Hello()
 	// Ctl runs one bridge-interface line; it reports whether the client

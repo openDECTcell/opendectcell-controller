@@ -62,6 +62,12 @@ type Handset struct {
 	// Pooled: every cell holds it, host-only, under a TPUI of its own
 	// (docs/roaming.md); otherwise it sits in chip slots of its home cells.
 	Pooled bool
+	// InternalNumber is what another handset of the account dials after INT to reach this one
+	// (0: it has none). Presence is worked out when the handset is read (PresenceAt).
+	InternalNumber int
+	DetachedAt     *time.Time
+	PageFailedAt   *time.Time
+	Presence       Presence
 }
 
 // IPEI is the handset's IPEI as printed on its label, "EEEEE PPPPPPP C" (EN
@@ -112,21 +118,36 @@ func (h Handset) Display() string {
 // Store reads and edits handsets.
 type Store struct {
 	Pool *pgxpool.Pool
+	// Interval is how often handsets are asked to register again (the roaming setting), for their
+	// presence; nil or 0: not asked, so silence says nothing.
+	Interval func(context.Context) time.Duration
+}
+
+// presence sets the presence of the handsets read, as of now.
+func (s *Store) presence(ctx context.Context, hs ...*Handset) {
+	var iv time.Duration
+	if s.Interval != nil {
+		iv = s.Interval(ctx)
+	}
+	now := time.Now()
+	for _, h := range hs {
+		h.Presence = PresenceAt(now, h.LastSeenAt, h.DetachedAt, h.PageFailedAt, iv)
+	}
 }
 
 const cols = `h.id, h.owner_user_id, coalesce(nullif(u.display_name, ''), u.username), h.display_name, coalesce(h.model, ''), h.registered_at,
 	h.last_seen_at, coalesce(c.name, ''), h.default_line, h.dual_ring_policy,
 	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled, coalesce(h.profile, ''),
-	h.ipui, h.tpui, h.capabilities, h.signal_dbm, h.signal_at`
+	h.ipui, h.tpui, h.capabilities, h.signal_dbm, h.signal_at, h.internal_number, h.detached_at, h.page_failed_at`
 
 const from = ` FROM handset h JOIN app_user u ON u.id = h.owner_user_id LEFT JOIN cell c ON c.id = h.last_seen_cell_id`
 
 func scan(r pgx.Row) (*Handset, error) {
 	var h Handset
 	var caps []byte
-	var dbm *int16
+	var dbm, num *int16
 	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled, &h.Profile,
-		&h.IPUI, &h.TPUI, &caps, &dbm, &h.SignalAt)
+		&h.IPUI, &h.TPUI, &caps, &dbm, &h.SignalAt, &num, &h.DetachedAt, &h.PageFailedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -139,6 +160,9 @@ func scan(r pgx.Row) (*Handset, error) {
 	if dbm != nil {
 		v := int(*dbm)
 		h.SignalDBm = &v
+	}
+	if num != nil {
+		h.InternalNumber = int(*num)
 	}
 	return &h, nil
 }
@@ -184,6 +208,7 @@ func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
 	for _, h := range out {
 		h.LinesPrivate = h.OwnerID != u.ID
 	}
+	s.presence(ctx, out...)
 	return out, lr.Err()
 }
 
@@ -206,6 +231,7 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Handset, 
 		}
 	}
 	h.LinesPrivate = h.OwnerID != u.ID
+	s.presence(ctx, h)
 	return h, nil
 }
 

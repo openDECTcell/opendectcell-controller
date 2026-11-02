@@ -2,11 +2,13 @@
 {{define "handsets.html"}}{{template "head" .}}
 <p><a class="btn btn-primary" href="/handsets/register">{{icon "plus"}} Register a handset</a></p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
-<thead><tr><th>Name</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}<th>Model</th><th>IPEI</th><th>Lines</th><th>Last seen</th></tr></thead>
+<thead><tr><th>Name</th><th>Status</th><th title="What another handset of the account dials after INT">Internal no.</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}<th>Model</th><th>IPEI</th><th>Lines</th><th>Last seen</th></tr></thead>
 <tbody>
 {{range .Data}}
 <tr>
   <td><a href="/handsets/{{.ID}}">{{.Display}}</a></td>
+  <td>{{template "presence" .}}</td>
+  <td>{{with .InternalNumber}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">none</span>{{end}}</td>
   {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
   <td>{{with .Model}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td>
   <td>{{with ipei .}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">n/a</span>{{end}}</td>
@@ -14,7 +16,7 @@
   <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}{{if .LastSeenCell}} · {{.LastSeenCell}}{{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="6" class="text-secondary">No handsets yet. <a href="/handsets/register">Register one</a>.</td></tr>
+<tr><td colspan="8" class="text-secondary">No handsets yet. <a href="/handsets/register">Register one</a>.</td></tr>
 {{end}}
 </tbody>
 </table></div></div>

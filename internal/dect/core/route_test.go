@@ -299,3 +299,55 @@ func TestRingPlacesTheHandsetOnTheCell(t *testing.T) {
 		t.Errorf("event %+v, want busy: the handset could not be placed", ev)
 	}
 }
+
+// Every cell gave up the page and none rang: the handset is noted as one that did not answer. One
+// cell that did not say so (it was busy) is not the handset's silence.
+func TestRingNobodyAnsweredMarksThePageFailed(t *testing.T) {
+	rr := newRouteRig(t, "")
+	recs := rr.core.Records.(*fakeRecords)
+	rr.core.PageDelay = time.Millisecond
+	o, err := rr.core.Ring(context.Background(), rr.h.ID, Call{SIP: "p1", Number: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.waitLines(t, 0, 1)
+	rr.waitLines(t, 1, 1)
+	for _, i := range []int{0, 1} {
+		rr.stack(i).env.Event(stack.ToBridge, "released call="+string(rune('7'+i))+" by=base sip=p1")
+	}
+	if ev, _ := nextEvent(t, o); ev.Kind != CallReleased {
+		t.Errorf("event %+v", ev)
+	}
+	waitFor(t, "the page failure noted", func() bool {
+		recs.mu.Lock()
+		defer recs.mu.Unlock()
+		return len(recs.pageFailed) == 1 && recs.pageFailed[0] == rr.h.ID
+	})
+}
+
+func TestRingOneBusyCellIsNotASilentHandset(t *testing.T) {
+	rr := newRouteRig(t, "")
+	recs := rr.core.Records.(*fakeRecords)
+	rr.core.PageDelay = time.Millisecond
+	rr.reply = func(i int, sip string) string {
+		if i == 1 {
+			return "busy sip=" + sip + " why=channels"
+		}
+		return "call-in-ok call=7 sip=" + sip
+	}
+	o, err := rr.core.Ring(context.Background(), rr.h.ID, Call{SIP: "p2", Number: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.waitLines(t, 0, 1)
+	rr.stack(0).env.Event(stack.ToBridge, "released call=7 by=base sip=p2")
+	if ev, _ := nextEvent(t, o); ev.Kind != CallReleased {
+		t.Errorf("event %+v", ev)
+	}
+	time.Sleep(100 * time.Millisecond)
+	recs.mu.Lock()
+	defer recs.mu.Unlock()
+	if len(recs.pageFailed) != 0 {
+		t.Error("a cell that was busy made the handset unresponsive")
+	}
+}

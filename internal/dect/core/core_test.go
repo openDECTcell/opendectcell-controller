@@ -49,9 +49,10 @@ type fakeStack struct {
 	regOpens int
 	notFree  bool
 	// onMail runs on the cell's goroutine for each mail, with the env.
-	onMail func(env stack.Env, m stack.Mail)
-	onTick func(env stack.Env)
-	seen   map[int]uint64
+	onMail   func(env stack.Env, m stack.Mail)
+	onTick   func(env stack.Env)
+	seen     map[int]uint64
+	detached map[int]uint64
 	// the bridge commands the core sent, and what to do about each
 	ctls  []ctlLine
 	onCtl func(env stack.Env, line string)
@@ -130,6 +131,12 @@ func (f *fakeStack) Tick(now uint64) {
 }
 
 // seen is what Seen answers, by record index; the test sets it.
+func (f *fakeStack) Detached(i int) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.detached[i]
+}
+
 func (f *fakeStack) Seen(i int) uint64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -349,6 +356,9 @@ type fakeRecords struct {
 	hsOn         map[uuid.UUID][]Handset // CellRecords by cell, instead of hs
 	forgetPooled bool
 	dirHs        []DirHandset // Directory
+	internal     map[uuid.UUID]fakeInternal
+	detachedAt   []uuid.UUID
+	pageFailed   []uuid.UUID
 	saved        []stack.Record
 	lastOn       map[uuid.UUID]uuid.UUID // handset -> LastSeenCell's answer
 }
@@ -522,6 +532,39 @@ func (r *fakeRecords) Seen(_ context.Context, cell, id uuid.UUID, at time.Time) 
 	r.seenOn[id] = cell
 	r.seenTimes = append(r.seenTimes, at)
 	return prev, nil
+}
+
+// InternalByNumber and InternalIdentity: from internal, a handset's number by its id.
+func (r *fakeRecords) InternalByNumber(_ context.Context, owner uuid.UUID, n int) (uuid.UUID, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, x := range r.internal {
+		if x.owner == owner && x.number == n {
+			return id, true, nil
+		}
+	}
+	return uuid.Nil, false, nil
+}
+
+func (r *fakeRecords) InternalIdentity(_ context.Context, id uuid.UUID) (int, string, uuid.UUID, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	x, ok := r.internal[id]
+	return x.number, x.name, x.owner, ok, nil
+}
+
+func (r *fakeRecords) Detached(_ context.Context, id uuid.UUID, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.detachedAt = append(r.detachedAt, id)
+	return nil
+}
+
+func (r *fakeRecords) PageFailed(_ context.Context, id uuid.UUID, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pageFailed = append(r.pageFailed, id)
+	return nil
 }
 
 // Directory: the handsets of those owners that are not excluded, from dirHs.
@@ -2089,4 +2132,11 @@ func TestRoamingChangeReachesTheStack(t *testing.T) {
 	if g.nStacks() != 1 {
 		t.Error("the stack was rebuilt")
 	}
+}
+
+// fakeInternal is a handset's internal number, name and owner, as fakeRecords holds them.
+type fakeInternal struct {
+	number int
+	name   string
+	owner  uuid.UUID
 }

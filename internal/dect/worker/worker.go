@@ -362,6 +362,7 @@ func (h *hosted) pushState() {
 	for _, i := range idx {
 		w.u32(uint32(i))
 		w.u64(h.st.Seen(i))
+		w.u64(h.st.Detached(i))
 		dbm, at, ok := h.st.Signal(i)
 		w.u32(uint32(int32(dbm)))
 		w.u64(at)

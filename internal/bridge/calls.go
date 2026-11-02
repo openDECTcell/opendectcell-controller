@@ -122,7 +122,9 @@ type Manager struct {
 	DECT  Router
 	Cells Cells
 	Lines Lines
-	MWI   MWISender // nil: message waiting is not shown (mwi.go)
+	// Identity says who a handset is in an internal call (*core.Core); nil: internal calls are refused.
+	Identity InternalIdentities
+	MWI      MWISender // nil: message waiting is not shown (mwi.go)
 	// CallLists is told which handsets' call lists a finished call is in (*core.Core); nil: nobody.
 	CallLists CallListNotifier
 	CallLog   CallLog
@@ -185,6 +187,10 @@ func (m *Manager) handsetCall(o Handset) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	info := o.Info()
+	if info.Internal {
+		m.internalCall(o)
+		return
+	}
 	log := m.log().With("cell", info.Cell, "call", info.Call, "line", info.Line)
 	acct, ok, err := m.Lines.OutLine(ctx, info.Handset, info.Line)
 	if err != nil || !ok {

@@ -470,6 +470,15 @@ func (x *Host) testContactPut(i int, name, digits string) bool {
 
 // Seen is when record i last had C-plane traffic, on the stack's clock; 0
 // if it never has.
+// Detached is when record i's handset last said it was switched off ({DETACH}), 0 if never; it
+// is detached while that is not before Seen.
+func (x *Host) Detached(i int) uint64 {
+	if i < 0 {
+		return 0
+	}
+	return uint64(C.cdect_host_last_detached(x.c, C.uint(i)))
+}
+
 func (x *Host) Seen(i int) uint64 {
 	if i < 0 {
 		return 0

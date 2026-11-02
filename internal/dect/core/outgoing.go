@@ -46,6 +46,11 @@ type OutCall struct {
 	Number  string
 	// Wideband: the handset's air codec is G.722 (codec=wb).
 	Wideband bool
+	// Internal: the handset called another handset (call class 9, `class=int`); Number is what
+	// it dialled and Target the handset that is, uuid.Nil if there is none it may call (no such
+	// number, or another account's: the core never resolves one).
+	Internal bool
+	Target   uuid.UUID
 }
 
 // Outgoing is a call a handset placed, offered to Core.Originate. Events
@@ -124,14 +129,14 @@ func (o *Outgoing) finish(reason string) {
 
 // callOut takes a stack's `call-out`. hid is the handset the stack's record
 // number belongs to, if the cell knows it.
-func (c *Core) callOut(cell uuid.UUID, kv map[string]string, hid uuid.UUID) {
+func (c *Core) callOut(cell uuid.UUID, kv map[string]string, hid uuid.UUID, target uuid.UUID) {
 	slot, _ := strconv.ParseUint(kv["hs"], 10, 8)
 	line, _ := strconv.Atoi(kv["line"])
 	if line != 2 {
 		line = 1
 	}
 	oc := OutCall{Cell: cell, Call: kv["call"], Handset: hid, Slot: uint(slot), Line: line,
-		Number: cleanNumber(kv["number"]), Wideband: kv["codec"] == "wb"}
+		Number: cleanNumber(kv["number"]), Wideband: kv["codec"] == "wb", Internal: kv["class"] == "int", Target: target}
 	if oc.Call == "" {
 		return
 	}

@@ -249,7 +249,7 @@ type sig struct {
 
 type snapshot struct {
 	regOpen, regFree, quiet, hasRFPI bool
-	seen                             map[int]uint64
+	seen, detached                   map[int]uint64
 	sig                              map[int]sig
 }
 
@@ -431,12 +431,13 @@ func (p *proxy) fromWorker(f frame) {
 }
 
 func readSnapshot(r *rbuf) snapshot {
-	s := snapshot{seen: map[int]uint64{}, sig: map[int]sig{}}
+	s := snapshot{seen: map[int]uint64{}, detached: map[int]uint64{}, sig: map[int]sig{}}
 	s.regOpen, s.regFree, s.quiet, s.hasRFPI = r.bool(), r.bool(), r.bool(), r.bool()
 	n := int(r.u32())
 	for k := 0; k < n && r.err == nil && k < 1024; k++ {
 		i := int(r.u32())
 		s.seen[i] = r.u64()
+		s.detached[i] = r.u64()
 		dbm := int(int32(r.u32()))
 		at := r.u64()
 		s.sig[i] = sig{dbm: dbm, at: at, ok: r.bool()}
@@ -518,6 +519,12 @@ func (p *proxy) Seen(i int) uint64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.st.seen[i]
+}
+
+func (p *proxy) Detached(i int) uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.st.detached[i]
 }
 
 func (p *proxy) Hello() { p.send(mHello, nil) }

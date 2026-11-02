@@ -162,6 +162,7 @@ func (r *cellRun) dropTransient(hid uuid.UUID, why string) bool {
 	delete(r.hidOf, t.idx)
 	r.freeIdx = append(r.freeIdx, t.idx)
 	delete(r.seenMs, t.idx)
+	delete(r.detMs, t.idx)
 	delete(r.cseq, t.idx)
 	delete(r.chints, t.idx)
 	delete(r.seenAt, t.idx)

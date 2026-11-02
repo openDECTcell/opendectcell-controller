@@ -78,6 +78,8 @@
         <dt>Model</dt><dd>{{with .H.Model}}{{.}}{{else}}unknown{{end}}</dd>
         <dt>Owner</dt><dd>{{.H.Owner}}</dd>
         <dt>Registered</dt><dd>{{fmtTime .H.RegisteredAt}}</dd>
+        <dt>Status</dt><dd>{{template "presence" .H}}</dd>
+        <dt>Internal number</dt><dd>{{with .H.InternalNumber}}<code class="kvp">{{.}}</code> <span class="text-secondary small">dial it after INT from another handset of the account</span>{{else}}<span class="text-secondary">none</span>{{end}}</dd>
         <dt>Last seen</dt><dd>{{with .H.LastSeenAt}}{{fmtTime .}}{{if $.Data.H.LastSeenCell}} on {{$.Data.H.LastSeenCell}}{{end}}{{else}}never{{end}}</dd>
         <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}{{if and (not .H.Pooled) (eq .H.CellsHoldingN 0)}} <span class="badge bg-warning-lt" title="No cell holds this handset now. Register it again with the assistant">not registered on any cell</span>{{else if .H.Pooled}} <span class="badge bg-blue-lt" title="Every cell holds this handset under an identity of its own, so it can move between cells and be rung wherever it is">every cell</span>{{else}} <span class="badge bg-secondary-lt" title="Registered before handsets were shared between cells: it stays with the cell it was registered on. Deregister it below and register it again to make it work on every cell">home cell only</span>{{end}}</dd>
       </dl></div>

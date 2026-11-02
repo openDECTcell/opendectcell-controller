@@ -311,6 +311,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		calls.DECT = bridge.RouterOf(dect)
 		dect.Originate = calls.HandsetCall
 		calls.MWI = dect
+		calls.Identity = dect
 		calls.CallLists = dect
 		dect.MWIFor = calls.MWIFor
 		dect.Contacts = phonebook{contactStore}
@@ -374,7 +375,13 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 				dectCore.Deregister(id, force)
 			}
 		},
-		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool}, LogCtl: logCtl, StartedAt: time.Now(),
+		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool, Interval: func(ctx context.Context) time.Duration {
+			ro, err := instance.Roaming(ctx)
+			if err != nil {
+				return 0
+			}
+			return time.Duration(ro.LocateValiditySec) * time.Second
+		}}, LogCtl: logCtl, StartedAt: time.Now(),
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {
