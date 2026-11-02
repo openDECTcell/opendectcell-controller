@@ -82,16 +82,23 @@ func TestCellPages(t *testing.T) {
 	if link.states[res.CellID] != wire.StateActive {
 		t.Error("approval not pushed to the link")
 	}
-	if r := e.post(t, admin, "/cells/"+id+"/revoke", url.Values{"confirm": {"wrong"}}); r.StatusCode != http.StatusBadRequest || len(link.kicked) != 0 {
+	// Revoking is the owner's: it lives on the station page, and somebody else's base station is not found.
+	user := e.browser()
+	e.login(t, user, "user", "user password")
+	if r := e.post(t, user, "/stations/"+id+"/revoke", url.Values{"confirm": {"Hall"}}); r.StatusCode != http.StatusNotFound || len(link.kicked) != 0 {
+		t.Fatalf("revoke by somebody else: %d", r.StatusCode)
+	}
+	if r := e.post(t, admin, "/cells/"+id+"/revoke", url.Values{"confirm": {"Hall"}}); r.StatusCode != http.StatusNotFound && r.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("the admin cell page still revokes: %d", r.StatusCode)
+	}
+	if r := e.post(t, admin, "/stations/"+id+"/revoke", url.Values{"confirm": {"wrong"}}); r.StatusCode != http.StatusBadRequest || len(link.kicked) != 0 {
 		t.Fatalf("revoke without confirmation: %d", r.StatusCode)
 	}
-	if r := e.post(t, admin, "/cells/"+id+"/revoke", url.Values{"confirm": {"Hall"}}); r.StatusCode != http.StatusSeeOther || len(link.kicked) != 1 {
+	if r := e.post(t, admin, "/stations/"+id+"/revoke", url.Values{"confirm": {"Hall"}}); r.StatusCode != http.StatusSeeOther || len(link.kicked) != 1 {
 		t.Fatalf("revoke: %d", r.StatusCode)
 	}
 
 	// A plain user sees neither page; with may_add_cells, only /enroll.
-	user := e.browser()
-	e.login(t, user, "user", "user password")
 	for _, p := range []string{"/enroll", "/cells", "/cells/" + id} {
 		if resp, _ := e.get(t, user, p); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("user on %s: %d", p, resp.StatusCode)

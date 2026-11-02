@@ -32,15 +32,15 @@ port 7300 by default). If it cannot, the box log says so; see [Troubleshooting](
 version, the DECT **identity (RFPI)** and when it was last seen. Open a cell for its details: the chip build,
 the calls, the handsets it holds, the audio capabilities.
 
-On the cell's own page you can change:
+On the cell's own page an administrator can **approve**, **disable** and **enable** it (a disabled cell is
+kept but its radio is off). The owner's settings are on **My base stations**: the name, the location and
+**Revoke**, which permanently removes the cell's right to connect (you must type its name to confirm; a
+revoked box has to enrol again with a new token).
 
-| Field | Meaning |
-|---|---|
-| Name, Location | Shown in lists and on the map. |
-| Max concurrent calls | A limit you want to apply. The chip's own limit is 5 calls on a 7520, 3 on a 7412 (not enforced by this setting yet). |
-| Allow unencrypted RTP | Lets the cell send a call's audio without SRTP, **for a network you trust end to end**. Off by default. |
-| Approve, Disable, Enable | A disabled cell is kept but its radio is off. |
-| Revoke | Permanently removes the cell's right to connect. You must type its name to confirm. A revoked box has to enrol again with a new token. |
+There is no call limit to set and no way to allow unencrypted audio. A cell takes as many calls as its voice
+channels allow (the **Capacity announced** line shows them: records are handsets the chip can hold, the
+narrowband and wideband numbers are the same voice channels, not two sets), and a call's audio is always
+SRTP between the cell and the controller.
 
 ## Leaving cell mode on the box
 

@@ -5,7 +5,6 @@ package web
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,9 +27,7 @@ func (s *Server) cellRoutes() {
 	}
 	s.mux.Handle("GET /cells", s.requireAdmin(s.cellList))
 	s.mux.Handle("GET /cells/{id}", s.requireAdmin(s.cellPage))
-	s.mux.Handle("POST /cells/{id}", s.requireAdmin(s.cellUpdate))
 	s.mux.Handle("POST /cells/{id}/state", s.requireAdmin(s.cellState))
-	s.mux.Handle("POST /cells/{id}/revoke", s.requireAdmin(s.cellRevoke))
 	s.mux.Handle("GET /enroll", s.requireUser(s.enrollPage))
 	s.mux.Handle("POST /enroll", s.requireUser(s.enrollCreate))
 	s.mux.Handle("POST /enroll/{id}/delete", s.requireUser(s.enrollDelete))
@@ -99,36 +96,6 @@ func (s *Server) cellPage(w http.ResponseWriter, r *http.Request, u *auth.User) 
 	}
 }
 
-func (s *Server) cellUpdate(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
-	c, ok := s.cellByPath(w, r, u)
-	if !ok {
-		return
-	}
-	name, loc := r.PostFormValue("name"), r.PostFormValue("location")
-	plain := r.PostFormValue("allow_plain_rtp") == "on"
-	up := cell.CellUpdate{Name: &name, Location: &loc, AllowPlainRTP: &plain}
-	if v := r.PostFormValue("max_calls"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 16)
-		if err != nil {
-			s.renderCell(w, http.StatusBadRequest, u, c, page{Error: "Max calls must be a number."})
-			return
-		}
-		m := int16(n)
-		up.MaxCalls = &m
-	}
-	nc, err := s.Cells.Update(r.Context(), u, c.ID, up)
-	if err != nil {
-		if errors.Is(err, cell.ErrNotFound) {
-			s.notFound(w, r, u)
-			return
-		}
-		s.renderCell(w, http.StatusBadRequest, u, c, page{Error: err.Error()})
-		return
-	}
-	http.Redirect(w, r, "/cells/"+nc.ID.String()+"?done=Saved.", http.StatusSeeOther)
-}
-
 func (s *Server) cellState(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	c, ok := s.cellByPath(w, r, u)
 	if !ok {
@@ -144,25 +111,6 @@ func (s *Server) cellState(w http.ResponseWriter, r *http.Request, u *auth.User)
 		s.CellLink.NotifyState(c.ID, st, "changed by "+u.Username)
 	}
 	http.Redirect(w, r, "/cells/"+c.ID.String()+"?done=State+changed.", http.StatusSeeOther)
-}
-
-func (s *Server) cellRevoke(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	c, ok := s.cellByPath(w, r, u)
-	if !ok {
-		return
-	}
-	if r.PostFormValue("confirm") != c.Name {
-		s.renderCell(w, http.StatusBadRequest, u, c, page{Error: "Type the cell's name to confirm revocation."})
-		return
-	}
-	if err := s.Cells.Revoke(r.Context(), u, c.ID); err != nil {
-		s.internalError(w, r, err)
-		return
-	}
-	if s.CellLink != nil {
-		s.CellLink.Kick(c.ID)
-	}
-	http.Redirect(w, r, "/cells/"+c.ID.String()+"?done=Revoked.", http.StatusSeeOther)
 }
 
 type enrollData struct {

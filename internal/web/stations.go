@@ -22,6 +22,7 @@ func (s *Server) stationRoutes() {
 	s.mux.Handle("GET /stations", s.requireUser(s.stationList))
 	s.mux.Handle("GET /stations/{id}", s.requireUser(s.stationPage))
 	s.mux.Handle("POST /stations/{id}", s.requireUser(s.stationSave))
+	s.mux.Handle("POST /stations/{id}/revoke", s.requireUser(s.stationRevoke))
 }
 
 func (s *Server) stationList(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -34,7 +35,7 @@ func (s *Server) stationList(w http.ResponseWriter, r *http.Request, u *auth.Use
 	for i, c := range cells {
 		rows[i] = cellRow{c, s.liveStatus(c.ID)}
 	}
-	s.render(w, http.StatusOK, "stations.html", page{Title: "My base stations", User: u, Data: rows})
+	s.render(w, http.StatusOK, "stations.html", page{Title: "My base stations", User: u, Data: rows, Notice: r.FormValue("done")})
 }
 
 type stationData struct {
@@ -132,4 +133,31 @@ func (s *Server) stationSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 		return
 	}
 	http.Redirect(w, r, "/stations/"+c.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
+}
+
+// stationRevoke revokes the owner's base station once its name is typed: the
+// cell is disconnected at once and its certificates stop working (§5.5).
+func (s *Server) stationRevoke(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	c, ok := s.stationByPath(w, r, u)
+	if !ok {
+		return
+	}
+	if r.PostFormValue("confirm") != c.Name {
+		s.render(w, http.StatusBadRequest, "station.html", page{Title: c.Name, User: u, Data: s.stationView(r, c),
+			Error: "Type the base station's name to confirm revocation.", Leaflet: true})
+		return
+	}
+	if err := s.Cells.RevokeOwned(r.Context(), u, c.ID); err != nil {
+		if errors.Is(err, cell.ErrNotFound) {
+			s.notFound(w, r, u)
+			return
+		}
+		s.internalError(w, r, err)
+		return
+	}
+	if s.CellLink != nil {
+		s.CellLink.Kick(c.ID)
+	}
+	http.Redirect(w, r, "/stations?done=Revoked.", http.StatusSeeOther)
 }

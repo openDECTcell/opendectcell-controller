@@ -186,6 +186,35 @@ func TestTokenAuthorisation(t *testing.T) {
 	}
 }
 
+// The owner revokes their own base station from "My base stations"; nobody
+// else's. A plain Revoke stays admin-only.
+func TestRevokeOwned(t *testing.T) {
+	e := newEnv(t)
+	owner, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "owner", Password: "user password", Role: auth.RoleUser})
+	other, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "other", Password: "user password", Role: auth.RoleUser})
+	owner.MayAddCells, other.MayAddCells = true, true
+	_, es, err := e.store.CreateToken(e.ctx, owner, "mine", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, status, err := celltest.Enroll(e.ctx, es, "box")
+	if err != nil || status != wire.EnrollOK {
+		t.Fatalf("enroll: %d %v", status, err)
+	}
+	if err := e.store.RevokeOwned(e.ctx, other, c.ID); !errors.Is(err, cell.ErrNotFound) {
+		t.Fatalf("somebody else revoked it: %v", err)
+	}
+	if err := e.store.Revoke(e.ctx, owner, c.ID); !errors.Is(err, cell.ErrNotFound) {
+		t.Fatalf("the plain Revoke let the owner in: %v", err)
+	}
+	if err := e.store.RevokeOwned(e.ctx, owner, c.ID); err != nil {
+		t.Fatalf("the owner could not revoke: %v", err)
+	}
+	if got, err := e.store.GetOwned(e.ctx, owner, c.ID); err != nil || got.State != "revoked" {
+		t.Fatalf("after revoke: %+v %v", got, err)
+	}
+}
+
 // A cell that announces media and SRTP is granted both: without the grant it
 // refuses MEDIA_OPEN as "not allowed" (found on air, 2026-11-01). Plain RTP is
 // never granted.

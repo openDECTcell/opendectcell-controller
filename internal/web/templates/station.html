@@ -66,6 +66,18 @@
         </dl>
       </div>
     </div>
+
+    {{if ne .Cell.State "revoked"}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "trash"}} Revoke</h3></div>
+      <div class="card-body"><form method="post" action="/stations/{{.Cell.ID}}/revoke">
+        <p class="text-secondary">The base station is disconnected at once and can never connect again with its certificate. Its handsets move to your other base stations, or lose their base. Enrolling it again needs a new token.</p>
+        <label class="form-label" for="confirm">Type <strong>{{.Cell.Name}}</strong> to confirm</label>
+        <input class="form-control mb-3" id="confirm" name="confirm" autocomplete="off" required>
+        <button type="submit" class="btn btn-danger">Revoke</button>
+      </form></div>
+    </div>
+    {{end}}
   </div>
 </div>
 {{end}}

@@ -531,8 +531,6 @@ paths:
               properties:
                 name: { type: string, minLength: 1, maxLength: 64 }
                 location: { type: string, maxLength: 128 }
-                max_calls: { type: integer, minimum: 0, maximum: 16 }
-                allow_plain_rtp: { type: boolean }
                 state: { type: string, enum: [active, disabled], description: "Approve (pending → active), disable or re-enable. Revoke with revokeCell" }
       responses:
         "200":
@@ -1094,8 +1092,6 @@ components:
             sub_records: { type: integer, nullable: true }
             audio_nb: { type: integer, nullable: true }
             audio_wb: { type: integer, nullable: true }
-        max_calls: { type: integer }
-        allow_plain_rtp: { type: boolean }
         certificate_expires_at: { type: string, format: date-time, nullable: true }
         last_seen_at: { type: string, format: date-time, nullable: true }
     CellList:
@@ -1249,5 +1245,4 @@ components:
       type: object
       properties:
         slot_policy: { type: string, enum: [auto, manual], description: "cell-protocol.md §7.4" }
-        default_max_calls: { type: integer, minimum: 0, maximum: 16, default: 1 }
         audit_retention_days: { type: integer, minimum: 30, nullable: true, description: "null = keep forever" }

@@ -510,8 +510,6 @@ type Cell struct {
 	CapSubRecords   *int16
 	CapAudioNB      *int16
 	CapAudioWB      *int16
-	MaxCalls        int16
-	AllowPlainRTP   bool
 	LastSeenAt      *time.Time
 	CertExpiresAt   *time.Time
 	RPN             *int16 // the cell's number in the system identity, once it has one
@@ -533,14 +531,14 @@ type Profile struct {
 }
 
 const cellCols = `c.id, c.name, c.location, c.state, c.enrolled_by, c.enrolled_at, c.approved_at, c.software_version,
-	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.max_calls, c.allow_plain_rtp, c.last_seen_at,
+	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.last_seen_at,
 	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL),
 	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats`
 
 func scanCell(r pgx.Row) (*Cell, error) {
 	var c Cell
 	err := r.Scan(&c.ID, &c.Name, &c.Location, &c.State, &c.EnrolledBy, &c.EnrolledAt, &c.ApprovedAt, &c.SoftwareVersion,
-		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.MaxCalls, &c.AllowPlainRTP, &c.LastSeenAt, &c.CertExpiresAt,
+		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.LastSeenAt, &c.CertExpiresAt,
 		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -626,11 +624,25 @@ func (s *Store) SetState(ctx context.Context, u *auth.User, id uuid.UUID, to str
 }
 
 // Revoke makes a cell permanently unusable (§5.5): state revoked, every
-// certificate revoked, its subscription slots freed.
+// certificate revoked, its subscription slots freed. Admins only; the owner
+// uses RevokeOwned.
 func (s *Store) Revoke(ctx context.Context, u *auth.User, id uuid.UUID) error {
 	if auth.RequireAdmin(u) != nil {
 		return ErrNotFound
 	}
+	return s.revoke(ctx, id)
+}
+
+// RevokeOwned is Revoke for the user who enrolled the cell (admins: any
+// cell), from "My base stations". Anybody else gets ErrNotFound.
+func (s *Store) RevokeOwned(ctx context.Context, u *auth.User, id uuid.UUID) error {
+	if _, err := s.GetOwned(ctx, u, id); err != nil {
+		return err
+	}
+	return s.revoke(ctx, id)
+}
+
+func (s *Store) revoke(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, "UPDATE cell SET state = 'revoked', rpn = NULL WHERE id = $1 AND state <> 'revoked'", id)
 		if err != nil {
@@ -659,8 +671,6 @@ func (s *Store) Revoke(ctx context.Context, u *auth.User, id uuid.UUID) error {
 // CellUpdate holds the editable fields; nil leaves a field unchanged.
 type CellUpdate struct {
 	Name, Location *string
-	MaxCalls       *int16
-	AllowPlainRTP  *bool
 }
 
 // Update edits a cell's settings; admins only.
@@ -671,14 +681,10 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up CellU
 	if up.Name != nil && (strings.TrimSpace(*up.Name) == "" || len(*up.Name) > 64) {
 		return nil, errors.New("name must be 1 to 64 characters")
 	}
-	if up.MaxCalls != nil && (*up.MaxCalls < 0 || *up.MaxCalls > 16) {
-		return nil, errors.New("max calls must be 0 to 16")
-	}
 	var c *Cell
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE cell SET name = coalesce($2, name), location = coalesce($3, location),
-			max_calls = coalesce($4, max_calls), allow_plain_rtp = coalesce($5, allow_plain_rtp) WHERE id = $1`,
-			id, up.Name, up.Location, up.MaxCalls, up.AllowPlainRTP)
+		tag, err := tx.Exec(ctx, `UPDATE cell SET name = coalesce($2, name), location = coalesce($3, location) WHERE id = $1`,
+			id, up.Name, up.Location)
 		if err != nil {
 			return err
 		}
@@ -691,12 +697,6 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up CellU
 		}
 		if up.Location != nil {
 			d["location"] = *up.Location
-		}
-		if up.MaxCalls != nil {
-			d["max_calls"] = *up.MaxCalls
-		}
-		if up.AllowPlainRTP != nil {
-			d["allow_plain_rtp"] = *up.AllowPlainRTP
 		}
 		if err := audit.Record(ctx, tx, audit.Entry{Action: "cell.update", ObjectType: "cell", ObjectID: id.String(), Details: d}); err != nil {
 			return err

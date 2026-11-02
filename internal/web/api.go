@@ -523,7 +523,6 @@ func (s *Server) cellJSON(c *cell.Cell, full bool) map[string]any {
 	m["enrolled_at"], m["enrolled_by"], m["approved_at"] = c.EnrolledAt, c.EnrolledBy, c.ApprovedAt
 	m["software_version"], m["stub_version"] = c.SoftwareVersion, c.StubVersion
 	m["capacity"] = map[string]any{"sub_records": c.CapSubRecords, "audio_nb": c.CapAudioNB, "audio_wb": c.CapAudioWB}
-	m["max_calls"], m["allow_plain_rtp"] = c.MaxCalls, c.AllowPlainRTP
 	m["certificate_expires_at"], m["last_seen_at"] = c.CertExpiresAt, c.LastSeenAt
 	return m
 }
@@ -563,18 +562,15 @@ func (s *Server) apiCellPatch(w http.ResponseWriter, r *http.Request, u *auth.Us
 		return
 	}
 	var in struct {
-		Name          *string `json:"name"`
-		Location      *string `json:"location"`
-		MaxCalls      *int16  `json:"max_calls"`
-		AllowPlainRTP *bool   `json:"allow_plain_rtp"`
-		State         *string `json:"state"`
+		Name     *string `json:"name"`
+		Location *string `json:"location"`
+		State    *string `json:"state"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Name != nil || in.Location != nil || in.MaxCalls != nil || in.AllowPlainRTP != nil {
-		if _, err := s.Cells.Update(r.Context(), u, id, cell.CellUpdate{Name: in.Name, Location: in.Location,
-			MaxCalls: in.MaxCalls, AllowPlainRTP: in.AllowPlainRTP}); err != nil {
+	if in.Name != nil || in.Location != nil {
+		if _, err := s.Cells.Update(r.Context(), u, id, cell.CellUpdate{Name: in.Name, Location: in.Location}); err != nil {
 			if errors.Is(err, cell.ErrNotFound) {
 				notFoundAPI(w)
 			} else {
