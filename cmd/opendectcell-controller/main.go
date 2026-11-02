@@ -285,6 +285,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		dectCore = dect
 		calls.DECT = bridge.RouterOf(dect)
 		dect.Originate = calls.HandsetCall
+		calls.MWI = dect
+		dect.MWIFor = calls.MWIFor
 		windows.Done = func(w regwin.Window) {
 			mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
@@ -425,6 +427,11 @@ func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *se
 		Log: log.With("component", "sip"), UserAgent: "opendectcell-controller/" + buildVersion()}
 	if cfg.SIP.MediaIP != "" {
 		sc.MediaIP = netip.MustParseAddr(cfg.SIP.MediaIP) // validated
+	}
+	if w, ok := endpoint.(interface {
+		AccountMWI(uuid.UUID, sip.MWI)
+	}); ok {
+		sc.OnMWI = w.AccountMWI // an account's mailbox: the handsets that have it as a line are told
 	}
 	m, err := sip.New(sc, endpoint)
 	if err != nil {

@@ -579,6 +579,9 @@ func (r *cellRun) tick() {
 			r.setReady(true)
 			r.radioAt = time.Now()
 			r.log.Info("cell radio on")
+			for _, hid := range r.hidOf { // the handsets the stack started with: what their mailboxes hold
+				r.replayMWI(hid)
+			}
 		}
 	}
 	r.registration(now)

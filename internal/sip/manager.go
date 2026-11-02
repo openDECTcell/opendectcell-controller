@@ -46,6 +46,9 @@ type Config struct {
 	Log       *slog.Logger
 	UserAgent string
 	Now       func() time.Time
+	// OnMWI is called with what an MWI account's mailbox says (a NOTIFY of
+	// event message-summary); it must return quickly.
+	OnMWI func(account uuid.UUID, m MWI)
 }
 
 // Manager runs every account's user agent over a shared transport set.
@@ -129,7 +132,7 @@ func New(cfg Config, ep Endpoint) (*Manager, error) {
 	})
 	m.server.OnOptions(m.onOptions)
 	m.server.OnInfo(m.onInfo)
-	m.server.OnNotify(func(req *sip.Request, tx sip.ServerTransaction) { m.respond(tx, req, 200, "OK") }) // MWI: C10
+	m.server.OnNotify(m.onNotify)
 	m.server.OnRefer(func(req *sip.Request, tx sip.ServerTransaction) { m.respond(tx, req, 501, "Not Implemented") })
 	m.server.OnMessage(func(req *sip.Request, tx sip.ServerTransaction) { m.respond(tx, req, 415, "Unsupported Media Type") })
 	return m, nil

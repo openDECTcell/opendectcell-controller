@@ -39,6 +39,7 @@ type Account struct {
 	TLSVerify      bool
 	Enabled        bool
 	UserAgent      string // advanced.user_agent
+	MWI            bool   // subscribe to the mailbox (message-summary) and report it
 }
 
 // Validate checks what the SIP side relies on.

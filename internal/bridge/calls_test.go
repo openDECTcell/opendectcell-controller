@@ -106,15 +106,19 @@ func (c *fakeCaller) Dial(_ context.Context, _ uuid.UUID, number string) (SIPCal
 }
 
 type fakeLines struct {
-	acct uuid.UUID
-	has  bool
-	recv []Receiver
+	acct   uuid.UUID
+	has    bool
+	recv   []Receiver
+	hlines []HandsetLine
 }
 
 func (l fakeLines) OutLine(context.Context, uuid.UUID, int) (uuid.UUID, bool, error) {
 	return l.acct, l.has, nil
 }
 func (l fakeLines) Receivers(context.Context, uuid.UUID) ([]Receiver, error) { return l.recv, nil }
+func (l fakeLines) HandsetLines(context.Context, uuid.UUID) ([]HandsetLine, error) {
+	return l.hlines, nil
+}
 
 // fakeHandset is core.Outgoing as the manager sees it.
 type fakeHandset struct {

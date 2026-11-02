@@ -139,6 +139,7 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 	r.idxOf[h.ID], r.hidOf[i] = i, h.ID
 	r.trans[h.ID] = &transRec{idx: i, slot: h.Rec.Slot, added: now}
 	r.log.Info("a handset is in this cell's table", "handset", h.ID, "record", h.Rec.Slot, "held", len(r.trans))
+	r.replayMWI(h.ID)
 	return true
 }
 

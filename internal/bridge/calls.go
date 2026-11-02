@@ -122,6 +122,7 @@ type Manager struct {
 	DECT    Router
 	Cells   Cells
 	Lines   Lines
+	MWI     MWISender // nil: message waiting is not shown (mwi.go)
 	CallLog CallLog
 	Log     *slog.Logger
 
@@ -137,6 +138,7 @@ type Manager struct {
 	nextID   uint32
 	pending  map[uint32]chan wire.MediaOpenAckMsg
 	sessions map[uint32]*mediaSession
+	mwi      map[uuid.UUID]uint // new messages in an account's mailbox, as it last said
 }
 
 const defaultOpenTimeout = 3 * time.Second

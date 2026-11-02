@@ -725,7 +725,7 @@ func toSIP(r *Record, password string) sip.Account {
 		AuthUsername: r.AuthUsername, Password: password, Registrar: r.Registrar, OutboundProxy: r.OutboundProxy,
 		Transport: resolve.Transport(r.Transport), Register: r.Register, RegisterExpiry: r.RegisterExpiry, Keepalive: r.Keepalive,
 		Encryption: sdp.Encryption(r.MediaEncryption), Codecs: r.Codecs, DTMFMode: r.DTMFMode, CallerIDSource: r.CallerIDSource,
-		TLSVerify: r.TLSVerify, Enabled: r.Enabled, UserAgent: r.Advanced.UserAgent}
+		TLSVerify: r.TLSVerify, Enabled: r.Enabled, UserAgent: r.Advanced.UserAgent, MWI: r.Advanced.MWI}
 }
 
 // RuntimeAccounts returns every account for the SIP side, passwords

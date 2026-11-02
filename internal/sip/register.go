@@ -68,11 +68,20 @@ type line struct {
 	target   resolve.Target // the registrar target that worked last
 	hasTgt   bool
 	contactU string
+
+	// the message-waiting subscription (mwi.go)
+	mwiOnce    sync.Once
+	mwiKick    chan struct{}
+	mwiCallID  string
+	mwiFromTag string
+	mwiToTag   string
+	mwiCSeq    uint32
 }
 
 func newLine(m *Manager, a Account) *line {
 	return &line{m: m, acct: a, done: make(chan struct{}), callID: sip.GenerateTagN(24) + "@opendectcell",
-		fromTag: sip.GenerateTagN(16), cseq: 1, contactU: ContactUser(a.ID)}
+		fromTag: sip.GenerateTagN(16), cseq: 1, contactU: ContactUser(a.ID),
+		mwiKick: make(chan struct{}, 1), mwiCallID: sip.GenerateTagN(24) + "@opendectcell", mwiFromTag: sip.GenerateTagN(16), mwiCSeq: 1}
 }
 
 func (l *line) same(a Account) bool { return reflect.DeepEqual(l.acct, a) }
@@ -244,6 +253,7 @@ func (l *line) registered(t resolve.Target, granted time.Duration) {
 	l.target, l.hasTgt = t, true
 	l.st = RegStatus{State: RegRegistered, RegisteredUntil: l.m.cfg.Now().Add(granted), Server: t.String(), Transport: t.Transport}
 	l.mu.Unlock()
+	l.startMWI()
 }
 
 // refreshAfter is when to refresh a binding granted for d.

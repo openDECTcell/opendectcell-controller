@@ -43,8 +43,11 @@ handset picks it (CAT-iq handsets can).
 
 - **Call transfer, conference and early media**: not built. The *Allow call transfer* box is stored but does
   nothing yet.
-- **Voicemail indicator (MWI)**: the SIP notification is accepted but not shown on the handset yet; the box is
-  stored.
+- **Voicemail indicator (MWI)**: built, **not yet tried on hardware**. With *Voicemail notification (MWI)* on, the
+  controller subscribes to the account's mailbox (SIP `message-summary`, RFC 3842) after it registered and tells every
+  handset that has the account as a line how many new messages it holds; a handset that comes to another cell is told
+  again. Your provider or PBX must support the subscription (or push the notification); the log says when the
+  subscription fails.
 - **Trunk-style registration** (for example a provider that wants several numbers on one registration) has not
   been tried against a real provider; only the test servers above.
 - Calls over TLS have not been interoperability-tested.

@@ -81,6 +81,11 @@ type Core struct {
 	// PageDelay is how long the cell a handset was last on is paged alone,
 	// before the others are (route.go); 0 is DefaultPageDelay.
 	PageDelay time.Duration
+
+	// MWIFor gives the lines of a handset with the number of new messages in
+	// each mailbox, for a handset that comes into a cell's table; nil: none
+	// (mwi.go).
+	MWIFor func(ctx context.Context, hid uuid.UUID) []MWILine
 	// RingWaveSize is how many more cells are paged each PageDelay while a
 	// call is unanswered, RingMaxCells how many cells it is offered to in all
 	// (the last-heard one included); 0 are the defaults (route.go).

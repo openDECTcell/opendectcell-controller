@@ -27,6 +27,14 @@ type Lines interface {
 	OutLine(ctx context.Context, handset uuid.UUID, line int) (account uuid.UUID, ok bool, err error)
 	// Receivers are the handsets an incoming call to the account rings.
 	Receivers(ctx context.Context, account uuid.UUID) ([]Receiver, error)
+	// HandsetLines are the accounts of a handset's enabled lines.
+	HandsetLines(ctx context.Context, handset uuid.UUID) ([]HandsetLine, error)
+}
+
+// HandsetLine is a line of a handset and the account it is.
+type HandsetLine struct {
+	Line    int
+	Account uuid.UUID
 }
 
 // PGLines is Lines on the database.
@@ -61,6 +69,20 @@ func (p PGLines) Receivers(ctx context.Context, account uuid.UUID) ([]Receiver, 
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Receiver, error) {
 		var x Receiver
 		err := r.Scan(&x.Handset, &x.Line)
+		return x, err
+	})
+}
+
+// HandsetLines implements Lines.
+func (p PGLines) HandsetLines(ctx context.Context, handset uuid.UUID) ([]HandsetLine, error) {
+	rows, err := p.Pool.Query(ctx, `SELECT line, sip_account_id FROM handset_line
+		WHERE handset_id = $1 AND enabled ORDER BY line`, handset)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (HandsetLine, error) {
+		var x HandsetLine
+		err := r.Scan(&x.Line, &x.Account)
 		return x, err
 	})
 }

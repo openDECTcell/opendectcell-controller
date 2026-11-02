@@ -56,6 +56,7 @@ type pbx struct {
 	infos      chan *sip.Request
 	nonce      string
 	sessions   map[string]*sipgo.DialogServerSession // by Call-ID, for ACKs
+	subs       chan *sip.Request                     // SUBSCRIBEs that were accepted, with the tag we answered with in To
 }
 
 // inCall is an INVITE the PBX received from the controller.
@@ -82,10 +83,11 @@ func newPBX(t *testing.T) *pbx {
 	p := &pbx{t: t, addr: conn.LocalAddr().(*net.UDPAddr).AddrPort(), ua: ua, srv: srv, client: cl, conn: conn,
 		users: map[string]string{}, algos: []string{"MD5"}, bindings: map[string]sip.Uri{}, registers: map[string]int{},
 		expires: 3600, calls: make(chan *inCall, 8), byes: make(chan string, 8), reinvites: make(chan *sip.Request, 8),
-		infos: make(chan *sip.Request, 8), nonce: randHex(), sessions: map[string]*sipgo.DialogServerSession{}, rtp: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 43000, Max: 43199}}
+		infos: make(chan *sip.Request, 8), subs: make(chan *sip.Request, 8), nonce: randHex(), sessions: map[string]*sipgo.DialogServerSession{}, rtp: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 43000, Max: 43199}}
 	contact := sip.ContactHeader{Address: sip.Uri{Scheme: "sip", User: "pbx", Host: "127.0.0.1", Port: int(p.addr.Port())}}
 	p.dialogs = &sipgo.DialogUA{Client: cl, ContactHDR: contact, RewriteContact: true}
 	srv.OnRegister(p.onRegister)
+	srv.OnSubscribe(p.onSubscribe)
 	srv.OnInvite(p.onInvite)
 	srv.OnAck(p.onAck)
 	srv.OnBye(p.onBye)
@@ -315,4 +317,66 @@ func (p *pbx) listenTLS(t *testing.T, names ...string) (*x509.CertPool, netip.Ad
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
 	return pool, ln.Addr().(*net.TCPAddr).AddrPort()
+}
+
+// onSubscribe accepts a message-summary SUBSCRIBE from a registered user (after a digest
+// challenge) and keeps the request, with the tag the answer carried, in subs.
+func (p *pbx) onSubscribe(req *sip.Request, tx sip.ServerTransaction) {
+	user, _ := p.authorised(req, "Authorization")
+	if user == "" {
+		res := sip.NewResponseFromRequest(req, 401, "Unauthorized", nil)
+		res.AppendHeader(sip.NewHeader("WWW-Authenticate", p.challenge("MD5").String()))
+		tx.Respond(res)
+		return
+	}
+	res := sip.NewResponseFromRequest(req, 200, "OK", nil)
+	to := res.To()
+	if _, ok := to.Params.Get("tag"); !ok {
+		to.Params.Add("tag", randHex())
+	}
+	exp := "600"
+	if e := req.GetHeader("Expires"); e != nil {
+		exp = e.Value()
+	}
+	res.AppendHeader(sip.NewHeader("Expires", exp))
+	tx.Respond(res)
+	kept := req.Clone()
+	kept.To().Params = to.Params.Clone()
+	p.subs <- kept
+}
+
+// notifyMWI sends a message-summary NOTIFY for the subscription sub, to the contact the
+// controller registered for user.
+func (p *pbx) notifyMWI(t *testing.T, user string, sub *sip.Request, body string) {
+	t.Helper()
+	contact, _ := p.registered(user)
+	if contact.Host == "" {
+		t.Fatalf("%s is not registered", user)
+	}
+	req := sip.NewRequest(sip.NOTIFY, contact)
+	from := &sip.FromHeader{Address: sub.To().Address, Params: sub.To().Params.Clone()}
+	req.AppendHeader(from)
+	req.AppendHeader(&sip.ToHeader{Address: sub.From().Address, Params: sub.From().Params.Clone()})
+	cid := sip.CallIDHeader(sub.CallID().Value())
+	req.AppendHeader(&cid)
+	req.AppendHeader(&sip.CSeqHeader{SeqNo: 1, MethodName: sip.NOTIFY})
+	req.AppendHeader(sip.NewHeader("Event", "message-summary"))
+	req.AppendHeader(sip.NewHeader("Subscription-State", "active;expires=600"))
+	req.AppendHeader(sip.NewHeader("Content-Type", "application/simple-message-summary"))
+	req.SetBody([]byte(body))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	tx, err := p.client.TransactionRequest(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Terminate()
+	select {
+	case res := <-tx.Responses():
+		if res.StatusCode != 200 {
+			t.Fatalf("NOTIFY answered %d %s", res.StatusCode, res.Reason)
+		}
+	case <-ctx.Done():
+		t.Fatal("no answer to the NOTIFY")
+	}
 }
