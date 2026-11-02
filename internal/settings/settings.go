@@ -299,12 +299,12 @@ const (
 	DefaultMovedAfterSec     = 180 // one heard on another cell, three minutes after that
 )
 
-// The renewal is short on purpose: the chip stops hearing an idle handset it has
-// no slot for some minutes after its last contact, and only a location
-// registration revives it (clean room Q-0081, A-0146, A-0147). Measured on the
-// A540: reachable 195 s and 240 s after its last registration, deaf after 2.5
-// min once (while it changed cells) and after 6 min; 246 s leaves a margin that
-// is not known.
+// The renewal does not keep a handset audible: neither chip stops hearing an idle
+// handset (pages answered 60 min after its last contact on the 7520 and the 7412,
+// bench 2026-11-02; the "decay" of A-0146 to A-0149 was withdrawn). It sets how
+// soon the controller learns that a handset left or was switched off, and costs
+// the handset a short radio link each time. 246 s (six units) is the maintainer's
+// choice; a longer interval saves battery.
 
 // MaxLocateValiditySec is 255 units of 40.96 s, the most a LOCATE-ACCEPT can say.
 const MaxLocateValiditySec = 10445

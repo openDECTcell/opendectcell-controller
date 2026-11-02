@@ -38,11 +38,7 @@ type Records interface {
 	// CellRecords is what cell holds, at most max records, placed by
 	// cell-protocol.md §7.4 rules 1 and 2 (home set, no eviction). unplaced
 	// lists home-set handsets that found no free slot.
-	// resident is a cell whose chip admits only handsets that sit in one of its
-	// slots (chipNeedsSlots): every handset of the controller gets a chip slot
-	// there, most recently heard first, one slot stays free for an enrolment,
-	// and a pooled handset keeps the slot it enrolled in.
-	CellRecords(ctx context.Context, cell uuid.UUID, max int, resident bool) (hs []Handset, unplaced []uuid.UUID, err error)
+	CellRecords(ctx context.Context, cell uuid.UUID, max int) (hs []Handset, unplaced []uuid.UUID, err error)
 	// SaveRecord stores a record the stack changed. id uuid.Nil is a
 	// handset that just enrolled on cell through owner's registration
 	// window; its id is returned. owner is ignored for a known id.
@@ -127,12 +123,26 @@ func uakLoc(id uuid.UUID) secret.Location {
 const (
 	maxSlot   = 6
 	maxRecord = 32
-	poolFirst = maxSlot + 1 // the first TPUI low byte of the pool: 11 01 to 11 06 are the chip's
+	poolFirst = maxSlot + 1 // the first record number above the chip's slots
 )
 
-// poolTPUI is a pool TPUI {00, 11, N}, N from 7, as the DB column holds it.
+// poolValid says whether N may be the last byte of a pool TPUI {00, 11, N}. The
+// 06.88 chip routes a handset's own access (a call, the answer to a page) by
+// the low three bits of that byte and hears only 1 to 6; a byte with bit 3 set
+// is not heard either (bench 2026-11-02: 02, 16, 25, 35, 42, 43, f1 answered;
+// 0d, 17, 19, 3d never), while the high nibble is free. Below 0x10 are the
+// chip's own slot TPUIs. The 08.25 chip hears any.
+func poolValid(n int) bool {
+	lo := n & 15
+	return n >= 0x10 && n <= 0xFF && lo >= 1 && lo <= 6
+}
+
+// poolSize is how many TPUIs the pool holds: 15 high nibbles by 6 classes.
+const poolSize = 90
+
+// poolTPUI is a pool TPUI {00, 11, N}, N one poolValid allows, as the DB column holds it.
 func poolTPUI(t [3]byte) (int32, bool) {
-	if t[0] != 0 || t[1] != 0x11 || t[2] < poolFirst {
+	if t[0] != 0 || t[1] != 0x11 || !poolValid(int(t[2])) {
 		return 0, false
 	}
 	return 0x1100 | int32(t[2]), true
@@ -140,8 +150,8 @@ func poolTPUI(t [3]byte) (int32, bool) {
 
 func tpuiBytes(v int32) [3]byte { return [3]byte{byte(v >> 16), byte(v >> 8), byte(v)} }
 
-// ErrPoolFull: every TPUI of the pool is held (249 handsets).
-var ErrPoolFull = errors.New("core: the TPUI pool is full (249 handsets)")
+// ErrPoolFull: every TPUI of the pool is held (poolSize handsets).
+var ErrPoolFull = errors.New("core: the TPUI pool is full (90 handsets)")
 
 func (s *Store) ReserveTPUI(ctx context.Context) ([3]byte, error) {
 	if s.NoPool {
@@ -162,8 +172,8 @@ func (s *Store) ReserveTPUI(ctx context.Context) ([3]byte, error) {
 		used[t] = true
 	}
 	var free []uint8
-	for n := poolFirst; n <= 255; n++ {
-		if !used[n] && !s.reserved[uint8(n)] {
+	for n := 0x10; n <= 255; n++ {
+		if poolValid(n) && !used[n] && !s.reserved[uint8(n)] {
 			free = append(free, uint8(n))
 		}
 	}
@@ -191,7 +201,7 @@ func (s *Store) ReleaseTPUI(t [3]byte) {
 	s.mu.Unlock()
 }
 
-func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int, resident bool) ([]Handset, []uuid.UUID, error) {
+func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Handset, []uuid.UUID, error) {
 	max = min(max, maxSlot)
 	var hs []Handset
 	var unplaced []uuid.UUID
@@ -234,57 +244,14 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int, reside
 		// Above the chip's slots the table is a working set that a stack starts
 		// without: whoever was in it before has to be heard (or called) to come
 		// back (Fetch, Ring). A pooled handset that sits in a chip slot here (it
-		// enrolled in this run) gives the slot up the same way, except on a
-		// resident cell, where the slot is what lets the chip hear the handset.
+		// enrolled in this run) gives the slot up the same way.
 		if _, err := tx.Exec(ctx, `UPDATE cell_slot cs SET handset_id = NULL, state = 'empty', written_at = now()
-			WHERE cs.cell_id = $1 AND cs.handset_id IS NOT NULL AND (cs.slot > $2 OR (NOT $3 AND EXISTS
-				(SELECT 1 FROM handset h WHERE h.id = cs.handset_id AND h.pooled)))`,
-			cell, int16(maxSlot), resident); err != nil {
+			WHERE cs.cell_id = $1 AND cs.handset_id IS NOT NULL AND (cs.slot > $2 OR EXISTS
+				(SELECT 1 FROM handset h WHERE h.id = cs.handset_id AND h.pooled))`,
+			cell, int16(maxSlot)); err != nil {
 			return err
 		}
-		if resident {
-			// Every other handset into the free chip slots, the cell's own
-			// first, then the most recently heard anywhere; one slot stays free
-			// for a handset that enrols here. (A handset with no slot is a
-			// roamer here: the chip does not hear it call or answer a page.)
-			rows, err := tx.Query(ctx, `SELECT h.id FROM handset h WHERE NOT EXISTS
-					(SELECT 1 FROM cell_slot cs WHERE cs.cell_id = $1 AND cs.handset_id = h.id)
-				ORDER BY (h.last_seen_cell_id = $1) DESC NULLS LAST, h.last_seen_at DESC NULLS LAST, h.registered_at, h.id`, cell)
-			if err != nil {
-				return err
-			}
-			others, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
-			if err != nil {
-				return err
-			}
-			used, err = usedSlots(ctx, tx, cell)
-			if err != nil {
-				return err
-			}
-			for _, id := range others {
-				slot := int16(1)
-				for used[slot] && slot <= int16(max) {
-					slot++
-				}
-				if slot >= int16(max) { // the last slot is for an enrolment
-					break
-				}
-				used[slot] = true
-				if err := putSlot(ctx, tx, cell, slot, id, false); err != nil {
-					return err
-				}
-			}
-		}
 		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxSlot))
-		if resident {
-			// The chip finds a handset's slot by its TPUI {00 11 n}, n the slot: with
-			// the pool's TPUI a handset in a slot is not heard (bench 2026-11-02,
-			// 06.88), so a record in a resident cell's chip slot takes the TPUI
-			// derived from its slot, and the handset takes it at its next locate.
-			for i := range hs {
-				hs[i].Rec.TPUI = [3]byte{}
-			}
-		}
 		return err
 	})
 	if err != nil {

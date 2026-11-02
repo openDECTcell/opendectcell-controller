@@ -48,7 +48,6 @@ type cellRun struct {
 	next        int       // the next free record index in the stack
 	offered     [][3]byte // pool TPUIs the free records were given, released on drop
 	reloadAt    time.Time
-	resident    bool              // the chip hears only handsets in its slots (chipNeedsSlots): they stay in them
 	recycleDue  []recycleDue      // pooled enrolments whose chip slot is to be freed
 	nudgeDue    []nudgeDue        // freshly enrolled handsets to tell their names to once more
 	releases    int               // links the chip reported released, since the stack started
@@ -190,13 +189,6 @@ func (r *cellRun) handle(ev event) {
 		if r.st != nil && r.reloadAt.IsZero() {
 			r.reloadAt = time.Now().Add(reloadDelay)
 		}
-	case evEnrolled:
-		// a handset that enrolled elsewhere has no slot here yet: the stack is
-		// rebuilt soon, from the records, which give it one
-		if _, ok := r.idxOf[ev.hid]; r.resident && r.st != nil && !ok && r.reloadAt.IsZero() {
-			r.log.Info("a handset enrolled on another cell: this cell's slots are rebuilt to hold it", "handset", ev.hid)
-			r.reloadAt = time.Now().Add(reloadDelay)
-		}
 	case evRecycle:
 		if r.st == nil {
 			return
@@ -205,9 +197,7 @@ func (r *cellRun) handle(ev event) {
 		if r.st.Quiet() { // no link: the registration's has ended already
 			due.first = time.Now()
 		}
-		if !r.resident { // a resident cell keeps the slot: the chip hears the handset through it
-			r.recycleDue = append(r.recycleDue, due)
-		}
+		r.recycleDue = append(r.recycleDue, due)
 		if r.trans[ev.hid] == nil && r.idxOf != nil {
 			// while the record is in its chip slot the cell knows whose it is: a call
 			// finds it, its name and profile reach the stack, its contacts are noted
@@ -748,8 +738,7 @@ func (r *cellRun) restart() {
 		max = maxSlot
 	}
 	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-	r.resident = chipNeedsSlots(r.up.StubVersion)
-	hs, unplaced, err := r.core.Records.CellRecords(ctx, r.id, max, r.resident)
+	hs, unplaced, err := r.core.Records.CellRecords(ctx, r.id, max)
 	cancel()
 	if err != nil {
 		r.log.Error("handset records not loaded: no DECT stack yet", "err", err, "retry", r.core.Retry)
@@ -795,13 +784,9 @@ func (r *cellRun) restart() {
 	}
 	free := 0
 	for ; chipRecs+free < max; free++ {
-		var t [3]byte
-		var err error
-		if !r.resident { // a resident cell's chip hears only slot-derived TPUIs: none from the pool
-			ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-			t, err = r.core.Records.ReserveTPUI(ctx)
-			cancel()
-		}
+		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+		t, err := r.core.Records.ReserveTPUI(ctx)
+		cancel()
 		if err != nil {
 			// no pooled TPUI: this store takes a chip-slot handset as before
 			r.log.Warn("no pool TPUI for a free record: a handset enrolling here sits in a chip slot", "err", err)

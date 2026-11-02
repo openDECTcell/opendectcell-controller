@@ -198,19 +198,18 @@ const (
 	evMail
 	evReject
 	evRadio
-	evFetched  // the answer to a Fetch: the handset's record, or none
-	evEvict    // take this handset out of the cell's table (its key or registration changed)
-	evReload   // rebuild the stack soon, from the records
-	evRecycle  // a pooled handset enrolled into a chip slot: free the slot in place
-	evEnrolled // a handset enrolled on another cell: a resident cell takes it into a slot
-	evCtl      // a bridge command for the stack (route.go)
-	evHome     // a handset enrolled into a chip slot of this cell and stays there: record idx is its
-	evInfo     // a handset's name or device profile changed: tell the stack that holds it
-	evDereg    // the user asks for the handset to be deregistered
+	evFetched // the answer to a Fetch: the handset's record, or none
+	evEvict   // take this handset out of the cell's table (its key or registration changed)
+	evReload  // rebuild the stack soon, from the records
+	evRecycle // a pooled handset enrolled into a chip slot: free the slot in place
+	evCtl     // a bridge command for the stack (route.go)
+	evHome    // a handset enrolled into a chip slot of this cell and stays there: record idx is its
+	evInfo    // a handset's name or device profile changed: tell the stack that holds it
+	evDereg   // the user asks for the handset to be deregistered
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "enrolled", "ctl", "home", "info", "dereg"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg"}[k]
 }
 
 type event struct {
@@ -251,11 +250,6 @@ func (c *Core) cellIDs() []uuid.UUID {
 // again has a new key and TPUI: the cells that hold it as a roamer drop it.
 func (c *Core) enrolled(origin, hid uuid.UUID, i int, again bool) {
 	c.post(origin, event{kind: evRecycle, hid: hid, idx: i})
-	for _, id := range c.cellIDs() {
-		if id != origin {
-			c.post(id, event{kind: evEnrolled, hid: hid})
-		}
-	}
 	if again {
 		c.evictElsewhere(origin, hid)
 	}
@@ -395,16 +389,6 @@ func (c *Core) CellGone(id uuid.UUID)               { c.post(id, event{kind: evG
 // read-back waits after a key write. On both builds a read in the same
 // instant gets no answer and from 20 ms it matches (08.25 and 06.88,
 // measured 2026-10-31), so 50 ms.
-// chipNeedsSlots: this STUB hears a handset's own accesses (a call, the answer
-// to a page) only while the handset holds one of its chip slots. Measured on
-// the 7412's 06.88 (2026-11-01): the A540, located and acknowledged, never got
-// an answer to a page and no call reached the chip until its key sat in a
-// slot, and then every page was answered; the 7520's 08.25 serves the same
-// handset with none. The clean-room Q&A read the other way (A-0146 to A-0149), so
-// this follows the measurement, not the reading. Such a cell holds up to five
-// handsets, whichever were heard most recently (Store.CellRecords, resident).
-func chipNeedsSlots(stub string) bool { return stub == "06.88" }
-
 func chipConfig(stub string) (table, delayMs uint32) {
 	switch stub {
 	case "06.88":
