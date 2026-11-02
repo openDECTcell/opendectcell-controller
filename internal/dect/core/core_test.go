@@ -444,7 +444,7 @@ func (r *fakeRecords) HandsetKnown(_ context.Context, id uuid.UUID) (bool, error
 }
 
 // ReserveTPUI offers {00, 11, 0x11}, {00, 11, 0x12}, ... (fakePoolByte) when pool is set.
-func (r *fakeRecords) ReserveTPUI(context.Context) ([3]byte, error) {
+func (r *fakeRecords) ReserveTPUI(context.Context, uuid.UUID) ([3]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.pool {
@@ -459,7 +459,7 @@ func (r *fakeRecords) ReserveTPUI(context.Context) ([3]byte, error) {
 // fakePoolByte is the k-th (from 0) last byte of a pool TPUI: 0x11 to 0x16, 0x21 to 0x26, ...
 func fakePoolByte(k int) byte { return byte(0x10*(k/6+1) + k%6 + 1) }
 
-func (r *fakeRecords) ReleaseTPUI(t [3]byte) {
+func (r *fakeRecords) ReleaseTPUI(_ uuid.UUID, t [3]byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.released = append(r.released, t)

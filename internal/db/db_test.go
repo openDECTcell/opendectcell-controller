@@ -129,16 +129,17 @@ func TestAuditLogIsAppendOnly(t *testing.T) {
 	}
 }
 
-func TestLinkSignatureUnique(t *testing.T) {
+// A TPUI is unique per cell, not in the table (store.uniqueTPUIs): two handsets may hold one,
+// which is what lets a controller have more handsets than a cell's pool has TPUIs.
+func TestLinkSignatureNotUnique(t *testing.T) {
 	pool := dbtest.Migrated(t)
 	owner := newUser(t, pool)
 	ins := "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, $2, $3, '\\x00')"
 	if _, err := pool.Exec(ctx, ins, owner, []byte{1}, 0x01234); err != nil {
 		t.Fatal(err)
 	}
-	// Same low 16 bits, different TPUI: same link signature.
-	if _, err := pool.Exec(ctx, ins, owner, []byte{2}, 0x11234); err == nil {
-		t.Fatal("two handsets with the same link signature")
+	if _, err := pool.Exec(ctx, ins, owner, []byte{2}, 0x01234); err != nil {
+		t.Errorf("two handsets under one TPUI: %v", err)
 	}
 }
 

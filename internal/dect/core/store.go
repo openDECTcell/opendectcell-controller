@@ -57,10 +57,11 @@ type Records interface {
 	ReleaseChipSlot(ctx context.Context, cell, id uuid.UUID) error
 	// HandsetKnown: there is such a handset.
 	HandsetKnown(ctx context.Context, id uuid.UUID) (bool, error)
-	// ReserveTPUI takes a TPUI from the pool for an enrolment a cell may
-	// take; all zero when the pool is off. ReleaseTPUI gives it back unused.
-	ReserveTPUI(ctx context.Context) ([3]byte, error)
-	ReleaseTPUI(t [3]byte)
+	// ReserveTPUI takes a TPUI from the pool for an enrolment cell may
+	// take, one no handset in that cell's table holds; all zero when the pool
+	// is off. ReleaseTPUI gives it back unused.
+	ReserveTPUI(ctx context.Context, cell uuid.UUID) ([3]byte, error)
+	ReleaseTPUI(cell uuid.UUID, t [3]byte)
 	// Forget: a handset deregistered on cell; it is no longer placed there.
 	// A pooled handset is deregistered everywhere (pooled says so, and the
 	// other cells must drop it).
@@ -98,7 +99,7 @@ type Store struct {
 	NoPool bool
 
 	mu       sync.Mutex
-	reserved map[uint8]bool // pool TPUIs offered to a free record, by low byte
+	reserved map[uuid.UUID]map[uint8]bool // pool TPUIs offered to a free record of a cell, by low byte
 }
 
 // Saved is what SaveRecord did.
@@ -137,7 +138,10 @@ func poolValid(n int) bool {
 	return n >= 0x10 && n <= 0xFF && lo >= 1 && lo <= 6
 }
 
-// poolSize is how many TPUIs the pool holds: 15 high nibbles by 6 classes.
+// poolSize is how many TPUIs the pool holds: 15 high nibbles by 6 classes. A
+// TPUI must be unique among the handsets in one cell's table (the chip pages
+// and hears by it), not across the controller: a cell holds 32 records, so the
+// pool is a per-cell limit and the number of handsets is not limited by it.
 const poolSize = 90
 
 // poolTPUI is a pool TPUI {00, 11, N}, N one poolValid allows, as the DB column holds it.
@@ -150,55 +154,142 @@ func poolTPUI(t [3]byte) (int32, bool) {
 
 func tpuiBytes(v int32) [3]byte { return [3]byte{byte(v >> 16), byte(v >> 8), byte(v)} }
 
-// ErrPoolFull: every TPUI of the pool is held (poolSize handsets).
-var ErrPoolFull = errors.New("core: the TPUI pool is full (90 handsets)")
+// ErrPoolFull: every TPUI of the pool is held in this cell (poolSize handsets).
+var ErrPoolFull = errors.New("core: the TPUI pool of the cell is full (90 handsets)")
 
-func (s *Store) ReserveTPUI(ctx context.Context) ([3]byte, error) {
-	if s.NoPool {
-		return [3]byte{}, nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rows, err := s.Pool.Query(ctx, "SELECT (tpui & 255)::int FROM handset WHERE tpui & 65280 = 4352")
+// cellTPUIs is the low bytes of the pool TPUIs the pooled handsets in cell's
+// table hold.
+func cellTPUIs(ctx context.Context, q interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, cell uuid.UUID) (map[int]bool, error) {
+	rows, err := q.Query(ctx, `SELECT (h.tpui & 255)::int FROM handset h JOIN cell_slot cs ON cs.handset_id = h.id
+		WHERE cs.cell_id = $1 AND h.pooled AND h.tpui & 65280 = 4352`, cell)
 	if err != nil {
-		return [3]byte{}, err
+		return nil, err
 	}
 	taken, err := pgx.CollectRows(rows, pgx.RowTo[int])
 	if err != nil {
-		return [3]byte{}, err
+		return nil, err
 	}
 	used := map[int]bool{}
 	for _, t := range taken {
 		used[t] = true
 	}
+	return used, nil
+}
+
+// pickPoolByte is a random pool byte not in used, or false.
+func pickPoolByte(used map[int]bool) (uint8, bool, error) {
 	var free []uint8
 	for n := 0x10; n <= 255; n++ {
-		if poolValid(n) && !used[n] && !s.reserved[uint8(n)] {
+		if poolValid(n) && !used[n] {
 			free = append(free, uint8(n))
 		}
 	}
 	if len(free) == 0 {
-		return [3]byte{}, ErrPoolFull
+		return 0, false, nil
 	}
 	k, err := rand.Int(rand.Reader, big.NewInt(int64(len(free))))
 	if err != nil {
+		return 0, false, err
+	}
+	return free[k.Int64()], true, nil
+}
+
+func (s *Store) ReserveTPUI(ctx context.Context, cell uuid.UUID) ([3]byte, error) {
+	if s.NoPool {
+		return [3]byte{}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	used, err := cellTPUIs(ctx, s.Pool, cell)
+	if err != nil {
 		return [3]byte{}, err
 	}
-	if s.reserved == nil {
-		s.reserved = map[uint8]bool{}
+	for n := range s.reserved[cell] {
+		used[int(n)] = true
 	}
-	n := free[k.Int64()]
-	s.reserved[n] = true
+	n, ok, err := pickPoolByte(used)
+	if err != nil {
+		return [3]byte{}, err
+	}
+	if !ok {
+		return [3]byte{}, ErrPoolFull
+	}
+	if s.reserved == nil {
+		s.reserved = map[uuid.UUID]map[uint8]bool{}
+	}
+	if s.reserved[cell] == nil {
+		s.reserved[cell] = map[uint8]bool{}
+	}
+	s.reserved[cell][n] = true
 	return [3]byte{0, 0x11, n}, nil
 }
 
-func (s *Store) ReleaseTPUI(t [3]byte) {
+func (s *Store) ReleaseTPUI(cell uuid.UUID, t [3]byte) {
 	if t[1] != 0x11 {
 		return
 	}
 	s.mu.Lock()
-	delete(s.reserved, t[2])
+	delete(s.reserved[cell], t[2])
 	s.mu.Unlock()
+}
+
+// uniqueTPUIs gives every pooled handset in cell's table a TPUI of its own
+// there: the chip pages a handset by its TPUI and would ring every handset
+// that holds the same. The TPUI is unique per cell, not across the controller
+// (a handset takes the one the cell it locates on gives it). Of two that
+// clash the older keeps it, newcomer (if any) last; the new TPUI reaches the
+// handset at its next location registration.
+func (s *Store) uniqueTPUIs(ctx context.Context, tx pgx.Tx, cell, newcomer uuid.UUID) error {
+	rows, err := tx.Query(ctx, `SELECT h.id, h.tpui FROM handset h JOIN cell_slot cs ON cs.handset_id = h.id
+		WHERE cs.cell_id = $1 AND h.pooled ORDER BY (h.id = $2), h.registered_at, h.id`, cell, newcomer)
+	if err != nil {
+		return err
+	}
+	type held struct {
+		id   uuid.UUID
+		tpui int32
+	}
+	hs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (held, error) {
+		var h held
+		return h, r.Scan(&h.id, &h.tpui)
+	})
+	if err != nil {
+		return err
+	}
+	used := map[int]bool{}
+	s.mu.Lock()
+	for n := range s.reserved[cell] {
+		used[int(n)] = true
+	}
+	s.mu.Unlock()
+	for _, h := range hs {
+		if h.tpui&0xFF00 == 0x1100 {
+			used[int(h.tpui&0xFF)] = true
+		}
+	}
+	seen := map[int32]bool{}
+	for _, h := range hs {
+		v := h.tpui & 0xFFFF
+		if !seen[v] {
+			seen[v] = true
+			continue
+		}
+		n, ok, err := pickPoolByte(used)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			continue // every TPUI is taken in this cell: it keeps the clash
+		}
+		used[int(n)] = true
+		seen[0x1100|int32(n)] = true
+		if _, err := tx.Exec(ctx, "UPDATE handset SET tpui = $2 WHERE id = $1", h.id, 0x1100|int32(n)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Handset, []uuid.UUID, error) {
@@ -251,6 +342,9 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 			cell, int16(maxSlot)); err != nil {
 			return err
 		}
+		if err := s.uniqueTPUIs(ctx, tx, cell, uuid.Nil); err != nil {
+			return err
+		}
 		hs, err = s.readRecords(ctx, tx, `WHERE cs.cell_id = $1 AND cs.slot BETWEEN 1 AND $2 ORDER BY cs.slot`, cell, int16(maxSlot))
 		return err
 	})
@@ -266,16 +360,21 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, max int) ([]Han
 // ErrCellFull: every record number above the chip's slots holds a handset.
 var ErrCellFull = errors.New("core: the cell's table is full")
 
+// PlaceHandset puts a handset in cell's table to page it there: it has not been
+// heard on the cell, so its TPUI is the one it holds and is left alone.
 func (s *Store) PlaceHandset(ctx context.Context, cell, id uuid.UUID) (Handset, bool, error) {
-	return s.place(ctx, cell, func(tx pgx.Tx) (uuid.UUID, error) {
+	return s.place(ctx, cell, false, func(tx pgx.Tx) (uuid.UUID, error) {
 		var got uuid.UUID
 		err := tx.QueryRow(ctx, "SELECT id FROM handset WHERE id = $1", id).Scan(&got)
 		return got, err
 	})
 }
 
+// PlaceByIPUI puts a handset the cell has just heard in its table; if another
+// handset there holds its TPUI it gets a new one, which the cell's answer to
+// its location registration carries (uniqueTPUIs).
 func (s *Store) PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (Handset, bool, error) {
-	return s.place(ctx, cell, func(tx pgx.Tx) (uuid.UUID, error) {
+	return s.place(ctx, cell, true, func(tx pgx.Tx) (uuid.UUID, error) {
 		var got uuid.UUID
 		err := tx.QueryRow(ctx, "SELECT id FROM handset WHERE ipui = $1", ipui).Scan(&got)
 		return got, err
@@ -283,8 +382,8 @@ func (s *Store) PlaceByIPUI(ctx context.Context, cell uuid.UUID, ipui []byte) (H
 }
 
 // place finds the handset, gives it a record number on cell if it has none
-// there, and reads its record.
-func (s *Store) place(ctx context.Context, cell uuid.UUID, find func(pgx.Tx) (uuid.UUID, error)) (Handset, bool, error) {
+// there, and reads its record. heard: the handset talks to the cell now.
+func (s *Store) place(ctx context.Context, cell uuid.UUID, heard bool, find func(pgx.Tx) (uuid.UUID, error)) (Handset, bool, error) {
 	var out []Handset
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		out = nil
@@ -312,6 +411,11 @@ func (s *Store) place(ctx context.Context, cell uuid.UUID, find func(pgx.Tx) (uu
 				return ErrCellFull
 			}
 			if err := putSlot(ctx, tx, cell, slot, id, true); err != nil {
+				return err
+			}
+		}
+		if heard {
+			if err := s.uniqueTPUIs(ctx, tx, cell, id); err != nil {
 				return err
 			}
 		}
@@ -496,7 +600,8 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 			}
 			out.Enrolled = true
 			// A pool TPUI on an enrolment is the one the cell was given to
-			// offer (ReserveTPUI): the handset is held by every cell.
+			// offer (ReserveTPUI): unique in that cell's table; any other
+			// cell the handset locates on makes it unique there (uniqueTPUIs).
 			pt, pooled := poolTPUI(r.TPUI)
 			pooled = pooled && !s.NoPool
 			// A handset enrolling again keeps its row: same IPUI, new key.
@@ -577,7 +682,7 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 		return Saved{}, err
 	}
 	if out.Enrolled {
-		s.ReleaseTPUI(r.TPUI) // it is the handset's now, no longer on offer
+		s.ReleaseTPUI(cell, r.TPUI) // it is the handset's now, no longer on offer
 	}
 	return out, nil
 }

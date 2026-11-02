@@ -327,7 +327,7 @@ func (r *cellRun) recycle(now time.Time) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-	t, err := r.core.Records.ReserveTPUI(ctx)
+	t, err := r.core.Records.ReserveTPUI(ctx, r.id)
 	cancel()
 	if err != nil {
 		r.log.Warn("no pool TPUI to recycle a record with: the stack is rebuilt instead", "err", err)
@@ -337,10 +337,10 @@ func (r *cellRun) recycle(now time.Time) {
 	}
 	switch r.st.Recycle(p.idx, t) {
 	case stack.RecycleBusy:
-		r.core.Records.ReleaseTPUI(t)
+		r.core.Records.ReleaseTPUI(r.id, t)
 		return // the next tick
 	case stack.RecycleNo:
-		r.core.Records.ReleaseTPUI(t)
+		r.core.Records.ReleaseTPUI(r.id, t)
 		r.log.Warn("the stack would not recycle the enrolled record: it is rebuilt instead", "record", p.idx)
 		r.recycleDue = r.recycleDue[1:]
 		r.rebuild(now)
@@ -385,17 +385,17 @@ func (r *cellRun) forgetNow() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-	t, err := r.core.Records.ReserveTPUI(ctx)
+	t, err := r.core.Records.ReserveTPUI(ctx, r.id)
 	cancel()
 	if err != nil {
 		t = [3]byte{} // no pool: the TPUI is derived from the slot
 	}
 	switch r.st.Recycle(i, t) {
 	case stack.RecycleBusy:
-		r.core.Records.ReleaseTPUI(t)
+		r.core.Records.ReleaseTPUI(r.id, t)
 		return // the next tick
 	case stack.RecycleNo:
-		r.core.Records.ReleaseTPUI(t)
+		r.core.Records.ReleaseTPUI(r.id, t)
 		r.log.Warn("the stack would not remove the record", "record", i)
 		r.forgetDue = r.forgetDue[1:]
 		return
@@ -785,7 +785,7 @@ func (r *cellRun) restart() {
 	free := 0
 	for ; chipRecs+free < max; free++ {
 		ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
-		t, err := r.core.Records.ReserveTPUI(ctx)
+		t, err := r.core.Records.ReserveTPUI(ctx, r.id)
 		cancel()
 		if err != nil {
 			// no pooled TPUI: this store takes a chip-slot handset as before
@@ -834,7 +834,7 @@ func (r *cellRun) drop() {
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false
 	r.sigAt, r.sigMs = nil, nil
 	for _, t := range r.offered {
-		r.core.Records.ReleaseTPUI(t)
+		r.core.Records.ReleaseTPUI(r.id, t)
 	}
 	r.offered = nil
 	r.radioOn, r.regSet, r.regUntil = false, false, time.Time{}

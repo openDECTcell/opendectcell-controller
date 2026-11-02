@@ -243,7 +243,7 @@ func TestStoreReleaseChipSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tp, err := s.ReserveTPUI(ctx)
+	tp, err := s.ReserveTPUI(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,11 +296,11 @@ func TestStorePooledHandset(t *testing.T) {
 	if lt&0xFF00 == 0x1100 {
 		t.Errorf("a chip handset got TPUI %#x, in the pool's range", lt)
 	}
-	tp, err := s.ReserveTPUI(ctx)
+	tp, err := s.ReserveTPUI(ctx, a)
 	if err != nil || tp[0] != 0 || tp[1] != 0x11 || !poolValid(int(tp[2])) {
 		t.Fatalf("offer %x, %v", tp, err)
 	}
-	if again, _ := s.ReserveTPUI(ctx); again == tp {
+	if again, _ := s.ReserveTPUI(ctx, a); again == tp {
 		t.Errorf("one TPUI offered twice: %x", tp)
 	}
 	r := rec(2, 0x32)
@@ -313,7 +313,7 @@ func TestStorePooledHandset(t *testing.T) {
 	if err := s.Pool.QueryRow(ctx, "SELECT tpui FROM handset WHERE id = $1", saved.ID).Scan(&pt); err != nil || pt != 0x1100|int32(tp[2]) {
 		t.Fatalf("stored TPUI %#x, want %#x (%v)", pt, 0x1100|int32(tp[2]), err)
 	}
-	if s.reserved[tp[2]] {
+	if s.reserved[a][tp[2]] {
 		t.Error("the TPUI is still on offer after it was given away")
 	}
 
@@ -381,15 +381,16 @@ func TestStorePooledHandset(t *testing.T) {
 	}
 }
 
-// The pool has poolSize TPUIs, every one a byte the 06.88 chip hears (low three
-// bits 1 to 6, bit 3 clear); the next offer says so, and a TPUI given back is
-// offered again.
+// The pool has poolSize TPUIs per cell, every one a byte the 06.88 chip hears (low three
+// bits 1 to 6, bit 3 clear); the next offer on that cell says so, another cell still has
+// them all, and a TPUI given back is offered again.
 func TestStoreTPUIPool(t *testing.T) {
 	s, ctx := newStore(t)
+	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
 	seen := map[byte]bool{}
 	var last [3]byte
 	for range poolSize {
-		tp, err := s.ReserveTPUI(ctx)
+		tp, err := s.ReserveTPUI(ctx, a)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,16 +403,75 @@ func TestStoreTPUIPool(t *testing.T) {
 		seen[tp[2]] = true
 		last = tp
 	}
-	if _, err := s.ReserveTPUI(ctx); !errors.Is(err, ErrPoolFull) {
+	if _, err := s.ReserveTPUI(ctx, a); !errors.Is(err, ErrPoolFull) {
 		t.Errorf("the offer after the pool: %v", err)
 	}
-	s.ReleaseTPUI(last)
-	if tp, err := s.ReserveTPUI(ctx); err != nil || tp != last {
+	if _, err := s.ReserveTPUI(ctx, b); err != nil {
+		t.Errorf("another cell: %v", err)
+	}
+	s.ReleaseTPUI(a, last)
+	if tp, err := s.ReserveTPUI(ctx, a); err != nil || tp != last {
 		t.Errorf("after a release: %x %v, want %x", tp, err, last)
 	}
 	off := &Store{Pool: s.Pool, Keyring: s.Keyring, NoPool: true}
-	if tp, err := off.ReserveTPUI(ctx); err != nil || tp != ([3]byte{}) {
+	if tp, err := off.ReserveTPUI(ctx, a); err != nil || tp != ([3]byte{}) {
 		t.Errorf("pool off: %x %v", tp, err)
+	}
+}
+
+// Two handsets may hold one TPUI as long as no cell holds both: a handset that is placed in
+// a cell where another holds its TPUI gets a new one (the older keeps it), and the stack
+// start does the same for the whole table. More than poolSize handsets exist.
+func TestStoreTPUIUniquePerCell(t *testing.T) {
+	s, ctx := newStore(t)
+	a, b := s.newCell(t, ctx, "a"), s.newCell(t, ctx, "b")
+	anna := s.newUser(t, ctx, "anna")
+	same := [3]byte{0, 0x11, 0x21}
+	var ids []uuid.UUID
+	for i, cell := range []uuid.UUID{a, b} {
+		r := rec(1, byte(0x40+i))
+		r.TPUI = same
+		sv, err := s.SaveRecord(ctx, cell, uuid.Nil, anna, r)
+		if err != nil || !sv.Pooled {
+			t.Fatalf("enrolment %d: %+v %v", i, sv, err)
+		}
+		ids = append(ids, sv.ID)
+	}
+	var n int
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM handset WHERE tpui = $1", int32(0x1121)).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("two handsets under one TPUI on two cells: %d %v", n, err)
+	}
+	// the second handset comes to cell a, where the first sits
+	first, ok, err := s.PlaceHandset(ctx, a, ids[0])
+	if err != nil || !ok || first.Rec.TPUI != same {
+		t.Fatalf("the first: %+v %v %v", first.Rec.TPUI, ok, err)
+	}
+	// placed to be paged (a call is offered), it keeps the TPUI it holds: it was not heard here
+	if paged, ok, err := s.PlaceHandset(ctx, a, ids[1]); err != nil || !ok || paged.Rec.TPUI != same {
+		t.Fatalf("placed to be paged: %x %v %v", paged.Rec.TPUI, ok, err)
+	}
+	// heard on the cell (a location registration), it gets one of its own
+	var ipui []byte
+	if err := s.Pool.QueryRow(ctx, "SELECT ipui FROM handset WHERE id = $1", ids[1]).Scan(&ipui); err != nil {
+		t.Fatal(err)
+	}
+	second, ok, err := s.PlaceByIPUI(ctx, a, ipui)
+	if err != nil || !ok {
+		t.Fatalf("the second: %v %v", ok, err)
+	}
+	if second.Rec.TPUI == same || !poolValid(int(second.Rec.TPUI[2])) || second.Rec.TPUI[1] != 0x11 {
+		t.Errorf("the second kept %x or got a TPUI the chip does not hear", second.Rec.TPUI)
+	}
+	var stored int32
+	if err := s.Pool.QueryRow(ctx, "SELECT tpui FROM handset WHERE id = $1", ids[1]).Scan(&stored); err != nil || stored != 0x1100|int32(second.Rec.TPUI[2]) {
+		t.Errorf("the new TPUI is stored: %#x %v", stored, err)
+	}
+	if h, _, _ := s.PlaceHandset(ctx, a, ids[0]); h.Rec.TPUI != same {
+		t.Errorf("the older handset's TPUI changed: %x", h.Rec.TPUI)
+	}
+	// placing it again changes nothing
+	if again, _, _ := s.PlaceByIPUI(ctx, a, ipui); again.Rec.TPUI != second.Rec.TPUI {
+		t.Errorf("placed again: %x, was %x", again.Rec.TPUI, second.Rec.TPUI)
 	}
 }
 
@@ -423,7 +483,7 @@ func TestStoreTableFull(t *testing.T) {
 	anna := s.newUser(t, ctx, "anna")
 	var ids []uuid.UUID
 	for i := range maxRecord - maxSlot + 1 {
-		tp, err := s.ReserveTPUI(ctx)
+		tp, err := s.ReserveTPUI(ctx, a)
 		if err != nil {
 			t.Fatal(err)
 		}
