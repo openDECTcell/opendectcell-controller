@@ -28,7 +28,7 @@ Read this completely before changing anything. For the current project state, se
 
 - **Commit early and often:** one logical change per commit (a doc section, a model plus its migration, a handler plus its tests).
 - **Push after every commit** (or every few small ones), so changes stay traceable and easy to revert.
-- **Never force-push** or rewrite published history; use `git revert` or follow-up commits.
+- **Never force-push** or rewrite published history; use `git revert` or follow-up commits. The one exception so far is the publication scrub of 2026-11-02 (see the maintainers' notes), done on the maintainer's explicit instruction.
 - **Message format:** an imperative summary of 72 characters or less, a blank line, then the *why*. Reference issues (`Refs #n`, `Fixes #n`), plus the attribution line your tool requires.
 - **Check `git diff --staged` before committing.** Never commit secrets, `.env` files, keys, certificates or databases.
 - **Author:** `ctandi <ctandi@users.noreply.github.com>` (repo-local).

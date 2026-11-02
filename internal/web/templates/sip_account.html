@@ -12,7 +12,7 @@
 {{with fieldErr $e "account"}}<p class="fielderr">{{.}}</p>{{end}}
 <div class="card mb-3"><div class="card-body"><form method="post" action="{{if .New}}/sip-accounts{{else}}/sip-accounts/{{.Rec.ID}}{{end}}" class="sip-tabs">
   {{with .Rec}}
-  <ul class="nav nav-tabs sip-tabnav flex-nowrap overflow-auto mb-3" role="tablist">
+  <ul class="nav nav-tabs sip-tabnav flex-nowrap mb-3" role="tablist">
     {{range $t := $.Data.TabList}}<li class="nav-item"><a class="nav-link text-nowrap{{if eq $t.ID $.Data.Tab}} active{{end}}{{if index $.Data.TabErr $t.ID}} text-danger{{end}}" href="#tab-{{$t.ID}}" data-sip-tab="{{$t.ID}}" role="tab">{{$t.Title}}</a></li>{{end}}
   </ul>
 
