@@ -27,16 +27,21 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 )
 
-// The types that cross the boundary are package stack's, so the DECT core
-// builds without cgo.
+// The types that cross the boundary belong to package stack, so the DECT core builds without cgo.
 type (
-	Mail       = stack.Mail
-	Record     = stack.Record
-	To         = stack.To
-	Env        = stack.Env
-	Config     = stack.Config
+	// Mail is one STUB mail.
+	Mail = stack.Mail
+	// Record is a handset record.
+	Record = stack.Record
+	// To says where a bridge line goes.
+	To = stack.To
+	// Env is the stack's view of the controller.
+	Env = stack.Env
+	// Config is what a stack is made with.
+	Config = stack.Config
+	// Capability is what a handset reported of itself.
 	Capability = stack.Capability
-
+	// Recycled is what Recycle came to.
 	Recycled = stack.Recycled
 )
 
@@ -264,7 +269,7 @@ func (x *Host) SetRFPI(rfpi [5]byte) {
 	x.c.b.have_rfpi = 1
 }
 
-// HasRFPI: the stack knows what the chip broadcasts.
+// HasRFPI says whether the stack knows what the chip broadcasts.
 func (x *Host) HasRFPI() bool { return x.c.b.have_rfpi != 0 }
 
 // SetName sets record i's name in the Internal Names List; false: the library
@@ -336,7 +341,7 @@ func (x *Host) RegWindow(open bool, secs uint, now uint64) {
 	x.raise()
 }
 
-// RegState: registration is open; a free record can take a new handset.
+// RegState says whether registration is open and whether a free record can take a new handset.
 func (x *Host) RegState() (open, free bool) {
 	return x.c.b.reg_open != 0, C.dect_base_free_record(&x.c.b) >= 0
 }
@@ -471,8 +476,6 @@ func (x *Host) testContactPut(i int, name, digits string) bool {
 	return C.cdect_host_test_contact_put(x.c, C.unsigned(i), n, d) == 0
 }
 
-// Seen is when record i last had C-plane traffic, on the stack's clock; 0
-// if it never has.
 // Detached is when record i's handset last said it was switched off ({DETACH}), 0 if never; it
 // is detached while that is not before Seen.
 func (x *Host) Detached(i int) uint64 {
@@ -482,6 +485,8 @@ func (x *Host) Detached(i int) uint64 {
 	return uint64(C.cdect_host_last_detached(x.c, C.uint(i)))
 }
 
+// Seen is when record i last had C-plane traffic, on the stack's clock; 0
+// if it never has.
 func (x *Host) Seen(i int) uint64 {
 	if i < 0 {
 		return 0

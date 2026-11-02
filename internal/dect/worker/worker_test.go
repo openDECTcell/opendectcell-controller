@@ -220,6 +220,7 @@ func TestRemoteStackRoundTrip(t *testing.T) {
 	if !st.SetContacts(2, "#opendectcell-contacts 1 seq=0\n") || st.SetContacts(2, "") {
 		t.Error("SetContacts")
 	}
+	pumpUntil(t, st, "the handset's changes", func() bool { return len(env.changes) >= 2 }) // they come back asynchronously
 	if len(fs.contacts) != 2 || len(env.changes) != 2 || env.changes[0] != "1\tput\t5\t0\tAnna" {
 		t.Errorf("contacts %q, changes %q", fs.contacts, env.changes)
 	}
