@@ -178,7 +178,7 @@ Note [Garage repeater]   Valid for [24 h ▾]   Approve automatically [ ] (admin
 ──
 Enrollment string (shown once — copy it now):
   opendectcell-enroll:1:ctrl.example.org:7300:…:…                        [Copy]
-On the cell: LuCI → Services → opendectcell → Controller → paste → Enroll.
+On the cell: LuCI → Network → DECT → General → Make this box a cell… → paste → Enrol.
 ```
 
 `createEnrollmentToken`, `listEnrollmentTokens`, `deleteEnrollmentToken`.

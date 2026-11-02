@@ -7,6 +7,13 @@ The overview comes from two read-only surveys of the openDECTcell and controller
 (2026-11-02, HEAD controller `32f13ea` and later, openDECTcell `e55bed7`); statements marked *(I)* are
 inferences, not seen in a file.
 
+> **Update, later on 2026-11-02 (desk work, no bench).** Done since this was written: the store scale test and a
+> capped, ranked ring (step 1, the part that needs no hardware: see the maintainers' notes); the cell credentials in the
+> sysupgrade keep list (step 3, in the repository; it reaches boxes with the next package release); the compose file
+> builds with the DECT core by default (step 8); a user wiki, `docs/wiki/` (new, not in the list below); the READMEs
+> and the stale documents of §3.4 that could be fixed without a decision. Still open: the scale test with real cell
+> connections, steps 2 and 4 to 7, `registration_window`, `openapi.yaml`, the version mismatch of the openDECTcell docs.
+
 ## 1. Next steps, in order
 
 | # | Step | Who | Needs | Why first |

@@ -23,10 +23,10 @@ Pending maintainer review. Requirements: `docs/voip-requirements.md`.
 | `internal/sip` | Manager: transports, accounts' registrations, calls in and out, DTMF, keep-alive |
 | `internal/sipaccount` | Accounts in the database (password sealed), authorisation, audit; API and UI use it |
 
-The DECT core is not there yet (C3 is frozen, #46). The SIP side talks to it
-through an `Endpoint` interface: "ring handset X on line N with caller Y",
-"the handset answered / hung up / dialled / sent DTMF". Tests and, until C3,
-a loopback implementation stand in for it.
+The SIP side talks to the DECT core (`internal/dect/core`, `internal/bridge`) through an
+`Endpoint` interface: "ring handset X on line N with caller Y", "the handset answered / hung up /
+dialled / sent DTMF". The core runs the real DECT stacks of the cells; tests use a loopback
+implementation.
 
 ## 2. Decisions
 

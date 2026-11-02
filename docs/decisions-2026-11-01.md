@@ -151,5 +151,5 @@ separate from the call-detail retention.
 
 - The signing key for releases (earlier open item), the 7412's PIN (1111) and
   autostart (enabled), and the lab 7520 on 08.25 are as the last notes say.
-- `calllog` has no live writer: nothing in the controller writes call-log rows
-  until the call path is finished, so statistics show real data only from then.
+- (Resolved later: the call path now writes call-log rows, `cmd/opendectcell-controller/main.go` and
+  `internal/bridge/calls.go`, so statistics show real calls.)

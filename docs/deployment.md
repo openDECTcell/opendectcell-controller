@@ -10,18 +10,18 @@ docker compose exec controller opendectcell-controller user create --username ad
 
 Then open <http://localhost:8080>.
 
-**The DECT core needs libopendectcell.** The default image is built without it
+**The DECT core needs libopendectcell.** A plain `docker build` has no DECT core
 (`CGO_ENABLED=0`): cells connect and are managed, but their mails are
-dropped. With the openDECTcell submodule checked out, build the image with it:
+dropped. The compose file builds with it, which needs the openDECTcell submodule:
 
 ```sh
 git submodule update --init
-docker compose build --build-arg LIBOPENDECTCELL=1
+docker compose build
 ```
 
 That links libopendectcell statically with cgo (`-tags libopendectcell`); the log says
-`built without libopendectcell` when it is missing. Not yet tried in Docker
-(2026-10-31): the same static link was checked with zig cc against musl.
+`built without libopendectcell` when it is missing. The compose file builds with it by
+default (`LIBOPENDECTCELL=1`; `LIBOPENDECTCELL=0 docker compose build` makes the version without).
 
 | Service | Does |
 |---|---|

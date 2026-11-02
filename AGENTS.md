@@ -52,14 +52,10 @@ DECT features beyond basic calls (see `docs/dect-features.md`) are implemented a
 
 - Unit tests for every module. SIP interop is tested against at least Asterisk and FreeSWITCH, ideally also a FRITZ!Box as registrar.
 - DECT-side tests use openDECTcell's simulator and golden traces until real cells are available.
-- **No DECT or SIP call logic before openDECTcell gate G7.** The gate exists so that
-  no protocol logic is built on unproven assumptions about the chip and the air
-  interface. It does not cover work that cannot be wrong for those reasons, so
-  the following are explicitly allowed before G7: design documents, the data
-  model, UI mock-ups, and the **C1 infrastructure skeleton** — Go module layout,
-  linting, tests, CI, the Docker image and compose setup, database migrations,
-  configuration handling, authentication (local and OIDC) and the audit log.
-  Anything that encodes DECT or SIP behaviour waits for the gate.
+- **Gate G7 is passed** (openDECTcell, 2026-10-18 to 2026-10-25: a handset rings and audio passes), so DECT and SIP
+  call logic is built and runs on real hardware. The rule that stays: do not build protocol logic on an
+  assumption about the chip or the air interface that has not been measured or sourced. Say in the worklog
+  what was seen on air and what was only tested against simulated cells.
 
 ## 8. Documentation
 

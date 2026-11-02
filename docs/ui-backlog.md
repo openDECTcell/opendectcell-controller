@@ -22,7 +22,7 @@ the request) would expect. Built items are in ADR 0006; this is what is left.
 | B12 | Alerts by e-mail to admins: cell offline for n minutes | Operators | needs a scheduler — **built 2026-11-01 (cell offline for 10 minutes, back online; admins who opt in)** |
 | B13 | Prometheus metrics endpoint | Hosting | admin token, B5 — **built 2026-11-01 (`/metrics` with a bearer token)** |
 | B14 | Backup and restore page (and what to back up: the master key separately) | Hosting | docs first — **built 2026-11-01 as an explaining page** |
-| B15 | Per-call log lines from the DECT core and the SIP side | The calls level has only the call log's three lines | `calllog.Store.Log` is not set until the call path writes the log |
+| B15 | Per-call log lines from the DECT core and the SIP side | The calls level has only the call log's three lines | the call path writes call-log rows now; per-call log lines are still not produced |
 | B16 | German and other translations | After English | needs a string table |
 | B17 | Legal pages: imprint, privacy notice, "what we store" | Public instances | text set by the admin |
 | B18 | Map tiles from the controller itself (a caching proxy) | A map without telling a third party | optional; self-hosted tiles work today |

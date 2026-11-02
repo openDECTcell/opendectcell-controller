@@ -10,7 +10,12 @@ name: opendectcell
 
 services:
   init:
-    build: .
+    build:
+      context: .
+      args:
+        # 1: the image has the DECT core (needs the openDECTcell submodule checked out:
+        # git submodule update --init). 0: a controller that drops every cell mail.
+        LIBOPENDECTCELL: ${LIBOPENDECTCELL:-1}
     image: opendectcell-controller:local
     command: ["init-secrets", "--dir", "/secrets"]
     volumes:
