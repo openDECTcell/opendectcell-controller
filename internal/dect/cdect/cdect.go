@@ -119,6 +119,14 @@ func (r *LcRx) BuildRR(nr uint8, pf bool) ([]byte, error) {
 }
 
 // copyIn copies Go bytes into a C-owned buffer; callers check the length.
+// TPUIHearable is libopendectcell's rule for the TPUIs the 06.88 chip hears: the
+// low nibble of the last byte is 1 to 6 (dect_tpui_hearable, API 150).
+func TPUIHearable(t [3]byte) bool {
+	var c [3]C.uint8_t
+	copyIn(c[:], t[:])
+	return C.dect_tpui_hearable(&c[0]) != 0
+}
+
 func copyIn(dst []C.uint8_t, src []byte) {
 	for i, b := range src {
 		dst[i] = C.uint8_t(b)

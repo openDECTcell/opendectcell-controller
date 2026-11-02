@@ -55,3 +55,21 @@ func TestCellUpWithLibopendectcell(t *testing.T) {
 		t.Errorf("mails\n got  %v\n want %v", got, want)
 	}
 }
+
+// The pool is the TPUIs of the form {00, 11, N} from 0x10 up that the library says
+// the 06.88 chip hears: the Go rule and libopendectcell's agree for every byte.
+func TestPoolIsWhatTheChipHears(t *testing.T) {
+	n := 0
+	for b := 0; b < 256; b++ {
+		want := b >= 0x10 && cdect.TPUIHearable([3]byte{0, 0x11, byte(b)})
+		if poolValid(b) != want {
+			t.Errorf("%#02x: pool %v, library hears %v", b, poolValid(b), want)
+		}
+		if want {
+			n++
+		}
+	}
+	if n != poolSize {
+		t.Errorf("%d values, poolSize %d", n, poolSize)
+	}
+}

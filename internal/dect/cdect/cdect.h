@@ -14,14 +14,15 @@
 #include "dect_proto.h"
 #include "dect_lc.h"
 #include "dect_lapc.h"
+#include "dect_mm.h"
 
 /*
  * The libopendectcell API this package was written against. A bump means a public
  * signature or struct layout changed: re-check libopendectcell-integration.md §1,
  * then raise this number.
  */
-#if OPENDECTCELL_API_VERSION != 149
-#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 149"
+#if OPENDECTCELL_API_VERSION != 150
+#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 150"
 #endif
 
 struct cdect_lc {
