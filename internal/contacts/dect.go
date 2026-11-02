@@ -288,3 +288,120 @@ func (s *Store) deleteFromHandset(ctx context.Context, handset uuid.UUID, id int
 	}
 	return s.Delete(ctx, u, id)
 }
+
+// HandsetSlot is a handset in a cell's table and the terminal id (its record slot) it has there.
+type HandsetSlot struct {
+	Handset uuid.UUID
+	Slot    uint
+}
+
+// The three stored call lists in the library's numbering (dect_calls.h).
+const (
+	fileMissed   = 1
+	fileOutgoing = 2
+	fileAccepted = 3
+	// callsPerList is DECT_CALLS_MAX; terminals is DECT_CALLS_TERMINALS (ids 1 to 32).
+	callsPerList = 40
+	terminals    = 33
+)
+
+type callRow struct {
+	list  int
+	e     CallEntry
+	lines [terminals]uint8
+}
+
+// CallsFile is the call lists file (dect_calls.h) for the handsets in a cell's table: for each of them
+// the missed, received and dialled calls it sees (docs/list-access.md §1: incoming by the lines it has,
+// outgoing by the handset), one entry for a call several of them see, with the line each sees it on.
+// Newest first, at most 40 per list.
+func (s *Store) CallsFile(ctx context.Context, hs []HandsetSlot) (string, error) {
+	rows := map[[2]int64]*callRow{} // list, call
+	for _, h := range hs {
+		if h.Slot < 1 || h.Slot >= terminals {
+			continue
+		}
+		lines, err := s.handsetLineOf(ctx, h.Handset)
+		if err != nil {
+			return "", err
+		}
+		for _, l := range []struct {
+			list int
+			name CallList
+		}{{fileMissed, Missed}, {fileAccepted, IncomingAccepted}, {fileOutgoing, Outgoing}} {
+			entries, err := s.CallsForHandset(ctx, h.Handset, l.name, callsPerList)
+			if err != nil {
+				return "", err
+			}
+			for _, e := range entries {
+				k := [2]int64{int64(l.list), e.ID}
+				r := rows[k]
+				if r == nil {
+					r = &callRow{list: l.list, e: e}
+					rows[k] = r
+				}
+				ln := uint8(1)
+				if l.list == fileOutgoing {
+					if e.Line != nil && (*e.Line == 1 || *e.Line == 2) {
+						ln = uint8(*e.Line)
+					}
+				} else if e.SIPAccount != nil && lines[*e.SIPAccount] != 0 {
+					ln = lines[*e.SIPAccount]
+				}
+				r.lines[h.Slot] = ln
+				if r.e.Name == "" {
+					r.e.Name = e.Name
+				}
+			}
+		}
+	}
+	all := make([]*callRow, 0, len(rows))
+	for _, r := range rows {
+		all = append(all, r)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].e.StartedAt.Equal(all[j].e.StartedAt) {
+			return all[i].e.ID > all[j].e.ID
+		}
+		return all[i].e.StartedAt.After(all[j].e.StartedAt)
+	})
+	var b strings.Builder
+	b.WriteString("#opendectcell-calls 1\n")
+	n := map[int]int{}
+	for _, r := range all {
+		if n[r.list] == callsPerList {
+			continue
+		}
+		n[r.list]++
+		unread := 0
+		if r.list == fileMissed && r.e.MissedRead == nil {
+			unread = 1
+		}
+		var lines strings.Builder
+		for _, v := range r.lines {
+			fmt.Fprintf(&lines, "%02x", v)
+		}
+		fmt.Fprintf(&b, "%d\t%d\t%d\t1\t%s\t0\t%s\t%s\t%s\n", r.list, r.e.ID%16383+1, unread,
+			r.e.StartedAt.UTC().Format("060102150405"), lines.String(), dectField(cut(r.e.Number)), dectField(cut(r.e.Name)))
+	}
+	return b.String(), nil
+}
+
+// handsetLineOf is the line number a handset has each of its accounts on.
+func (s *Store) handsetLineOf(ctx context.Context, handset uuid.UUID) (map[uuid.UUID]uint8, error) {
+	rows, err := s.Pool.Query(ctx, "SELECT sip_account_id, min(line) FROM handset_line WHERE handset_id = $1 AND enabled GROUP BY sip_account_id", handset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]uint8{}
+	for rows.Next() {
+		var a uuid.UUID
+		var l int16
+		if err := rows.Scan(&a, &l); err != nil {
+			return nil, err
+		}
+		out[a] = uint8(l)
+	}
+	return out, rows.Err()
+}

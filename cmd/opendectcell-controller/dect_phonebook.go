@@ -18,6 +18,14 @@ func (p phonebook) ListFile(ctx context.Context, h uuid.UUID, seq uint32, hints 
 	return p.s.ListFile(ctx, h, seq, hints)
 }
 
+func (p phonebook) CallsFile(ctx context.Context, hs []dectcore.CallsHandset) (string, error) {
+	slots := make([]contacts.HandsetSlot, len(hs))
+	for i, h := range hs {
+		slots[i] = contacts.HandsetSlot{Handset: h.Handset, Slot: h.Slot}
+	}
+	return p.s.CallsFile(ctx, slots)
+}
+
 func (p phonebook) ApplyChange(ctx context.Context, h uuid.UUID, line string) (dectcore.ContactsApplied, error) {
 	a, err := p.s.ApplyChange(ctx, h, line)
 	return dectcore.ContactsApplied{Seq: a.Seq, Contact: a.Contact, Entry: a.Entry}, err

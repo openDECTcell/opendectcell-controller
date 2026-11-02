@@ -980,6 +980,34 @@ int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, 
 	return rc;
 }
 
+int cdect_host_set_calls(struct cdect_host *c, const char *text, size_t len)
+{
+	unsigned before[DECT_BASE_HS_MAX][2], i, ln;
+	struct dect_calls fresh;
+
+	/* parse first: a file that is not ours changes nothing */
+	if (len < 17u || memcmp(text, "#opendectcell-calls 1\n", 17))
+		return -1;
+	for (i = 0; i < c->b.n_hs && i < DECT_BASE_HS_MAX; i++)
+		for (ln = 0; ln < 2u; ln++)
+			before[i][ln] = dect_calls_missed_unread(&c->calls, dect_base_slot(&c->b, i), ln + 1u);
+	dect_calls_init(&fresh);
+	if (dect_calls_load(&fresh, text, len))
+		return -1;
+	c->calls = fresh;
+	for (i = 0; i < c->b.n_hs && i < DECT_BASE_HS_MAX; i++) {
+		unsigned tid = dect_base_slot(&c->b, i);
+		uint8_t lines = 0;
+
+		for (ln = 0; ln < 2u; ln++)
+			if (dect_calls_missed_unread(&c->calls, tid, ln + 1u) > before[i][ln])
+				lines |= (uint8_t)(1u << ln);
+		if (lines)
+			dect_base_missed_due(&c->b, i, lines, 1);
+	}
+	return 0;
+}
+
 size_t cdect_host_contact_change(struct cdect_host *c, unsigned i)
 {
 	if (i >= DECT_BASE_HS_MAX || !c->contacts[i])

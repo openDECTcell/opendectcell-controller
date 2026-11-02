@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -116,3 +117,54 @@ func TestApplyChange(t *testing.T) {
 }
 
 func hex8(id int64) string { return fmt.Sprintf("%08x", id) }
+
+// One call that rang two handsets is one entry, seen on each handset's own line; the missed ones are
+// unread until somebody reads them; an outgoing call is only its handset's.
+func TestCallsFile(t *testing.T) {
+	s, _, anna, _ := setup(t)
+	pool := s.Pool
+	a, b := handset(t, pool, anna.ID, 1), handset(t, pool, anna.ID, 3)
+	var acct uuid.UUID
+	pool.QueryRow(ctx, "INSERT INTO sip_account (owner_user_id, label, username, domain) VALUES ($1, 'l', 'u', 'd') RETURNING id", anna.ID).Scan(&acct)
+	pool.Exec(ctx, "INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, 1, $2), ($3, 2, $2)", a, acct, b)
+	ins := func(h *uuid.UUID, dir, party string, answered bool, ago time.Duration) int64 {
+		var id int64
+		var ans *time.Time
+		if answered {
+			t := time.Now().Add(-ago)
+			ans = &t
+		}
+		pool.QueryRow(ctx, `INSERT INTO call_log (handset_id, owner_user_id, line, sip_account_id, direction, remote_party, started_at, answered_at)
+			VALUES ($1, $2, 1, $3, $4, $5, $6, $7) RETURNING id`, h, anna.ID, acct, dir, party, time.Now().Add(-ago), ans).Scan(&id)
+		return id
+	}
+	ins(nil, "in", "0301234", false, time.Minute)
+	ins(&b, "in", "999", true, 2*time.Minute)
+	ins(&a, "out", "555", true, 3*time.Minute)
+
+	got, err := s.CallsFile(ctx, []contacts.HandsetSlot{{Handset: a, Slot: 1}, {Handset: b, Slot: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := strings.Split(strings.TrimSpace(got), "\n")
+	if rows[0] != "#opendectcell-calls 1" || len(rows) != 4 {
+		t.Fatalf("file:\n%s", got)
+	}
+	lines := func(r string) string { return strings.Split(r, "\t")[6] }
+	zeros := func(n int) string { return strings.Repeat("00", n) }
+	// list 1 missed: seen by terminal 1 on its line 1 and terminal 3 on its line 2, unread
+	if f := strings.Split(rows[1], "\t"); f[0] != "1" || f[2] != "1" || f[7] != "0301234" || lines(rows[1]) != zeros(1)+"01"+zeros(1)+"02"+zeros(29) {
+		t.Errorf("missed: %q", rows[1])
+	}
+	// list 3 received: the answered call is on both handsets' lines, though only one answered
+	if f := strings.Split(rows[2], "\t"); f[0] != "3" || f[7] != "999" || lines(rows[2]) != zeros(1)+"01"+zeros(1)+"02"+zeros(29) {
+		t.Errorf("accepted: %q", rows[2])
+	}
+	// list 2 dialled: terminal 1 only
+	if f := strings.Split(rows[3], "\t"); f[0] != "2" || f[7] != "555" || lines(rows[3]) != zeros(1)+"01"+zeros(31) {
+		t.Errorf("outgoing: %q", rows[3])
+	}
+	if s2, _ := s.CallsFile(ctx, nil); s2 != "#opendectcell-calls 1\n" {
+		t.Errorf("no handsets: %q", s2)
+	}
+}

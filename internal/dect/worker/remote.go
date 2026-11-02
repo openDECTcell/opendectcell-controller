@@ -611,6 +611,16 @@ func (p *proxy) SetContacts(i int, text string) bool {
 	return ok && len(body) == 1 && body[0] == 1
 }
 
+func (p *proxy) SetCalls(text string) bool {
+	if len(text) > maxFrame-64 {
+		return false // does not fit one message
+	}
+	var w wbuf
+	w.str(text)
+	body, ok := p.call(mSetCalls, &w)
+	return ok && len(body) == 1 && body[0] == 1
+}
+
 func (p *proxy) SetLocateValidity(units uint) {
 	var w wbuf
 	w.u32(uint32(units))

@@ -52,7 +52,7 @@ A CAT-iq handset's phonebook shows **your contacts** (Phones > Contacts) and the
 delete on the handset goes back to your personal contacts; the shared ones are read-only from a handset, and "delete all"
 on the handset is ignored. A handset shows three numbers per contact: if a contact has more, they are kept. A change in
 the web interface reaches the handset the next time it connects to a cell or within a moment if it is on one. **(Built, not yet
-tried on a handset.)** The call lists (missed, received, dialled) are not on the handsets yet.
+tried on a handset.)** **Call lists:** the missed, received and dialled calls of the lines a handset has (and what it dialled itself) are in the handset's lists, newest first, 40 per list, and follow it from cell to cell. They are read-only: deleting an entry on the handset is undone at the next update. **(Built, not yet tried on a handset.)**
 
 ## Names and numbers on the display
 

@@ -34,10 +34,12 @@ type fakeStack struct {
 	started  bool
 	// the Contact List text each record was given (SetContacts)
 	contactsOf map[int]string
-	radio      bool
-	closed     bool
-	mails      []stack.Mail
-	ticks      int
+	// the call lists text each SetCalls gave
+	callsText []string
+	radio     bool
+	closed    bool
+	mails     []stack.Mail
+	ticks     int
 	// the registration window (ADR 0005); free defaults to true
 	regPINs  []string
 	regOpen  bool
@@ -219,6 +221,13 @@ func (f *fakeStack) SetName(i int, name string) bool {
 	}
 	f.names[i] = name
 	f.nameCalls++
+	return true
+}
+
+func (f *fakeStack) SetCalls(text string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.callsText = append(f.callsText, text)
 	return true
 }
 

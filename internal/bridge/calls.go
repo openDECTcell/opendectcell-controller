@@ -118,13 +118,15 @@ func (x outgoingOf) Release(reason string)         { x.o.Release(reason) }
 // sip.Endpoint), and once a call is answered its speech flows between the
 // SIP peer and the cell that holds the handset (media.go).
 type Manager struct {
-	SIP     Caller
-	DECT    Router
-	Cells   Cells
-	Lines   Lines
-	MWI     MWISender // nil: message waiting is not shown (mwi.go)
-	CallLog CallLog
-	Log     *slog.Logger
+	SIP   Caller
+	DECT  Router
+	Cells Cells
+	Lines Lines
+	MWI   MWISender // nil: message waiting is not shown (mwi.go)
+	// CallLists is told which handsets' call lists a finished call is in (*core.Core); nil: nobody.
+	CallLists CallListNotifier
+	CallLog   CallLog
+	Log       *slog.Logger
 
 	// MediaIP is the address the cells send their speech to, MediaPorts the
 	// UDP ports the controller listens on for it (inclusive; 0: any port).
@@ -139,6 +141,11 @@ type Manager struct {
 	pending  map[uint32]chan wire.MediaOpenAckMsg
 	sessions map[uint32]*mediaSession
 	mwi      map[uuid.UUID]uint // new messages in an account's mailbox, as it last said
+}
+
+// CallListNotifier takes the news that a call ended, for the handsets whose call lists it is in.
+type CallListNotifier interface {
+	CallListsChanged(hids ...uuid.UUID)
 }
 
 const defaultOpenTimeout = 3 * time.Second
@@ -195,7 +202,7 @@ func (m *Manager) handsetCall(o Handset) {
 	line := info.Line
 	cl := m.logCall(ctx, calllog.Call{HandsetID: idPtr(info.Handset), Line: &line, SIPAccountID: &acct, Direction: "out",
 		RemoteParty: info.Number, CellIDs: []uuid.UUID{info.Cell}})
-	a := &active{m: m, sip: sc, log: log, calllog: cl}
+	a := &active{m: m, sip: sc, log: log, calllog: cl, hids: []uuid.UUID{info.Handset}}
 	defer a.finish(ctx)
 	rang := false
 	for {
@@ -273,6 +280,9 @@ func (m *Manager) incoming(ci callInfo, c SIPCall) {
 	}
 	cl := m.logCall(ctx, calllog.Call{HandsetID: hs, SIPAccountID: &acct, Direction: "in", RemoteParty: ci.Remote})
 	a := &active{m: m, sip: c, log: log, calllog: cl, reason: "missed"}
+	for _, r := range recv {
+		a.hids = append(a.hids, r.Handset)
+	}
 	defer a.finish(ctx)
 
 	nb := narrow(c)
@@ -414,6 +424,7 @@ type active struct {
 	log     *slog.Logger
 	calllog int64
 	reason  string
+	hids    []uuid.UUID // the handsets whose call lists this call is in
 
 	sipAnswered bool
 	answeredAt  time.Time
@@ -505,6 +516,9 @@ func (a *active) finish(ctx context.Context) {
 	defer cancel()
 	if err := a.m.CallLog.Ended(wctx, a.calllog, e); err != nil {
 		a.log.Warn("the end of the call could not be logged", "err", err)
+	}
+	if a.m.CallLists != nil {
+		a.m.CallLists.CallListsChanged(a.hids...) // the handsets' lists have a new entry
 	}
 }
 

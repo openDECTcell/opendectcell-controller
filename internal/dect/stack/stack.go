@@ -219,6 +219,11 @@ type Stack interface {
 	// handset changed that the file does not include yet. False: the library
 	// refuses it (not a contacts file) or the list does not fit.
 	SetContacts(i int, text string) bool
+	// SetCalls gives the base its call lists: text is a call lists file (dect_calls.h) holding the
+	// calls of every handset in the table, each entry saying which terminal (record slot) sees it on
+	// which line. It replaces the lists; a handset with more unread missed calls than before is told.
+	// False: not a call lists file.
+	SetCalls(text string) bool
 	// SetLocateValidity sets the location validity in units of 40.96 s for
 	// the links from now on; 0: none.
 	SetLocateValidity(units uint)

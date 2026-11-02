@@ -49,3 +49,25 @@ func TestRecordContactList(t *testing.T) {
 		t.Error("a record number beyond the table has a list")
 	}
 }
+
+// A call lists file replaces the lists; a handset with a new unread missed call is counted (and told
+// when it is on a record); text that is not a call lists file changes nothing.
+func TestSetCalls(t *testing.T) {
+	e := fetchEnv(t)
+	h := e.host
+	text := "#opendectcell-calls 1\n" +
+		"1\t5\t1\t1\t261102101500\t0\t" + strings.Repeat("00", 3) + "01" + strings.Repeat("00", 29) + "\t0301234\tAnna\n" +
+		"3\t6\t0\t1\t261102101000\t0\t" + strings.Repeat("00", 3) + "01" + strings.Repeat("00", 29) + "\t0301234\tAnna\n"
+	if !h.SetCalls(text) {
+		t.Fatal("SetCalls refused a call lists file")
+	}
+	if h.callsMissed(3, 1) != 1 || h.callsMissed(2, 1) != 0 {
+		t.Errorf("unread missed: terminal 3 line 1 = %d, terminal 2 = %d", h.callsMissed(3, 1), h.callsMissed(2, 1))
+	}
+	if h.SetCalls("hello\n") || h.callsMissed(3, 1) != 1 {
+		t.Error("a bad file changed the lists")
+	}
+	if !h.SetCalls("#opendectcell-calls 1\n") || h.callsMissed(3, 1) != 0 {
+		t.Error("an empty file did not empty the lists")
+	}
+}

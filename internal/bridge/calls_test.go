@@ -622,3 +622,33 @@ func TestSIPPtime(t *testing.T) {
 		}
 	}
 }
+
+type fakeCallLists struct {
+	mu  sync.Mutex
+	got [][]uuid.UUID
+}
+
+func (f *fakeCallLists) CallListsChanged(hids ...uuid.UUID) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.got = append(f.got, hids)
+}
+
+// When a handset's call has ended and is in the call log, the core is told whose call lists it is in.
+func TestFinishedCallTellsTheCallLists(t *testing.T) {
+	r := newRig(t, fakeLines{acct: uuid.New(), has: true})
+	cl := &fakeCallLists{}
+	r.m.CallLists = cl
+	sc := newFakeSIP(t, pcma)
+	r.m.SIP = &fakeCaller{call: sc}
+	h := newFakeHandset(false)
+	done := make(chan struct{})
+	go func() { r.m.handsetCall(h); close(done) }()
+	sc.events <- sip.Event{Kind: sip.EvEnded}
+	<-done
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	if len(cl.got) != 1 || len(cl.got[0]) != 1 {
+		t.Errorf("told %v", cl.got)
+	}
+}

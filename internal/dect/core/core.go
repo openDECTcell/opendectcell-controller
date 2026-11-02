@@ -227,10 +227,11 @@ const (
 	evPump         // a stack in a worker process has callbacks waiting: run them here (stack.Pumper)
 	evContacts     // somebody's contacts changed (hid: the owner, uuid.Nil: all): the handsets get a new Contact List
 	evContactsDone // a change a handset made to its Contact List was stored: hid, seq, contact, entry
+	evCalls        // the call lists of these handsets (hids) changed
 )
 
 func (k evKind) String() string {
-	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump", "contacts", "contactsdone"}[k]
+	return [...]string{"up", "down", "gone", "mail", "reject", "radio", "fetched", "evict", "reload", "recycle", "ctl", "home", "info", "dereg", "pump", "contacts", "contactsdone", "calls"}[k]
 }
 
 type event struct {
@@ -240,16 +241,17 @@ type event struct {
 	reject  wire.MailRejectMsg
 	radio   uint8 // evRadio: the cell's radio and chip state
 	chip    uint8
-	hid     uuid.UUID // evEvict, evRecycle, evCtl: the handset
-	idx     int       // evRecycle: its record in the stack
-	line    string    // evCtl: the command; {hs} is the handset's record number on the cell
-	name    string    // evInfo: the handset's name
-	force   bool      // evDereg: do not ask the handset, it may be out of range
-	profile string    // evInfo: the id of its device profile
-	sip     string    // evCtl: the call it belongs to
-	seq     uint32    // evContactsDone: the journal sequence of the handset's change
-	contact int64     // evContactsDone: the contact it made or changed
-	entry   uint16    // evContactsDone: the handset's identifier for it
+	hid     uuid.UUID   // evEvict, evRecycle, evCtl: the handset
+	idx     int         // evRecycle: its record in the stack
+	line    string      // evCtl: the command; {hs} is the handset's record number on the cell
+	name    string      // evInfo: the handset's name
+	force   bool        // evDereg: do not ask the handset, it may be out of range
+	profile string      // evInfo: the id of its device profile
+	sip     string      // evCtl: the call it belongs to
+	hids    []uuid.UUID // evCalls: the handsets whose call lists changed
+	seq     uint32      // evContactsDone: the journal sequence of the handset's change
+	contact int64       // evContactsDone: the contact it made or changed
+	entry   uint16      // evContactsDone: the handset's identifier for it
 	// evFetched: the identity asked about, what the store said
 	ipui []byte
 	h    Handset

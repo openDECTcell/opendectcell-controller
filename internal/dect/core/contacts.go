@@ -4,6 +4,7 @@ package core
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,6 +13,12 @@ import (
 // one Contact List per record, which the handset reads and edits (libopendectcell API 151). The core
 // gives a record its list when its handset comes into a cell's table or a stack starts, again
 // when a contact changes, and takes what the handset changes back to the database.
+
+// CallsHandset is a handset in a cell's table and the terminal id (record slot) it has there.
+type CallsHandset struct {
+	Handset uuid.UUID
+	Slot    uint
+}
 
 // ContactsApplied is what a handset's change came to.
 type ContactsApplied struct {
@@ -29,6 +36,9 @@ type Contacts interface {
 	// ListFile is the Contact List of a handset as a contacts file (dect_contacts.h) that holds
 	// its journal up to seq, with hints saying the entry identifier a contact has on that handset.
 	ListFile(ctx context.Context, handset uuid.UUID, seq uint32, hints map[int64]uint16) (string, error)
+	// CallsFile is the call lists file (dect_calls.h) for the handsets in a cell's table: the calls each
+	// of them sees (internal/contacts).
+	CallsFile(ctx context.Context, handsets []CallsHandset) (string, error)
 	// ApplyChange stores a change the handset made (a journal line) in its owner's list.
 	ApplyChange(ctx context.Context, handset uuid.UUID, line string) (ContactsApplied, error)
 }
@@ -111,4 +121,61 @@ func (r *cellRun) contactsDone(ev event) {
 // ContactsChanged is the stack's: record i's handset changed its list.
 func (g *gen) ContactsChanged(i int, line string) {
 	g.job(job{kind: jobContacts, i: i, name: line})
+}
+
+// The call lists. The stack keeps one set for the base, each entry saying which terminal (record slot)
+// sees it on which line; the controller gives it the calls of every handset in the cell's table from the
+// database (internal/contacts, CallsFile) when a handset comes in, when the stack starts and shortly after
+// a call of one of them ended, so the lists follow the handsets from cell to cell.
+
+// callsEvery (a variable for the tests) is the shortest time between two loads of a cell's call lists.
+var callsEvery = 500 * time.Millisecond
+
+// CallListsChanged tells the cells that the call lists of these handsets changed (a call ended).
+func (c *Core) CallListsChanged(hids ...uuid.UUID) {
+	if len(hids) == 0 {
+		return
+	}
+	c.mu.Lock()
+	ids := make([]uuid.UUID, 0, len(c.cells))
+	for id := range c.cells {
+		ids = append(ids, id)
+	}
+	c.mu.Unlock()
+	for _, id := range ids {
+		c.post(id, event{kind: evCalls, hids: hids})
+	}
+}
+
+// callsFor marks the call lists to be given again if one of hids is in this cell's table.
+func (r *cellRun) callsFor(hids []uuid.UUID) {
+	for _, h := range hids {
+		if _, ok := r.idxOf[h]; ok {
+			r.callsDirty = true
+			return
+		}
+	}
+}
+
+// pushCalls gives the stack the call lists of the handsets in the table, if they are due.
+func (r *cellRun) pushCalls(now time.Time) {
+	if !r.callsDirty || r.st == nil || r.gen == nil || r.core.Contacts == nil || now.Sub(r.callsAt) < callsEvery {
+		return
+	}
+	r.callsDirty = false
+	r.callsAt = now
+	hs := make([]CallsHandset, 0, len(r.hidOf))
+	for i, hid := range r.hidOf {
+		hs = append(hs, CallsHandset{Handset: hid, Slot: r.gen.slotOf[i]})
+	}
+	ctx, cancel := context.WithTimeout(r.core.ctx, storeTimeout)
+	text, err := r.core.Contacts.CallsFile(ctx, hs)
+	cancel()
+	if err != nil {
+		r.log.Warn("the call lists could not be read", "err", err)
+		return
+	}
+	if !r.st.SetCalls(text) {
+		r.log.Warn("the stack refused the call lists", "bytes", len(text))
+	}
 }

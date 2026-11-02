@@ -311,6 +311,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		calls.DECT = bridge.RouterOf(dect)
 		dect.Originate = calls.HandsetCall
 		calls.MWI = dect
+		calls.CallLists = dect
 		dect.MWIFor = calls.MWIFor
 		dect.Contacts = phonebook{contactStore}
 		contactStore.OnChange = func(owner *uuid.UUID) {

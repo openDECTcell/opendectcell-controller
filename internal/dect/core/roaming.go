@@ -141,6 +141,7 @@ func (r *cellRun) admit(h Handset, now time.Time) bool {
 	r.log.Info("a handset is in this cell's table", "handset", h.ID, "record", h.Rec.Slot, "held", len(r.trans))
 	r.replayMWI(h.ID)
 	r.pushContacts(i)
+	r.callsDirty = true // its calls, with the others
 	return true
 }
 

@@ -146,6 +146,12 @@ int cdect_host_set_profile(struct cdect_host *c, unsigned i, const char *mfr, si
  * text that is not a contacts file, or no memory.
  */
 int cdect_host_set_contacts(struct cdect_host *c, unsigned i, const char *text, size_t len);
+/*
+ * Replace the call lists with a call lists file (dect_calls.h); a record whose handset has more
+ * unread missed calls on a line than before is told (the missed call notice). 0, or -1 if the
+ * text is not a call lists file.
+ */
+int cdect_host_set_calls(struct cdect_host *c, const char *text, size_t len);
 /* The oldest journalled change of record i's Contact List as a line in c->out (no newline): its length, 0 if none. */
 size_t cdect_host_contact_change(struct cdect_host *c, unsigned i);
 /* Tests: a contact "name" put into record i's list as a handset would (journalled). */

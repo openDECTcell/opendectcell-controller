@@ -319,6 +319,9 @@ func (h *hosted) handle(f frame) bool {
 		i := int(r.u32())
 		text := r.str()
 		h.reply(f, b2u(r.err == nil && h.st.SetContacts(i, text)))
+	case mSetCalls:
+		text := r.str()
+		h.reply(f, b2u(r.err == nil && h.st.SetCalls(text)))
 	case mClose:
 		h.st.Close()
 		h.reply(f, nil)

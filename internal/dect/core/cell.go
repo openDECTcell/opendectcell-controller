@@ -75,8 +75,10 @@ type cellRun struct {
 	pumpPending atomic.Bool
 	// per record: the handset's journal sequence in the last Contact List, and the entry identifiers
 	// it gave to contacts it made (contacts.go)
-	cseq   map[int]uint32
-	chints map[int]map[int64]uint16
+	callsDirty bool // the call lists are to be given to the stack again
+	callsAt    time.Time
+	cseq       map[int]uint32
+	chints     map[int]map[int64]uint16
 	// the last contact written for each record, and when
 	seenMs    map[int]uint64
 	seenAt    map[int]time.Time
@@ -194,6 +196,8 @@ func (r *cellRun) handle(ev event) {
 		r.contactsOf(ev.hid)
 	case evContactsDone:
 		r.contactsDone(ev)
+	case evCalls:
+		r.callsFor(ev.hids)
 	case evPump:
 		r.pumpPending.Store(false)
 		if p, ok := r.st.(stack.Pumper); ok && r.st != nil {
@@ -581,6 +585,7 @@ func (r *cellRun) tick() {
 		r.retryAt = time.Now().Add(r.core.Retry)
 		return
 	}
+	r.pushCalls(now)
 	r.syncRFPI(now)
 	r.recycle(now)
 	r.nudge(now)
@@ -606,6 +611,7 @@ func (r *cellRun) tick() {
 				r.replayMWI(hid)
 				r.pushContacts(i)
 			}
+			r.callsDirty = true
 		}
 	}
 	r.registration(now)
@@ -873,6 +879,7 @@ func (r *cellRun) drop() {
 	r.seenMs, r.seenAt, r.seenPend = nil, nil, nil
 	r.idxOf, r.hidOf, r.trans, r.freeIdx, r.units = nil, nil, nil, nil, 0
 	r.cseq, r.chints = nil, nil
+	r.callsDirty = false
 	r.reloadAt = time.Time{}
 	r.recycleDue, r.nudgeDue, r.forgetDue = nil, nil, nil
 	r.rfpiAskAt, r.rfpiWarned = time.Time{}, false

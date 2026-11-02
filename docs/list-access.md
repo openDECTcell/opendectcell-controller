@@ -92,6 +92,21 @@ that one. The controller keeps the contacts in the database and the stack's list
 - **Tested:** the format and the changes against the database; the real library through cdect (load, refuse, journal); the core
   (start, arrival, store a change and give the list again with its sequence and hint, refresh only one owner's handsets). **Not seen
   on a handset yet:** open the phonebook on the A540 (a `Testkontakt` was added for the lab's owner), edit and delete an entry.
-- **Open:** the call lists (§1) the same way; handsets that open the phonebook while a list is replaced are not specially handled
-  (the library keeps their locks, an entry being edited keeps the handset's version).
+- **Open:** handsets that open the phonebook while a list is replaced are not specially handled (the library keeps their
+  locks, an entry being edited keeps the handset's version).
+
+## 6. The call lists as built (2026-11-02)
+
+The library keeps one set of call lists per base, each entry saying which terminal (record slot) sees it, on which line. The
+controller gives it, from the database, the calls of **every handset in the cell's table**: `contacts.CallsFile` builds the
+library's call lists file (`dect_calls.h`: missed, received, dialled; incoming by the lines a handset has, outgoing by the
+handset; one entry for a call several handsets see, each on its own line; newest first, 40 per list; times in UTC), the stack
+loads it (`SetCalls`; a handset with more unread missed calls than before is told, so its missed-call display updates). It is
+given when a handset comes into a cell's table, when a stack starts, and within half a second of a call of one of those handsets
+ending (`bridge` → `core.CallListsChanged`, a burst is one load), so the lists follow a handset from cell to cell.
+
+- **Read-only from the handset.** What a handset does to its lists (reads or deletes an entry) is not sent back: the next load
+  shows the database again. The missed calls' read mark (`call_log.missed_read_at`) is still set from the web interface only.
+- **Not seen on a handset yet.** Tested: the file against the database, the real library through cdect, the core (start, arrival,
+  burst of calls), the bridge (a finished call tells the core).
 

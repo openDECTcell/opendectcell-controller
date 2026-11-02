@@ -375,6 +375,21 @@ func (x *Host) SetContacts(i int, text string) bool {
 	return C.cdect_host_set_contacts(x.c, C.unsigned(i), cs, C.size_t(len(text))) == 0
 }
 
+// SetCalls gives the base its call lists from a call lists file; false if the text is not one.
+func (x *Host) SetCalls(text string) bool {
+	if text == "" {
+		return false
+	}
+	cs := C.CString(text)
+	defer C.free(unsafe.Pointer(cs))
+	return C.cdect_host_set_calls(x.c, cs, C.size_t(len(text))) == 0
+}
+
+// callsMissed is how many unread missed calls terminal tid has on line (tests).
+func (x *Host) callsMissed(tid, line int) int {
+	return int(C.dect_calls_missed_unread(&x.c.calls, C.uint(tid), C.uint(line)))
+}
+
 // pollContacts reports what the handsets changed in their Contact Lists since the
 // last call, one journal line at a time.
 func (x *Host) pollContacts() {

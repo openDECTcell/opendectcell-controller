@@ -41,6 +41,7 @@ type fakeStack struct {
 	records  map[int]stack.Record
 	blockCtl chan struct{}
 	contacts []string
+	calls    []string
 	closed   atomic.Bool
 }
 
@@ -64,6 +65,7 @@ func (f *fakeStack) HasRFPI() bool                       { return false }
 func (f *fakeStack) SetName(i int, n string) bool        { return n != "" }
 func (f *fakeStack) SetProfile(int, string, string) bool { return true }
 func (f *fakeStack) SetLocateValidity(uint)              {}
+func (f *fakeStack) SetCalls(text string) bool           { f.calls = append(f.calls, text); return text != "" }
 func (f *fakeStack) SetContacts(i int, text string) bool {
 	f.contacts = append(f.contacts, text)
 	f.env.ContactsChanged(i, "1\tput\t5\t0\tAnna")
@@ -217,6 +219,10 @@ func TestRemoteStackRoundTrip(t *testing.T) {
 	}
 	if len(fs.contacts) != 2 || len(env.changes) != 2 || env.changes[0] != "1\tput\t5\t0\tAnna" {
 		t.Errorf("contacts %q, changes %q", fs.contacts, env.changes)
+	}
+
+	if !st.SetCalls("#opendectcell-calls 1\n") || st.SetCalls("") || len(fs.calls) != 2 {
+		t.Errorf("SetCalls: %q", fs.calls)
 	}
 
 	st.Close()
