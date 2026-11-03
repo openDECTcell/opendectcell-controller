@@ -64,10 +64,23 @@ audio: [Install the controller](docs/wiki/Controller-install.md).
 | [docs/libopendectcell-integration.md](docs/libopendectcell-integration.md) | How the controller embeds `libopendectcell` through cgo: sessions, memory, timers, build |
 | [docs/voip-requirements.md](docs/voip-requirements.md), [docs/sip-ua.md](docs/sip-ua.md) | The SIP side |
 | [docs/threat-model.md](docs/threat-model.md) | What is protected against what |
+| [docs/schema.md](docs/schema.md) | The database tables |
+| [docs/media-engine.md](docs/media-engine.md) | The audio path between a cell and the SIP side: formats, jitter buffer, transcoding, SRTP |
+| [docs/internal-calls.md](docs/internal-calls.md), [docs/list-access.md](docs/list-access.md) | Calls between a user's handsets, and the handsets' phonebook, call lists and Internal Names list |
+| [docs/authentik.md](docs/authentik.md) | Single sign-on with Authentik (OIDC) |
+| [docs/security-review-2026-11-02.md](docs/security-review-2026-11-02.md) | The security review of 2026-11-02: what is fixed and what is open |
+| [docs/decisions-2026-11-01.md](docs/decisions-2026-11-01.md), [docs/ui-backlog.md](docs/ui-backlog.md) | The maintainer's decisions of 2026-11-01 and the web interface backlog |
 | [docs/next-steps-2026-11-02.md](docs/next-steps-2026-11-02.md) | Where the project stands, what is missing, what comes next |
 | the maintainers' notes | What was done each session, newest first |
 | [docs/first-tasks.md](docs/first-tasks.md) | Start here if you are joining |
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repository |
+
+**The DECT side lives in openDECTcell.** The code map ([ARCHITECTURE.md](https://github.com/openDECTcell/opendectcell/blob/main/ARCHITECTURE.md)),
+the [glossary](https://github.com/openDECTcell/opendectcell/blob/main/docs/glossary.md) of DECT terms and the project's words, the
+[developer guide](https://github.com/openDECTcell/opendectcell/blob/main/docs/developing.md) and the README of `libopendectcell`
+([src/libopendectcell](https://github.com/openDECTcell/opendectcell/blob/main/src/libopendectcell/README.md)) are there; the submodule
+`third_party/opendectcell` has them too. Dated bench logs and investigation notes are in its
+[docs/journals/](https://github.com/openDECTcell/opendectcell/blob/main/docs/journals/README.md).
 
 ## License
 
