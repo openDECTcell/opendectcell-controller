@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Keeps the AAAA record of the test ground's name pointing at this host's IPv6 address (ipv64.net DynDNS).
+# Keeps the AAAA record of the test ground's name pointing at this host's IPv6 address (ipv64.net DynDNS), and the firewall's
+# set of LAN prefixes in step with the prefix the provider delegates.
 # Run by opendectcell-ddns.timer every five minutes. It asks the provider only when the address changed (the account is limited
 # to 48 updates a day), never sets an A record (the line has no public IPv4), and keeps the key off the command line.
 #
@@ -11,6 +12,21 @@ set -eu
 IFACE=${DDNS_IFACE:-eth0}
 STATE=/var/lib/opendectcell-ddns
 mkdir -p "$STATE"
+
+# The firewall's idea of "the LAN" for IPv6 follows the /64 prefixes the router advertises: the provider changes its
+# delegated prefix now and then, and a prefix written into the ruleset would then lock the administrator out. One
+# atomic replacement, and only when a prefix is missing from the set.
+prefixes=$(ip -6 route show dev "$IFACE" proto ra 2>/dev/null | awk '$1 ~ /\/64$/ && $1 !~ /^fe80/ { print $1 }' | sort -u | paste -sd, -)
+if [ -n "$prefixes" ] && have=$(nft list set inet opendectcell_filter lan6 2>/dev/null); then
+  missing=0
+  for p in $(printf '%s' "$prefixes" | tr ',' ' '); do
+    printf '%s' "$have" | grep -q "$p" || missing=1
+  done
+  if [ "$missing" = 1 ]; then
+    printf 'flush set inet opendectcell_filter lan6\nadd element inet opendectcell_filter lan6 { %s }\n' "$prefixes" | nft -f - &&
+      logger -t opendectcell-ddns "firewall: the LAN's IPv6 prefixes are now $prefixes"
+  fi
+fi
 
 # The stable global address: not temporary (privacy), not deprecated, in 2000::/3 (so not the ULA fd00::/8).
 addr=$(ip -6 -o addr show dev "$IFACE" scope global 2>/dev/null |

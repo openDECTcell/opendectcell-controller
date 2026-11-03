@@ -11,7 +11,7 @@ checks, the demo for others, and **remote cells over the internet** (real latenc
 |---|---|---|
 | Controller, database, `migrate` | Docker Compose, the repository's `docker-compose.yml` | as in [deployment.md](deployment.md); the controller runs as the limited database role; DECT stacks in **4 worker processes** (one per CPU, the soak's configuration). The controller is in the **host network**: it listens on the Pi's own IPv6 and IPv4 addresses, so remote cells are seen with their real addresses and each cell is sent its speech to the address it connected to (`OPENDECTCELL_CELLS_MEDIA_IP=auto`) |
 | TLS proxy | Caddy 2 in the host network, `deploy/pi/Caddyfile` | gets and renews the Let's Encrypt certificate by itself; redirects http to https; passes to the controller on `127.0.0.1:8080` |
-| Name | `opendectcell.example.org` at ipv64.net, **AAAA only** | `opendectcell-ddns.timer` (every 5 minutes) sets it to the Pi's stable global IPv6 address, only when that changed (the account allows 48 updates a day); the key is in `/etc/opendectcell/ddns.env` (root, 0600) and nowhere in the repository |
+| Name | `opendectcell.example.org` at ipv64.net, **AAAA only** | `opendectcell-ddns.timer` (every 5 minutes) sets it to the Pi's stable global IPv6 address, only when that changed (the account allows 48 updates a day), and keeps the firewall's set of LAN prefixes in step with the prefix the router advertises (the provider changes it now and then); the key is in `/etc/opendectcell/ddns.env` (root, 0600) and nowhere in the repository |
 | Host firewall | nftables, `deploy/pi/nftables.conf` | inbound dropped except SSH and mDNS **from the LAN**, SIP and its audio **from the LAN**, ports 80, 443 and 7300 and UDP 41100 to 41199 from anywhere, ICMPv6. It is the one place that decides what is reachable, since the controller does not run behind Docker's port mapping |
 | Updates | `unattended-upgrades` | security updates of the OS; the stack is updated by `deploy/pi/deploy.sh` |
 
@@ -33,7 +33,10 @@ only, and the firewall says so too), 8080 (the web port is on the loopback addre
 **FRITZ!Box** (menu names vary a little between FRITZ!OS versions): *Internet → Freigaben → Portfreigaben → Gerät für Freigaben hinzufügen*,
 choose `opendectcell-pi`, then *Neue Freigabe* → *Portfreigabe* with the **IPv6** variant ("Freigabe auch für IPv6" / *Nur IPv6*). For IPv6 the box opens
 its firewall for the device's **interface identifier**: it must match the Pi's address (`ip -6 addr show eth0`: the last four groups of
-the `2003:...` address, now `bcf9:2bda:7dd1:b7df`). A wrong identifier looks exactly like a closed port. Check from outside the LAN (mobile data
+the `2003:...` address). **The Pi's identifier is fixed: `dea6:32ff:fe18:afbf`** (EUI-64, from its MAC address, the same on every prefix the provider
+delegates). A wrong identifier looks exactly like a closed port. The Pi was first set up with NetworkManager's default, RFC 7217 "stable privacy", which
+derives the identifier *from the prefix*, so it changed when the provider changed the prefix (2026-11-03) and the rules stopped matching. It was fixed with
+`nmcli connection modify "Wired connection 1" ipv6.addr-gen-mode eui64 ipv6.ip6-privacy 0`; the kernel's privacy extensions (temporary addresses) were off all along. Check from outside the LAN (mobile data
 with IPv6): `curl -6 -I https://opendectcell.example.org`; for the cell port, enrol a cell.
 
 ## Remote cells
