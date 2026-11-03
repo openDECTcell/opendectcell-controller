@@ -2,8 +2,8 @@
 
 // Package cell is the cell manager (ROADMAP C2): enrollment, the mTLS
 // control link, the handshake, heartbeats, resume and cell status
-// (docs/cell-protocol.md). The STUB mail tunnel is not here yet; it waits
-// for the libopendectcell API changes (opendectcell-controller#46).
+// (docs/cell-protocol.md). The relay of the cell's STUB mails and audio to the
+// DECT stack is in internal/dect/core; this package carries the frames.
 package cell
 
 import (

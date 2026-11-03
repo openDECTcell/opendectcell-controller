@@ -362,3 +362,29 @@ func TestUserAdministration(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestCleanupDropsExpiredMFAChallenges(t *testing.T) {
+	s, clk := newStore(t)
+	u, err := s.CreateLocalUser(ctx, auth.NewLocalUser{Username: "carol", Password: "long enough pw", Role: auth.RoleUser})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := s.NewMFAChallenge(ctx, u.ID, "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.PeekMFAChallenge(ctx, tok); err != nil {
+		t.Fatalf("a live challenge was removed: %v", err)
+	}
+	clk.t = clk.t.Add(10 * time.Minute)
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM mfa_challenge").Scan(&n); err != nil || n != 0 {
+		t.Fatalf("expired challenges left: %d %v", n, err)
+	}
+}

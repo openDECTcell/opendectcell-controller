@@ -5,6 +5,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -113,6 +114,11 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		problem(w, http.StatusBadRequest, "invalid", "body: "+err.Error(), nil)
+		return false
+	}
+	// A request is exactly one JSON value; anything after it is refused.
+	if _, err := dec.Token(); err != io.EOF {
+		problem(w, http.StatusBadRequest, "invalid", "body: more than one JSON value", nil)
 		return false
 	}
 	return true

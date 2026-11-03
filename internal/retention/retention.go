@@ -3,7 +3,9 @@
 // Package retention keeps old data from piling up: after the configured time
 // a call's remote number and media quality are erased (the row stays, so the
 // statistics of counts and talk time still add up), and old audit entries are
-// deleted. Both default to keeping everything; an admin sets the days.
+// deleted. The defaults are 90 days for call details and the handset location history
+// and 365 days for audit entries (settings.Default*Days); an admin sets the
+// days, and 0 keeps for ever.
 package retention
 
 import (

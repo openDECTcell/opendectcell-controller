@@ -87,7 +87,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: Licence headers
         run: |
-          missing=$(git ls-files '*.go' '*.sql' '*.c' '*.h' '*.html' '*.css' '*.yml' '*.yaml' Dockerfile \
+          missing=$(git ls-files '*.go' '*.sql' '*.c' '*.h' '*.html' '*.css' '*.js' '*.yml' '*.yaml' Dockerfile \
             | grep -v '^third_party/\|/static/vendor/' | xargs grep -L 'SPDX-License-Identifier: AGPL-3.0-or-later' || true)
           if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi
       - name: Test

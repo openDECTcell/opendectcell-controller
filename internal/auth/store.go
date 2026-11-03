@@ -568,6 +568,9 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	if _, err := s.Pool.Exec(ctx, "DELETE FROM email_token WHERE expires_at <= $1", now.Add(-24*time.Hour)); err != nil {
 		return err
 	}
+	if _, err := s.Pool.Exec(ctx, "DELETE FROM mfa_challenge WHERE expires_at <= $1", now); err != nil {
+		return err
+	}
 	// A sign-up that never followed its link is not kept (data minimisation).
 	_, err = s.Pool.Exec(ctx, "DELETE FROM app_user WHERE NOT email_verified AND created_at <= $1", now.Add(-VerifyTTL-24*time.Hour))
 	return err
