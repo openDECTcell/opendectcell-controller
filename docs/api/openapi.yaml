@@ -242,6 +242,7 @@ paths:
                 display_name: { type: string, maxLength: 64 }
                 default_line: { type: integer, enum: [1, 2], nullable: true }
                 dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
+                disclosed_to_admins: { type: boolean, default: false, description: "The owner lets administrators see this handset under their account (name, model, status, last seen; never its lines)" }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
         "200":
@@ -1190,6 +1191,7 @@ components:
         capabilities: { type: object, additionalProperties: true }
         default_line: { type: integer, enum: [1, 2], nullable: true }
         dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
+        disclosed_to_admins: { type: boolean, default: false, description: "The owner lets administrators see this handset under their account (name, model, status, last seen; never its lines)" }
         lines: { type: array, maxItems: 2, items: { $ref: "#/components/schemas/HandsetLine" } }
         home_cell_ids: { type: array, items: { type: string, format: uuid } }
         last_seen_cell_id: { type: string, format: uuid, nullable: true }
@@ -1338,7 +1340,7 @@ components:
         health: { type: string, enum: [ok, degraded, unfit, offline], description: "From RTT (cell-protocol.md §2, rule 5)" }
         rtt_p95_ms: { type: integer, nullable: true }
         enrolled_at: { type: string, format: date-time, nullable: true }
-        enrolled_by: { type: string, format: uuid, nullable: true }
+        enrolled_by: { type: string, format: uuid, nullable: true, description: "The operator; null unless the operator disclosed the base station to the administrators" }
         approved_at: { type: string, format: date-time, nullable: true }
         software_version: { type: string, nullable: true }
         stub_version: { type: string, nullable: true }

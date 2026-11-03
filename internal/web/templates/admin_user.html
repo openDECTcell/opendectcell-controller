@@ -13,6 +13,22 @@
   {{else}}<label class="form-check"><input class="form-check-input" type="checkbox" name="disabled" {{if .Target.Disabled}}checked{{end}} {{if .Self}}disabled{{end}}>Disabled (ends their sessions)</label>{{end}}
   <button type="submit" class="btn btn-primary">{{if .New}}Create{{else}}Save{{end}}</button>
 </form></div></div>
+{{if not .New}}
+<h3 class="mt-4 mb-2">Disclosed to administrators</h3>
+<p class="text-secondary">Handsets and base stations are private to {{.Target.Name}} unless they disclose them, one by one, on the entry's own page.</p>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
+<thead><tr><th>Handset</th><th>Status</th><th>Model</th><th>IPEI</th><th>Last seen</th></tr></thead>
+<tbody>
+{{range .Handsets}}<tr><td>{{.Display}}</td><td>{{template "presence" .}}</td><td>{{with .Model}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td><td>{{with ipei .}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">n/a</span>{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}{{if .LastSeenCell}} · {{.LastSeenCell}}{{end}}</td></tr>
+{{else}}<tr><td colspan="5" class="text-secondary">No handsets disclosed.</td></tr>{{end}}
+</tbody></table></div></div>
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
+<thead><tr><th>Base station</th><th>State</th><th>Place</th><th>Model</th><th>Last connected</th></tr></thead>
+<tbody>
+{{range .Cells}}<tr><td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{.State}}</td><td>{{with .Location}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</td><td>{{with .BoxModel}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}</td></tr>
+{{else}}<tr><td colspan="5" class="text-secondary">No base stations disclosed.</td></tr>{{end}}
+</tbody></table></div></div>
+{{end}}
 {{if and (not .New) (eq .Target.AuthSource "local")}}
 <h3 class="mt-4 mb-2">Set password</h3>
 <div class="card mb-3"><div class="card-body"><form method="post" action="/admin/users/{{.Target.ID}}/password" class="narrow">

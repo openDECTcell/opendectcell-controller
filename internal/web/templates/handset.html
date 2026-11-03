@@ -29,6 +29,7 @@
               <option value="call_waiting" {{if eq .H.DualRing "call_waiting"}}selected{{end}}>The second call shows as call waiting</option>
               <option value="busy" {{if eq .H.DualRing "busy"}}selected{{end}}>The second line is busy</option>
             </select></div>
+          <label class="form-check mt-3 mb-0"><input class="form-check-input" type="checkbox" name="disclosed" {{if .H.Disclosed}}checked{{end}}><span class="form-check-label"><strong>Disclose to administrators</strong> Administrators can see this handset (name, model, status and when it was last seen) under your account in Administration &rarr; Users. They never see its VoIP lines. Off: no one but you sees it.</span></label>
         </div>
         <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
       </form>

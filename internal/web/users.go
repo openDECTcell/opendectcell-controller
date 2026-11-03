@@ -9,6 +9,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/cell"
+	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 )
 
 func (s *Server) userRoutes() {
@@ -25,10 +27,23 @@ type userForm struct {
 	Target *auth.User
 	New    bool
 	Self   bool
+	// Handsets and Cells are the ones the user disclosed to the administrators.
+	Handsets []*handset.Handset
+	Cells    []*cell.Cell
 }
 
-func (s *Server) renderUser(w http.ResponseWriter, status int, u *auth.User, f userForm, p page) {
+func (s *Server) renderUser(w http.ResponseWriter, r *http.Request, status int, u *auth.User, f userForm, p page) {
 	p.User, p.Data = u, f
+	if !f.New && f.Target != nil && f.Target.ID != uuid.Nil {
+		// what this user chose to disclose to the administrators, and nothing else of theirs
+		if s.Handsets != nil {
+			f.Handsets, _ = s.Handsets.Disclosed(r.Context(), u, f.Target.ID)
+		}
+		if s.Cells != nil {
+			f.Cells, _ = s.Cells.ListDisclosed(r.Context(), u, f.Target.ID)
+		}
+		p.Data = f
+	}
 	p.Title = "New user"
 	if !f.New {
 		p.Title = f.Target.Username
@@ -37,7 +52,7 @@ func (s *Server) renderUser(w http.ResponseWriter, status int, u *auth.User, f u
 }
 
 func (s *Server) userNew(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	s.renderUser(w, http.StatusOK, u, userForm{Target: &auth.User{Role: auth.RoleUser}, New: true}, page{})
+	s.renderUser(w, r, http.StatusOK, u, userForm{Target: &auth.User{Role: auth.RoleUser}, New: true}, page{})
 }
 
 func (s *Server) userCreate(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -52,7 +67,7 @@ func (s *Server) userCreate(w http.ResponseWriter, r *http.Request, u *auth.User
 			msg = "That username exists already."
 		}
 		shown := &auth.User{Username: n.Username, DisplayName: n.DisplayName, Email: n.Email, Role: n.Role, MayAddCells: n.MayAddCells}
-		s.renderUser(w, http.StatusBadRequest, u, userForm{Target: shown, New: true}, page{Error: msg})
+		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: shown, New: true}, page{Error: msg})
 		return
 	}
 	http.Redirect(w, r, "/admin/users/"+nu.ID.String()+"?done=Created.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
@@ -78,7 +93,7 @@ func (s *Server) userByPath(w http.ResponseWriter, r *http.Request, u *auth.User
 
 func (s *Server) userEdit(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	if t, ok := s.userByPath(w, r, u); ok {
-		s.renderUser(w, http.StatusOK, u, userForm{Target: t, Self: t.ID == u.ID}, page{Notice: r.FormValue("done")})
+		s.renderUser(w, r, http.StatusOK, u, userForm{Target: t, Self: t.ID == u.ID}, page{Notice: r.FormValue("done")})
 	}
 }
 
@@ -97,7 +112,7 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, u *auth.User
 		if errors.Is(err, auth.ErrSelf) {
 			msg = "You cannot remove your own admin role or disable yourself."
 		}
-		s.renderUser(w, http.StatusBadRequest, u, userForm{Target: t, Self: t.ID == u.ID}, page{Error: msg})
+		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: t, Self: t.ID == u.ID}, page{Error: msg})
 		return
 	}
 	http.Redirect(w, r, "/admin/users/"+t.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
@@ -110,11 +125,11 @@ func (s *Server) userPassword(w http.ResponseWriter, r *http.Request, u *auth.Us
 		return
 	}
 	if t.AuthSource != "local" {
-		s.renderUser(w, http.StatusBadRequest, u, userForm{Target: t}, page{Error: "This user signs in with single sign-on."})
+		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: t}, page{Error: "This user signs in with single sign-on."})
 		return
 	}
 	if err := s.Auth.SetPassword(r.Context(), t.ID, r.PostFormValue("password"), nil); err != nil {
-		s.renderUser(w, http.StatusBadRequest, u, userForm{Target: t, Self: t.ID == u.ID}, page{Error: err.Error()})
+		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: t, Self: t.ID == u.ID}, page{Error: err.Error()})
 		return
 	}
 	http.Redirect(w, r, "/admin/users/"+t.ID.String()+"?done=Password+set;+their+sessions+were+ended.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
@@ -128,9 +143,9 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request, u *auth.User
 	err := s.Auth.DeleteUser(r.Context(), u, t.ID)
 	switch {
 	case errors.Is(err, auth.ErrSelf):
-		s.renderUser(w, http.StatusBadRequest, u, userForm{Target: t, Self: true}, page{Error: "You cannot delete yourself."})
+		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: t, Self: true}, page{Error: "You cannot delete yourself."})
 	case errors.Is(err, auth.ErrHasObjects):
-		s.renderUser(w, http.StatusConflict, u, userForm{Target: t}, page{Error: "This user still owns handsets or SIP accounts. Reassign or delete them first."})
+		s.renderUser(w, r, http.StatusConflict, u, userForm{Target: t}, page{Error: "This user still owns handsets or SIP accounts. Reassign or delete them first."})
 	case err != nil:
 		s.internalError(w, r, err)
 	default:

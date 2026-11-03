@@ -529,7 +529,11 @@ func (s *Server) cellJSON(c *cell.Cell, full bool) map[string]any {
 	} else {
 		m["rtt_p95_ms"] = nil
 	}
-	m["enrolled_at"], m["enrolled_by"], m["approved_at"] = c.EnrolledAt, c.EnrolledBy, c.ApprovedAt
+	m["enrolled_at"], m["approved_at"] = c.EnrolledAt, c.ApprovedAt
+	m["enrolled_by"] = nil // the operator is shown only for a base station they disclosed to the administrators
+	if c.Disclosed {
+		m["enrolled_by"] = c.EnrolledBy
+	}
 	m["software_version"], m["stub_version"] = c.SoftwareVersion, c.StubVersion
 	m["capacity"] = map[string]any{"sub_records": c.CapSubRecords, "audio_nb": c.CapAudioNB, "audio_wb": c.CapAudioWB}
 	m["certificate_expires_at"], m["last_seen_at"] = c.CertExpiresAt, c.LastSeenAt

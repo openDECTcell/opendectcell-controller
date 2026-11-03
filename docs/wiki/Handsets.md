@@ -19,7 +19,9 @@ If nothing happens, the window may have closed (press *Start registration* again
 
 The handset registers on the cell it hears best; the controller stores its key and from then on every cell
 can serve it. Only the owner (the user who started the registration) can see and change the handset. Handsets are
-private: administrators do not see other users' handsets either.
+private: administrators do not see other users' handsets either, unless you tick **Disclose to administrators** on that
+handset's page. They then see it, with its name, model, status and last contact (never its VoIP lines), under your
+account in **Administration > Users**. It is off for every handset and you can switch it off again at any time.
 
 ## After registering: give it a line
 

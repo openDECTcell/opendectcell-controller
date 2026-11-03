@@ -136,7 +136,7 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 	if !ok {
 		return
 	}
-	up := handset.Update{Name: strings.TrimSpace(r.PostFormValue("name")), DualRing: r.PostFormValue("dual_ring")}
+	up := handset.Update{Name: strings.TrimSpace(r.PostFormValue("name")), DualRing: r.PostFormValue("dual_ring"), Disclosed: r.PostFormValue("disclosed") == "on"}
 	if v := r.PostFormValue("default_line"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {

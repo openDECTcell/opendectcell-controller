@@ -38,18 +38,20 @@ type Line struct {
 
 // Handset is a handset as the UI lists it.
 type Handset struct {
-	ID            uuid.UUID
-	OwnerID       uuid.UUID
-	Owner         string
-	Name          string
-	Model         string
-	Profile       string // the id of its device profile; "" is the standard behaviour
-	RegisteredAt  time.Time
-	LastSeenAt    *time.Time
-	LastSeenCell  string
-	DefaultLine   *int
-	DualRing      string // call_waiting or busy
-	Lines         []Line
+	ID           uuid.UUID
+	OwnerID      uuid.UUID
+	Owner        string
+	Name         string
+	Model        string
+	Profile      string // the id of its device profile; "" is the standard behaviour
+	RegisteredAt time.Time
+	LastSeenAt   *time.Time
+	LastSeenCell string
+	DefaultLine  *int
+	DualRing     string // call_waiting or busy
+	Lines        []Line
+	// Disclosed: the owner lets administrators see this handset (under the owner in Administration > Users).
+	Disclosed     bool
 	IPUI          []byte         // the identity it registered with (an IPEI for a type N)
 	TPUI          int            // its temporary identity
 	Capabilities  map[string]any // what it said of itself (TERMINAL-CAPABILITY), as the DECT core stored it
@@ -135,7 +137,7 @@ func (s *Store) presence(ctx context.Context, hs ...*Handset) {
 const cols = `h.id, h.owner_user_id, coalesce(nullif(u.display_name, ''), u.username), h.display_name, coalesce(h.model, ''), h.registered_at,
 	h.last_seen_at, coalesce(c.name, ''), h.default_line, h.dual_ring_policy,
 	(SELECT count(*) FROM cell_slot s WHERE s.handset_id = h.id), h.pooled, coalesce(h.profile, ''),
-	h.ipui, h.tpui, h.capabilities, h.signal_dbm, h.signal_at, h.internal_number, h.detached_at, h.page_failed_at`
+	h.ipui, h.tpui, h.capabilities, h.signal_dbm, h.signal_at, h.internal_number, h.detached_at, h.page_failed_at, h.disclosed_to_admins`
 
 const from = ` FROM handset h JOIN app_user u ON u.id = h.owner_user_id LEFT JOIN cell c ON c.id = h.last_seen_cell_id`
 
@@ -144,7 +146,7 @@ func scan(r pgx.Row) (*Handset, error) {
 	var caps []byte
 	var dbm, num *int16
 	err := r.Scan(&h.ID, &h.OwnerID, &h.Owner, &h.Name, &h.Model, &h.RegisteredAt, &h.LastSeenAt, &h.LastSeenCell, &h.DefaultLine, &h.DualRing, &h.CellsHoldingN, &h.Pooled, &h.Profile,
-		&h.IPUI, &h.TPUI, &caps, &dbm, &h.SignalAt, &num, &h.DetachedAt, &h.PageFailedAt)
+		&h.IPUI, &h.TPUI, &caps, &dbm, &h.SignalAt, &num, &h.DetachedAt, &h.PageFailedAt, &h.Disclosed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -167,7 +169,20 @@ func scan(r pgx.Row) (*Handset, error) {
 // List returns the handsets u owns. A handset is private to its owner: an
 // administrator does not see other users' handsets. Lines are filled in.
 func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT "+cols+from+" WHERE h.owner_user_id = $1 ORDER BY h.registered_at", u.ID)
+	return s.list(ctx, " WHERE h.owner_user_id = $1 ORDER BY h.registered_at", u.ID, true)
+}
+
+// Disclosed returns the handsets that user disclosed to the administrators; only an administrator
+// may ask. Their lines stay private: they hold the owner's VoIP accounts.
+func (s *Store) Disclosed(ctx context.Context, admin *auth.User, user uuid.UUID) ([]*Handset, error) {
+	if auth.RequireAdmin(admin) != nil {
+		return nil, ErrNotFound
+	}
+	return s.list(ctx, " WHERE h.owner_user_id = $1 AND h.disclosed_to_admins ORDER BY h.registered_at", user, false)
+}
+
+func (s *Store) list(ctx context.Context, where string, owner uuid.UUID, withLines bool) ([]*Handset, error) {
+	rows, err := s.Pool.Query(ctx, "SELECT "+cols+from+where, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -185,6 +200,10 @@ func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if !withLines {
+		s.presence(ctx, out...)
+		return out, nil
 	}
 	lr, err := s.Pool.Query(ctx, `SELECT hl.handset_id, hl.line, a.id, a.label, a.username || '@' || a.domain, hl.enabled
 		FROM handset_line hl JOIN sip_account a ON a.id = hl.sip_account_id ORDER BY hl.line`)
@@ -253,6 +272,8 @@ type Update struct {
 	// Model the name the pages show for it; nil keeps both as they are.
 	Profile *string
 	Model   string
+	// Disclosed lets administrators see the handset under its owner.
+	Disclosed bool
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -284,7 +305,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 				return ErrInvalid
 			}
 		}
-		if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
+		if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4, disclosed_to_admins = $5 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing, up.Disclosed); err != nil {
 			return err
 		}
 		if up.Profile != nil {
@@ -293,7 +314,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 			}
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "handset.update", ObjectType: "handset", ObjectID: id.String(),
-			Details: map[string]any{"dual_ring": up.DualRing, "default_line": up.DefaultLine}})
+			Details: map[string]any{"dual_ring": up.DualRing, "default_line": up.DefaultLine, "disclosed_to_admins": up.Disclosed}})
 	})
 }
 

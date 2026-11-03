@@ -528,18 +528,21 @@ type Profile struct {
 	SharePosition     bool
 	ShareSpecs        bool
 	ShareStats        bool
+	// Disclosed: the operator lets administrators see this base station under their account
+	// (Administration > Users). Only the operator sets it.
+	Disclosed bool
 }
 
 const cellCols = `c.id, c.name, c.location, c.state, c.enrolled_by, c.enrolled_at, c.approved_at, c.software_version,
 	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.last_seen_at,
 	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL),
-	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats`
+	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats, c.disclosed_to_admins`
 
 func scanCell(r pgx.Row) (*Cell, error) {
 	var c Cell
 	err := r.Scan(&c.ID, &c.Name, &c.Location, &c.State, &c.EnrolledBy, &c.EnrolledAt, &c.ApprovedAt, &c.SoftwareVersion,
 		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.LastSeenAt, &c.CertExpiresAt,
-		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats)
+		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats, &c.Disclosed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -729,6 +732,28 @@ func (s *Store) ListOwned(ctx context.Context, u *auth.User) ([]*Cell, error) {
 	return out, rows.Err()
 }
 
+// ListDisclosed returns the base stations user enrolled and disclosed to the administrators; only an
+// administrator may ask.
+func (s *Store) ListDisclosed(ctx context.Context, admin *auth.User, user uuid.UUID) ([]*Cell, error) {
+	if auth.RequireAdmin(admin) != nil {
+		return nil, ErrNotFound
+	}
+	rows, err := s.Pool.Query(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.enrolled_by = $1 AND c.disclosed_to_admins AND c.state <> 'revoked' ORDER BY lower(c.name)", user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Cell
+	for rows.Next() {
+		c, err := scanCell(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // GetOwned returns a cell u enrolled, or any cell for an admin; others get
 // ErrNotFound, so a cell's existence is not revealed.
 func (s *Store) GetOwned(ctx context.Context, u *auth.User, id uuid.UUID) (*Cell, error) {
@@ -789,16 +814,19 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 		if !u.IsAdmin() && (owner == nil || *owner != u.ID) {
 			return ErrNotFound
 		}
+		// only the operator decides what administrators may see; an administrator's save leaves it as it is
+		operator := owner != nil && *owner == u.ID
 		_, err := tx.Exec(ctx, `UPDATE cell SET name = $2, location = $3, box_model = $4, latitude = $5, longitude = $6,
-			position_precision = $7, share_name = $8, share_position = $9, share_specs = $10, share_stats = $11 WHERE id = $1`,
+			position_precision = $7, share_name = $8, share_position = $9, share_specs = $10, share_stats = $11,
+			disclosed_to_admins = CASE WHEN $12 THEN $13 ELSE disclosed_to_admins END WHERE id = $1`,
 			id, name, up.Location, strings.TrimSpace(up.BoxModel), up.Latitude, up.Longitude, up.PositionPrecision,
-			up.ShareName, up.SharePosition, up.ShareSpecs, up.ShareStats)
+			up.ShareName, up.SharePosition, up.ShareSpecs, up.ShareStats, operator, up.Disclosed)
 		if err != nil {
 			return err
 		}
 		if err := audit.Record(ctx, tx, audit.Entry{Action: "cell.profile", ObjectType: "cell", ObjectID: id.String(), Details: map[string]any{
 			"name": name, "has_position": up.Latitude != nil, "precision": up.PositionPrecision,
-			"share_name": up.ShareName, "share_position": up.SharePosition, "share_specs": up.ShareSpecs, "share_stats": up.ShareStats}}); err != nil {
+			"share_name": up.ShareName, "share_position": up.SharePosition, "share_specs": up.ShareSpecs, "share_stats": up.ShareStats, "disclosed_to_admins": up.Disclosed, "by_operator": operator}}); err != nil {
 			return err
 		}
 		c, err = scanCell(tx.QueryRow(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.id = $1", id))

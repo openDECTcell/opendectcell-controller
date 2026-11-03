@@ -46,12 +46,16 @@ type stationData struct {
 	Lat, Lon string
 	Models   []string
 	CellAddr string // host:port the cells connect to, for the hint to a cell that never connected
+	Operator bool   // the viewer enrolled it: only they decide what administrators may see
 }
 
 var boxModels = []string{"FRITZ!Box 7520", "FRITZ!Box 7520 B", "FRITZ!Box 7412"}
 
 func (s *Server) stationView(r *http.Request, c *cell.Cell) stationData {
 	d := stationData{Cell: c, Live: s.liveStatus(c.ID), Models: boxModels, CellAddr: s.Cells.PublicAddr}
+	if u := auth.UserFrom(r.Context()); u != nil && c.EnrolledBy != nil && *c.EnrolledBy == u.ID {
+		d.Operator = true
+	}
 	if c.Latitude != nil && c.Longitude != nil {
 		d.Lat = strconv.FormatFloat(*c.Latitude, 'f', -1, 64)
 		d.Lon = strconv.FormatFloat(*c.Longitude, 'f', -1, 64)
@@ -117,6 +121,7 @@ func (s *Server) stationSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 	up.SharePosition = r.PostFormValue("share_position") == "on"
 	up.ShareSpecs = r.PostFormValue("share_specs") == "on"
 	up.ShareStats = r.PostFormValue("share_stats") == "on"
+	up.Disclosed = r.PostFormValue("disclosed") == "on"
 	lat, e1 := parseCoord(r.PostFormValue("lat"))
 	lon, e2 := parseCoord(r.PostFormValue("lon"))
 	err := errors.Join(e1, e2)

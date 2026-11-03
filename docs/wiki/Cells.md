@@ -63,6 +63,10 @@ it next connects.
 
 ## Base stations for users, and the map
 
+Administrators see every base station in **Administration > Cells** (they approve, disable and watch them), but not who
+operates it. The operator can tick **Disclose to administrators** on the base station's page; the base station then
+also appears under their account in **Administration > Users**. Only the operator can change that.
+
 **Base stations > My base stations** shows the cells a user enrolled. An owner can choose what may be shown
 on the **public map**: the cell's name, its position (exact, approximate or only the region), its
 specifications and its statistics. **Public map** shows the stations that are shared. An administrator
