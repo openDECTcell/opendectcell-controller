@@ -50,6 +50,13 @@ So a user must be able to decide whom they trust, and must be told what the choi
    until the slot is overwritten or the chip reloaded ([ADR 0004](0004-shared-network.md), "Keys only when needed"); that is
    stated on the page and is another reason to register the handset again after a suspected leak.
 
+6. **A setting that strands the user's handsets asks first.** If, under the new setting, the user has handsets and no active base station
+   they may be put on, the setting is not applied until the user confirms (`SetTrustChecked`; in the API `409 no_usable_cell` unless
+   `confirm: true`). `all` is never refused, as it is the widest. Whenever the user is in that state (also after the fact, when a
+   cell is revoked or a member leaves) a warning shows on the handsets and trust pages and as `no_usable_cell` in `GET /me/trust`.
+7. **The API** has the same operations (`docs/api/openapi.yaml`: `/me/trust`, `/organizations...`) with three new authorisation rules,
+   `org-member`, `org-admin`, `org-owner`; a test fails when a registered API route is missing from the document.
+
 ## Alternatives considered
 
 - **A per-cell opt-out** (a cell refuses foreign handsets). It protects the operator's capacity, not the handset owner's key,

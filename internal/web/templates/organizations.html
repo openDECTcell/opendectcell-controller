@@ -2,6 +2,21 @@
 {{define "organizations.html"}}{{template "head" .}}
 {{with .Data}}
 {{template "trust_notice" .}}
+{{with .Confirm}}
+<div class="card border-warning mb-3">
+  <div class="card-header"><h3 class="card-title">{{icon "alert-triangle"}} This leaves your {{if eq .Handsets 1}}handset{{else}}{{.Handsets}} handsets{{end}} without a base station</h3></div>
+  <form method="post" action="/organizations/trust">
+    <input type="hidden" name="scope" value="{{.Scope}}">
+    {{range .Orgs}}<input type="hidden" name="org" value="{{.}}">{{end}}
+    <input type="hidden" name="confirm" value="1">
+    <div class="card-body">
+      <p>With the setting you chose there is no active base station your handsets may be put on. They would not ring and could not make calls until you
+        change the setting again or a base station you trust appears. <strong>Nothing has been saved yet.</strong></p>
+    </div>
+    <div class="card-footer text-end"><a class="btn" href="/organizations">Keep my current setting</a> <button type="submit" class="btn btn-warning">Save anyway</button></div>
+  </form>
+</div>
+{{end}}
 <div class="row row-cards">
   <div class="col-lg-7">
     <form method="post" action="/organizations/trust">

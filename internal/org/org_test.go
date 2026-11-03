@@ -447,3 +447,65 @@ func TestOwnerlessOrganization(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A setting that would leave a user's handsets with no base station is not applied until the user confirms;
+// and what the handsets can reach is counted the same way the placement rule decides it.
+func TestTrustThatStrandsHandsetsNeedsConfirmation(t *testing.T) {
+	e := newEnv(t)
+	alice, actx := e.user(t, "alice", auth.RoleUser)
+	bob, _ := e.user(t, "bob", auth.RoleUser)
+	e.cell(t, "bob's", bob)
+	if r, err := e.org.Reach(actx, alice.ID); err != nil || r.Cells != 1 || r.Handsets != 0 || r.Stranded() {
+		t.Fatalf("reach under 'all' with no handset: %+v %v", r, err)
+	}
+	// With no handset there is nobody to strand: 'own' is applied without a question.
+	if err := e.org.SetTrustChecked(actx, alice, org.ScopeOwn, nil); err != nil {
+		t.Fatalf("a user without handsets was asked to confirm: %v", err)
+	}
+	if r, _ := e.org.Reach(actx, alice.ID); r.Scope != org.ScopeOwn {
+		t.Fatalf("reach does not show the setting: %+v", r)
+	}
+	if err := e.org.SetTrust(actx, alice, org.ScopeAll, nil); err != nil {
+		t.Fatal(err)
+	}
+	// A handset, and no cell of her own: 'own' strands it.
+	if _, err := e.pool.Exec(actx, `INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\x0102030405', 1, '\x00')`, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	err := e.org.SetTrustChecked(actx, alice, org.ScopeOwn, nil)
+	var se *org.StrandedError
+	if !errors.As(err, &se) || se.Handsets != 1 {
+		t.Fatalf("a setting that strands one handset: %v", err)
+	}
+	if tr, _ := e.org.GetTrust(actx, alice); tr.Scope != org.ScopeAll {
+		t.Fatalf("the refused setting was applied: %+v", tr)
+	}
+	// Confirmed, it is applied, and the reach shows the problem.
+	if err := e.org.SetTrust(actx, alice, org.ScopeOwn, nil); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := e.org.Reach(actx, alice.ID); !r.Stranded() || r.Cells != 0 || r.Handsets != 1 {
+		t.Fatalf("reach after the confirmed setting: %+v", r)
+	}
+	// A base station of her own, or a revoked/pending one that does not count.
+	own := e.cell(t, "alice's", alice)
+	if r, _ := e.org.Reach(actx, alice.ID); r.Cells != 1 || r.Stranded() {
+		t.Fatalf("reach with an own cell: %+v", r)
+	}
+	if _, err := e.pool.Exec(actx, "UPDATE cell SET state = 'revoked' WHERE id = $1", own); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := e.org.Reach(actx, alice.ID); !r.Stranded() {
+		t.Fatalf("a revoked cell counted: %+v", r)
+	}
+	// Trusting an organization whose members run no cell strands too; one with a cell helps.
+	o, _ := e.org.Create(actx, alice, "Club")
+	if err := e.org.SetTrustChecked(actx, alice, org.ScopeOrgs, []uuid.UUID{o.ID}); !errors.As(err, &se) {
+		t.Fatalf("an organization without cells: %v", err)
+	}
+	bctx := audit.WithActor(context.Background(), bob.Actor())
+	e.join(t, alice, actx, o, bob, bctx, "")
+	if err := e.org.SetTrustChecked(actx, alice, org.ScopeOrgs, []uuid.UUID{o.ID}); err != nil {
+		t.Fatalf("an organization with a cell: %v", err)
+	}
+}

@@ -33,7 +33,7 @@ func (s *Server) handsetList(w http.ResponseWriter, r *http.Request, u *auth.Use
 		s.internalError(w, r, err)
 		return
 	}
-	s.render(w, http.StatusOK, "handsets.html", page{Title: "Handsets", User: u, Data: hs, Notice: r.FormValue("done")})
+	s.render(w, http.StatusOK, "handsets.html", page{Title: "Handsets", User: u, Data: hs, Notice: r.FormValue("done"), Warn: s.strandedWarn(r, u.ID)})
 }
 
 // profileMaker is one manufacturer with its models, for the pickers (a
@@ -110,7 +110,7 @@ func (s *Server) handsetPage(w http.ResponseWriter, r *http.Request, u *auth.Use
 		s.internalError(w, r, err)
 		return
 	}
-	s.render(w, http.StatusOK, "handset.html", page{Title: h.Display(), User: u, Data: d, Notice: r.FormValue("done")})
+	s.render(w, http.StatusOK, "handset.html", page{Title: h.Display(), User: u, Data: d, Notice: r.FormValue("done"), Warn: s.strandedWarn(r, h.OwnerID)})
 }
 
 func (s *Server) handsetFail(w http.ResponseWriter, r *http.Request, u *auth.User, h *handset.Handset, err error) {

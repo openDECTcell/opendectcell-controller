@@ -27,6 +27,14 @@ Open **Organizations and trust** in the menu. Three settings:
 When you save, your handsets are taken off the base stations that are no longer allowed. A key that sits in a base station's
 chip stays there until the chip loads another handset or restarts; another reason to register the handset again if you worry.
 
+### If your handsets would have no base station
+
+If a setting would leave you with handsets and **no active base station they may be put on** (for example "only my own" while you
+have none), the page does not save it at once. It tells you that none of your handsets would ring or make calls and asks you to
+confirm; until you do, nothing changes. If it happens later (your last base station is revoked, or the people you trusted leave
+their organization), a warning on the Handsets page and on this page says so for as long as it is true. "Every base station" is
+never refused: if nothing is reachable under it, there simply is no active base station on the controller.
+
 ## Organizations
 
 An organization is a group of people, for example a makerspace or a family. It only exists so that you can say "I trust

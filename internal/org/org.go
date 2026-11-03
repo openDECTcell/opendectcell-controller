@@ -636,9 +636,53 @@ func (s *Store) GetTrust(ctx context.Context, u *auth.User) (Trust, error) {
 	return t, err
 }
 
+// Reach is what a user's handsets can use under the user's trust setting: the active base stations they may be
+// put on, and how many handsets the user has.
+type Reach struct {
+	Cells, Handsets int
+	Scope           Scope // the user's setting
+}
+
+// Stranded says the user has handsets and no base station for them: none rings, none can be called.
+func (r Reach) Stranded() bool { return r.Handsets > 0 && r.Cells == 0 }
+
+func reachOf(ctx context.Context, q interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, user uuid.UUID) (Reach, error) {
+	var r Reach
+	err := q.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM cell c WHERE c.state = 'active' AND handset_may_use_cell($1, c.id)),
+		(SELECT count(*) FROM handset WHERE owner_user_id = $1),
+		(SELECT trust_scope FROM app_user WHERE id = $1)`, user).Scan(&r.Cells, &r.Handsets, &r.Scope)
+	return r, err
+}
+
+// Reach reads what the user's handsets can use now.
+func (s *Store) Reach(ctx context.Context, user uuid.UUID) (Reach, error) {
+	return reachOf(ctx, s.Pool, user)
+}
+
+// StrandedError is what SetTrustChecked answers when the new setting would leave the user's handsets without a
+// base station. Nothing was changed.
+type StrandedError struct{ Handsets int }
+
+func (e *StrandedError) Error() string {
+	return "org: with this setting none of your handsets can use a base station"
+}
+
 // SetTrust sets whose base stations u's handsets may use. orgs are the organizations to trust when
 // scope is "orgs"; ones u does not belong to are ignored. The base stations' tables are cleaned afterwards.
 func (s *Store) SetTrust(ctx context.Context, u *auth.User, scope Scope, orgs []uuid.UUID) error {
+	return s.setTrust(ctx, u, scope, orgs, true)
+}
+
+// SetTrustChecked is SetTrust, but a setting that would leave the user's handsets without any base station
+// is not applied: it answers *StrandedError, and the caller asks the user to confirm and then uses SetTrust.
+func (s *Store) SetTrustChecked(ctx context.Context, u *auth.User, scope Scope, orgs []uuid.UUID) error {
+	return s.setTrust(ctx, u, scope, orgs, false)
+}
+
+func (s *Store) setTrust(ctx context.Context, u *auth.User, scope Scope, orgs []uuid.UUID, confirmed bool) error {
 	if scope != ScopeAll && scope != ScopeOwn && scope != ScopeOrgs {
 		return ErrBadScope
 	}
@@ -653,6 +697,16 @@ func (s *Store) SetTrust(ctx context.Context, u *auth.User, scope Scope, orgs []
 			if _, err := tx.Exec(ctx, `INSERT INTO user_trusted_org (user_id, org_id)
 				SELECT $1, m.org_id FROM organization_member m WHERE m.user_id = $1 AND m.org_id = ANY($2) ON CONFLICT DO NOTHING`, u.ID, orgs); err != nil {
 				return err
+			}
+		}
+		if !confirmed {
+			r, err := reachOf(ctx, tx, u.ID)
+			if err != nil {
+				return err
+			}
+			// 'all' is the widest setting: if nothing is reachable under it, the setting is not the cause
+			if r.Stranded() && scope != ScopeAll {
+				return &StrandedError{Handsets: r.Handsets} // rolls back: nothing was changed
 			}
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.trust", ObjectType: "user", ObjectID: u.ID.String(), Details: map[string]any{"scope": string(scope), "organizations": len(orgs)}})

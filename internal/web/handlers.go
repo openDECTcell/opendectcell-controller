@@ -22,6 +22,7 @@ type page struct {
 	Version string
 	Error   string
 	Notice  string
+	Warn    string // a warning that is not an error: the page works, but the user should know
 	Data    any
 
 	// filled in by render

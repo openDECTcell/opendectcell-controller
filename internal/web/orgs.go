@@ -5,6 +5,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -40,6 +41,37 @@ type orgListData struct {
 	Orgs  []org.Mine
 	Trust org.Trust
 	All   []org.Mine // every organization, for a controller admin
+	// Confirm is set when the setting just sent would leave the user's handsets without a base station:
+	// nothing was saved, and the page asks.
+	Confirm *trustConfirm
+}
+
+// trustConfirm is the setting that was refused until the user confirms it.
+type trustConfirm struct {
+	Scope    org.Scope
+	Orgs     []uuid.UUID
+	Handsets int
+}
+
+// strandedWarning is the text shown where a user whose handsets have no base station looks.
+func strandedWarning(r org.Reach) string {
+	who := map[bool]string{true: "handset", false: fmt.Sprintf("%d handsets", r.Handsets)}[r.Handsets == 1]
+	if r.Scope == org.ScopeAll {
+		return fmt.Sprintf("None of your %s can use a base station: this controller has no active base station at the moment, so they cannot be reached or make calls.", who)
+	}
+	return fmt.Sprintf("None of your %s can use a base station: with your trust setting there is no active base station they may be put on, so they cannot be reached or make calls. Choose a wider setting under Organizations and trust, or enroll a base station of your own.", who)
+}
+
+// strandedWarn is the warning for the user's own handsets, or "" when they can reach a base station (or there are none).
+func (s *Server) strandedWarn(r *http.Request, user uuid.UUID) string {
+	if s.Orgs == nil {
+		return ""
+	}
+	reach, err := s.Orgs.Reach(r.Context(), user)
+	if err != nil || !reach.Stranded() {
+		return ""
+	}
+	return strandedWarning(reach)
 }
 
 func (s *Server) orgListView(r *http.Request, u *auth.User) (orgListData, error) {
@@ -58,12 +90,21 @@ func (s *Server) orgListView(r *http.Request, u *auth.User) (orgListData, error)
 }
 
 func (s *Server) renderOrgList(w http.ResponseWriter, r *http.Request, u *auth.User, status int, errMsg string) {
+	s.renderOrgListWith(w, r, u, status, errMsg, nil)
+}
+
+func (s *Server) renderOrgListWith(w http.ResponseWriter, r *http.Request, u *auth.User, status int, errMsg string, confirm *trustConfirm) {
 	d, err := s.orgListView(r, u)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
 	}
-	s.render(w, status, "organizations.html", page{Title: "Organizations and trust", User: u, Data: d, Error: errMsg, Notice: r.FormValue("done")})
+	d.Confirm = confirm
+	warn := ""
+	if confirm == nil { // when asking, the question says it
+		warn = s.strandedWarn(r, u.ID)
+	}
+	s.render(w, status, "organizations.html", page{Title: "Organizations and trust", User: u, Data: d, Error: errMsg, Notice: r.FormValue("done"), Warn: warn})
 }
 
 func (s *Server) orgList(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -111,12 +152,20 @@ func (s *Server) trustSave(w http.ResponseWriter, r *http.Request, u *auth.User)
 		}
 	}
 	scope := org.Scope(r.PostFormValue("scope"))
-	if err := s.Orgs.SetTrust(r.Context(), u, scope, ids); err != nil {
-		if errors.Is(err, org.ErrBadScope) {
+	save := s.Orgs.SetTrustChecked
+	if r.PostFormValue("confirm") == "1" {
+		save = s.Orgs.SetTrust // the user has seen the warning
+	}
+	if err := save(r.Context(), u, scope, ids); err != nil {
+		var stranded *org.StrandedError
+		switch {
+		case errors.Is(err, org.ErrBadScope):
 			s.renderOrgList(w, r, u, http.StatusBadRequest, "Choose one of the three settings.")
-			return
+		case errors.As(err, &stranded):
+			s.renderOrgListWith(w, r, u, http.StatusConflict, "", &trustConfirm{Scope: scope, Orgs: ids, Handsets: stranded.Handsets})
+		default:
+			s.internalError(w, r, err)
 		}
-		s.internalError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/organizations?done="+url.QueryEscape("Saved. Handsets that are no longer allowed on a base station are taken off it."), http.StatusSeeOther)

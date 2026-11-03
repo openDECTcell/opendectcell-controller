@@ -17,6 +17,9 @@ info:
     | `admin` | Role `admin` |
     | `owner-or-admin` | The object's owner, or an admin. Shared objects (owner `null`) are admin-only. A user asking for an object they may not see gets **404**, never 403, so existence is not revealed |
     | `may-add-cells` | Role `admin`, or a user with `may_add_cells` |
+    | `org-member` | A member of the organization, or a controller admin. Anyone else gets **404**; a member who may not do the thing gets **403** |
+    | `org-admin` | An admin or the owner of the organization, or a controller admin |
+    | `org-owner` | The owner of the organization, or a controller admin |
     | `owner-or-admin-shared-read` | As `owner-or-admin`, except that shared objects (owner `null`) are **readable** by every user and writable by admins (contacts) |
 
     List endpoints apply the same rule per item: a user's list contains
@@ -57,6 +60,8 @@ tags:
   - name: audit
   - name: settings
   - name: contacts
+  - name: organizations
+  - name: trust
   - name: health
 
 paths:
@@ -837,6 +842,256 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /me/trust:
+    get:
+      tags: [trust]
+      operationId: getMyTrust
+      summary: Whose base stations the caller's handsets may use
+      description: |
+        `all`: every base station of the controller (the default); `own`: only the caller's own; `orgs`: the
+        caller's own plus those of the members of the organizations in `organization_ids`
+        (`adr/0007-organizations-and-trust.md`). **A base station's operator can read the key of every handset
+        that is put on it, and can listen to its calls: that is a property of DECT, not of this software.**
+        `warnings` holds `no_usable_cell` when the caller has handsets and no active base station they may be
+        put on.
+      x-authz: user
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Trust" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    put:
+      tags: [trust]
+      operationId: setMyTrust
+      description: |
+        Takes the caller's handsets off the base stations that are no longer allowed. A setting other than `all`
+        that would leave the caller's handsets without any base station is refused with `409 no_usable_cell` and
+        nothing is changed, unless the body says `confirm: true`. A key already in a base station's chip stays
+        there until the chip loads another handset or restarts.
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { $ref: "#/components/schemas/TrustScope" }
+                organization_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+                  uniqueItems: true
+                  description: Used with `orgs`; organizations the caller does not belong to are ignored
+                confirm: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Trust" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /organizations:
+    get:
+      tags: [organizations]
+      operationId: listOrganizations
+      summary: The organizations the caller belongs to
+      x-authz: user
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationList" } } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      tags: [organizations]
+      operationId: createOrganization
+      description: The caller becomes its owner and an admin. At most 20 per owner.
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 64 }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Organization" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /organizations/invitation-preview:
+    post:
+      tags: [organizations]
+      operationId: previewInvitation
+      summary: Which organization an invitation is for
+      description: Uses nothing up. The name is the one the owner gave it, to suggest as the caller's own name for it.
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, writeOnly: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [organization_name]
+                properties:
+                  organization_name: { type: string }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+  /organizations/join:
+    post:
+      tags: [organizations]
+      operationId: joinOrganization
+      description: Uses the invitation (single use, valid 7 days). `display_name` is the caller's own name for the organization; empty keeps the owner's.
+      x-authz: user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, writeOnly: true }
+                display_name: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Joined
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationOverview" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /organizations/{orgId}:
+    parameters: [{ $ref: "#/components/parameters/OrgId" }]
+    get:
+      tags: [organizations]
+      operationId: getOrganization
+      description: |
+        What a member sees: the other members' names, roles and number of base stations, the organization's base
+        stations and its members' handsets as a total with the online count (`offline` is the rest). Nothing else
+        about another member's base stations or handsets.
+      x-authz: org-member
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationOverview" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [organizations]
+      operationId: updateOrganization
+      description: |
+        `name` renames the organization (owner); `display_name` sets the caller's own name for it (any member; empty
+        goes back to the owner's name). A member who sends `name` gets `403`.
+      x-authz: org-member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 64 }
+                display_name: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationOverview" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [organizations]
+      operationId: deleteOrganization
+      description: Everyone who trusted it stops trusting its members' base stations.
+      x-authz: org-owner
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /organizations/{orgId}/invitations:
+    parameters: [{ $ref: "#/components/parameters/OrgId" }]
+    post:
+      tags: [organizations]
+      operationId: createInvitation
+      description: Single use, valid 7 days. The token is returned **once**; only its hash is kept. At most 50 open ones.
+      x-authz: org-admin
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, join_url, expires_at]
+                properties:
+                  token: { type: string }
+                  join_url: { type: string }
+                  expires_at: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /organizations/{orgId}/membership:
+    parameters: [{ $ref: "#/components/parameters/OrgId" }]
+    delete:
+      tags: [organizations]
+      operationId: leaveOrganization
+      description: The caller leaves; trust in the organization ends with the membership. The owner cannot (`409 owner`).
+      x-authz: org-member
+      responses:
+        "204": { description: Left }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /organizations/{orgId}/members/{userId}:
+    parameters:
+      - { $ref: "#/components/parameters/OrgId" }
+      - { $ref: "#/components/parameters/UserId" }
+    patch:
+      tags: [organizations]
+      operationId: setMemberRole
+      description: Makes a member an admin or an ordinary member. The owner's role cannot be changed (`409 owner`).
+      x-authz: org-owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, member] }
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationOverview" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [organizations]
+      operationId: removeMember
+      description: An admin removes members; only the owner removes admins; nobody removes the owner (`409 owner`).
+      x-authz: org-admin
+      responses:
+        "204": { description: Removed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -861,6 +1116,7 @@ components:
     HandsetId: { name: handsetId, in: path, required: true, schema: { type: string, format: uuid } }
     AccountId: { name: accountId, in: path, required: true, schema: { type: string, format: uuid } }
     CellId: { name: cellId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrgId: { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
 
   responses:
     Unauthenticated:
@@ -1246,3 +1502,64 @@ components:
       properties:
         slot_policy: { type: string, enum: [auto, manual], description: "cell-protocol.md §7.4" }
         audit_retention_days: { type: integer, minimum: 30, nullable: true, description: "null = keep forever" }
+
+    TrustScope: { type: string, enum: [all, own, orgs] }
+    Trust:
+      type: object
+      required: [scope, organization_ids, usable_cells, handsets, warnings]
+      properties:
+        scope: { $ref: "#/components/schemas/TrustScope" }
+        organization_ids: { type: array, items: { type: string, format: uuid } }
+        usable_cells: { type: integer, description: "Active base stations the caller's handsets may be put on" }
+        handsets: { type: integer, description: "The caller's handsets" }
+        warnings: { type: array, items: { type: string, enum: [no_usable_cell] } }
+
+    Organization:
+      type: object
+      required: [id, name, display_name, owner, member_count, trusted, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: "As its owner named it" }
+        display_name: { type: string, description: "What the caller calls it" }
+        role: { type: string, enum: [admin, member], description: "The caller's role; absent for a controller admin who is not a member" }
+        owner: { type: boolean, description: "The caller is its owner" }
+        member_count: { type: integer }
+        trusted: { type: boolean, description: "The caller trusts its members' base stations" }
+        created_at: { type: string, format: date-time }
+    OrganizationList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Organization" } }
+        next: { type: string, nullable: true }
+    Counts:
+      type: object
+      required: [total, online, offline]
+      properties:
+        total: { type: integer }
+        online: { type: integer }
+        offline: { type: integer }
+    OrganizationMember:
+      type: object
+      required: [user_id, name, role, owner, cells, joined_at]
+      properties:
+        user_id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [admin, member] }
+        owner: { type: boolean }
+        cells: { type: integer, description: "Base stations this member runs (not revoked)" }
+        joined_at: { type: string, format: date-time }
+    OrganizationOverview:
+      allOf:
+        - $ref: "#/components/schemas/Organization"
+        - type: object
+          required: [cells, handsets, people, can_invite, can_remove, can_appoint, can_delete, open_invitations]
+          properties:
+            cells: { $ref: "#/components/schemas/Counts" }
+            handsets: { $ref: "#/components/schemas/Counts" }
+            people: { type: array, items: { $ref: "#/components/schemas/OrganizationMember" } }
+            can_invite: { type: boolean }
+            can_remove: { type: boolean }
+            can_appoint: { type: boolean }
+            can_delete: { type: boolean }
+            open_invitations: { type: integer }

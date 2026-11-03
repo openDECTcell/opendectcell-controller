@@ -73,6 +73,7 @@
 {{end}}
 {{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
 {{if .Notice}}<div class="alert alert-success" role="status">{{.Notice}}</div>{{end}}
+{{if .Warn}}<div class="alert alert-warning" role="status">{{icon "alert-triangle"}} {{.Warn}}</div>{{end}}
 {{end}}
 
 {{/* A handset's presence: the badge shown in lists and on its page. */}}

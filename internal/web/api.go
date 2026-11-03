@@ -36,6 +36,9 @@ func (s *Server) apiRoutes() {
 	h("PATCH "+apiPrefix+"/users/{id}", s.apiAdmin(s.apiUserPatch))
 	h("DELETE "+apiPrefix+"/users/{id}", s.apiAdmin(s.apiUserDelete))
 	h("GET "+apiPrefix+"/audit", s.apiAdmin(s.apiAudit))
+	if s.Orgs != nil {
+		s.apiOrgRoutes(h)
+	}
 	if s.SIPAccounts != nil {
 		h("GET "+apiPrefix+"/sip-accounts", s.apiSIPList)
 		h("POST "+apiPrefix+"/sip-accounts", s.apiSIPCreate)

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/org"
 )
@@ -165,5 +167,46 @@ func TestOrganizationPages(t *testing.T) {
 	}
 	if r := e.post(t, owner, "/organizations/"+id+"/delete", url.Values{"confirm": {"Makerspace"}}); r.StatusCode != http.StatusSeeOther {
 		t.Errorf("delete: %d", r.StatusCode)
+	}
+}
+
+// A trust setting that leaves a user's handsets with no base station asks first; and a user in that
+// state sees the warning where they look at their handsets.
+func TestTrustThatStrandsHandsetsAsksFirst(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) { s.Orgs = &org.Store{Pool: s.Pool} })
+	c := e.browser()
+	e.login(t, c, "user", "user password")
+	var uid string
+	if err := e.app.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.app.Pool.Exec(ctx, `INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\x0102030405', 1, '\x00')`, uid); err != nil {
+		t.Fatal(err)
+	}
+	// Nobody has a base station here: 'all' is fine (there is nothing to reach, and nothing was taken away), 'own' is not.
+	r := e.post(t, c, "/organizations/trust", url.Values{"scope": {"own"}})
+	body := readBody(r)
+	if r.StatusCode != http.StatusConflict || !strings.Contains(body, "without a base station") || !strings.Contains(body, "Nothing has been saved yet") ||
+		!strings.Contains(body, `name="confirm" value="1"`) {
+		t.Fatalf("the question: %d", r.StatusCode)
+	}
+	if tr, _ := e.app.Orgs.GetTrust(ctx, &auth.User{ID: uuid.MustParse(uid)}); tr.Scope != org.ScopeAll {
+		t.Fatal("the setting was saved before the user confirmed")
+	}
+	// Confirmed, it is saved, and the pages warn.
+	if r := e.post(t, c, "/organizations/trust", url.Values{"scope": {"own"}, "confirm": {"1"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("confirmed: %d", r.StatusCode)
+	}
+	for _, path := range []string{"/organizations", "/handsets"} {
+		if _, b := e.get(t, c, path); !strings.Contains(b, "None of your handset can use a base station") {
+			t.Errorf("%s has no warning", path)
+		}
+	}
+	// The widest setting is saved without a question, and with no base station anywhere the warning says that.
+	if r := e.post(t, c, "/organizations/trust", url.Values{"scope": {"all"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("back to all: %d", r.StatusCode)
+	}
+	if _, b := e.get(t, c, "/handsets"); !strings.Contains(b, "has no active base station at the moment") {
+		t.Error("no warning that the controller has no base station")
 	}
 }
