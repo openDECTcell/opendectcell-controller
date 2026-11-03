@@ -60,7 +60,11 @@ func (s *Server) publicStations(w http.ResponseWriter, r *http.Request) {
 		out = append(out, c.Public(st))
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	if s.mapPublic(r) {
+		w.Header().Set("Cache-Control", "public, max-age=60")
+	} else {
+		w.Header().Set("Cache-Control", "private, no-store") // for the people who are logged in; a shared cache must not hold it
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_ = json.NewEncoder(w).Encode(map[string]any{"stations": out})
 }

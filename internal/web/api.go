@@ -99,12 +99,12 @@ func (s *Server) apiUser(h func(http.ResponseWriter, *http.Request, *auth.User))
 // not be the way round the requirement.
 func (s *Server) apiAdmin(h func(http.ResponseWriter, *http.Request, *auth.User)) func(http.ResponseWriter, *http.Request, *auth.User) {
 	return func(w http.ResponseWriter, r *http.Request, u *auth.User) {
-		if auth.RequireAdmin(u) != nil {
-			notFoundAPI(w)
+		if u.Admin2FAPending {
+			problem(w, http.StatusForbidden, "two_factor_required", "set up two-factor sign-in at /account/2fa before using the admin API", nil)
 			return
 		}
-		if s.adminNeeds2FA(r, u) {
-			problem(w, http.StatusForbidden, "two_factor_required", "set up two-factor sign-in at /account/2fa before using the admin API", nil)
+		if auth.RequireAdmin(u) != nil {
+			notFoundAPI(w)
 			return
 		}
 		h(w, r, u)
@@ -255,7 +255,14 @@ func (s *Server) apiUserPatch(w http.ResponseWriter, r *http.Request, u *auth.Us
 		role := auth.Role(*in.Role)
 		up.Role = &role
 	}
+	var was bool
+	if before, berr := s.Auth.UserByID(r.Context(), s.Pool, id); berr == nil {
+		was = before.Disabled
+	}
 	t, err := s.Auth.UpdateUser(r.Context(), u, id, up)
+	if err == nil && up.Disabled != nil && *up.Disabled && !was {
+		s.disableCellsOf(r.Context(), id)
+	}
 	if err == nil && in.Password != nil {
 		if t.AuthSource != "local" {
 			problem(w, http.StatusConflict, "managed_externally", "this user signs in with single sign-on", nil)
@@ -650,14 +657,14 @@ func (s *Server) apiTokenCreate(w http.ResponseWriter, r *http.Request, u *auth.
 	var in struct {
 		Note        string `json:"note"`
 		TTLSeconds  int    `json:"ttl_seconds"`
-		AutoApprove bool   `json:"auto_approve"`
+		AutoApprove bool   `json:"auto_approve"` // accepted and ignored: a cell is always approved by its token
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	t, es, err := s.Cells.CreateToken(r.Context(), u, in.Note, time.Duration(in.TTLSeconds)*time.Second, in.AutoApprove)
+	t, es, err := s.Cells.CreateToken(r.Context(), u, in.Note, time.Duration(in.TTLSeconds)*time.Second)
 	if errors.Is(err, auth.ErrForbidden) {
-		problem(w, http.StatusForbidden, "forbidden", "only administrators can create auto-approving tokens", nil)
+		problem(w, http.StatusForbidden, "forbidden", "you may not enroll cells", nil)
 		return
 	}
 	if err != nil {

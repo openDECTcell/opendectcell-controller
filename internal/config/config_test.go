@@ -204,3 +204,16 @@ func TestCellMediaIPAuto(t *testing.T) {
 		t.Errorf("a made-up address was accepted: %v", err)
 	}
 }
+
+// The metrics token is the only guard of /metrics: a short one is refused (review finding R10).
+func TestShortMetricsTokenRefused(t *testing.T) {
+	m := minimal()
+	m["OPENDECTCELL_HTTP_METRICS_TOKEN"] = "short"
+	if _, err := Load("", env(m)); err == nil {
+		t.Error("a 5-character metrics token was accepted")
+	}
+	m["OPENDECTCELL_HTTP_METRICS_TOKEN"] = "0123456789abcdef0123456789abcdef"
+	if _, err := Load("", env(m)); err != nil {
+		t.Errorf("a 32-character token: %v", err)
+	}
+}

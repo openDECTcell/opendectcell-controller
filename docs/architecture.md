@@ -51,7 +51,7 @@
 - **Enrollment:**
   1. An admin (or a permitted user) creates a one-time token in the web UI.
   2. The cell sends the token together with its certificate signing request.
-  3. The controller issues a certificate, and an admin approves the cell, unless auto-approve is set.
+  3. The controller issues a certificate, and the cell is approved by its token (an enrollment token always approves the cell it enrols).
 - **Resilience:** cells reconnect with back-off. Calls on a cell end if the control link is lost for longer than a short grace period. Handsets re-locate when the cell comes back.
 
 ## 5. Registration flow (user view)

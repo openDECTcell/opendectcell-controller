@@ -54,7 +54,7 @@ func TestCellPages(t *testing.T) {
 	e.login(t, admin, "admin", "admin password")
 
 	// Create a token: the enrollment string appears once.
-	r := e.post(t, admin, "/enroll", url.Values{"note": {"Hall"}, "ttl": {"1h"}, "auto_approve": {""}})
+	r := e.post(t, admin, "/enroll", url.Values{"note": {"Hall"}, "ttl": {"1h"}})
 	body := readBody(r)
 	m := enrollRE.FindString(html.UnescapeString(body))
 	if r.StatusCode != http.StatusOK || m == "" {
@@ -74,9 +74,12 @@ func TestCellPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := res.CellID.String()
-	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "Hall") || !strings.Contains(page, "pending") {
-		t.Fatal("cell list lacks the pending cell")
+	// the token approves the cell by itself
+	if _, page := e.get(t, admin, "/cells"); !strings.Contains(page, "Hall") || strings.Contains(page, "pending") {
+		t.Fatal("cell list lacks the cell, or shows it pending")
 	}
+	// a cell that is pending (enrolled before tokens approved by themselves) is approved by an admin
+	e.store.Pool.Exec(ctx, "UPDATE cell SET state = 'pending' WHERE id = $1", res.CellID)
 	if r := e.post(t, admin, "/cells/"+id+"/state", url.Values{"state": {"active"}}); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("approve: %d", r.StatusCode)
 	}
@@ -109,8 +112,8 @@ func TestCellPages(t *testing.T) {
 	if resp, _ := e.get(t, user, "/enroll"); resp.StatusCode != http.StatusOK {
 		t.Errorf("may_add_cells user on /enroll: %d", resp.StatusCode)
 	}
-	if r := e.post(t, user, "/enroll", url.Values{"auto_approve": {"on"}}); r.StatusCode != http.StatusForbidden {
-		t.Errorf("user creating an auto-approve token: %d", r.StatusCode)
+	if r := e.post(t, user, "/enroll", url.Values{"ttl": {"1h"}}); r.StatusCode != http.StatusOK {
+		t.Errorf("user creating a token: %d", r.StatusCode)
 	}
 	if resp, _ := e.get(t, user, "/cells"); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("may_add_cells user on /cells: %d", resp.StatusCode)

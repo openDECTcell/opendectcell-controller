@@ -106,6 +106,7 @@ type cellRun struct {
 	radioOn  bool
 	radioAt  time.Time // when the bring-up finished
 	regSet   bool
+	regPins  []string // the PINs offered to this cell (those of owners who trust it), as of regVer
 	regVer   uint64
 	regUntil time.Time
 }
@@ -763,9 +764,22 @@ func (r *cellRun) registration(now time.Time) {
 	}
 	ver, pins, until := reg.PINs(r.id)
 	if !r.regSet || ver != r.regVer {
+		// Only the PINs of owners who trust this cell are offered to it: a handset that registers on a cell has its
+		// key written into the chip there. (The lookup runs when the list changes, not on every tick.)
+		if pf, ok := reg.(interface {
+			PINsFor(cell uuid.UUID, allow func(owner uuid.UUID) bool) (uint64, []string, time.Time)
+		}); ok {
+			if tc, ok := r.core.Records.(interface {
+				MayUse(ctx context.Context, owner, cell uuid.UUID) bool
+			}); ok {
+				_, pins, until = pf.PINsFor(r.id, func(owner uuid.UUID) bool { return tc.MayUse(context.Background(), owner, r.id) })
+			}
+		}
+		r.regPins = pins
 		r.st.SetRegPINs(pins)
 		r.regSet, r.regVer = true, ver
 	}
+	pins = r.regPins
 	open, free := r.st.RegState()
 	want := len(pins) > 0 && free && until.After(now)
 	switch {

@@ -135,9 +135,17 @@ func validate(c *Contact) error {
 	return nil
 }
 
-// canRead: own contacts, shared contacts, everything for admins.
+// canRead: own contacts and the shared ones. A personal phonebook is private to its user, an admin included.
 func canRead(u *auth.User, owner *uuid.UUID) bool {
-	return u != nil && !u.Disabled && (owner == nil || auth.CanAccess(u, owner))
+	return u != nil && !u.Disabled && (owner == nil || auth.IsOwner(u, owner))
+}
+
+// canWrite: own contacts; the shared ones need an admin.
+func canWrite(u *auth.User, owner *uuid.UUID) bool {
+	if owner == nil {
+		return auth.RequireAdmin(u) == nil
+	}
+	return auth.IsOwner(u, owner)
 }
 
 // load fills in numbers for contacts read by q.
@@ -163,18 +171,21 @@ func (s *Store) load(ctx context.Context, q string, args ...any) ([]*Contact, er
 }
 
 // List returns the contacts u may read. scope "personal" or "shared"
-// narrows it; admins may pass owner (a user id) to see that user's.
+// narrows it. owner is accepted for compatibility and must be empty or the caller's own id: nobody, an
+// admin included, reads another user's personal contacts.
 func (s *Store) List(ctx context.Context, u *auth.User, scope, owner string) ([]*Contact, error) {
 	if u == nil {
 		return nil, auth.ErrForbidden
 	}
 	me := u.ID
-	if owner != "" && u.IsAdmin() {
+	if owner != "" {
 		id, err := uuid.Parse(owner)
 		if err != nil {
 			return nil, ValidationError{"owner": "a user id"}
 		}
-		me = id
+		if id != u.ID {
+			return nil, auth.ErrForbidden
+		}
 	}
 	switch scope {
 	case "personal":
@@ -219,8 +230,8 @@ func scope(owner *uuid.UUID) string {
 	return "personal"
 }
 
-// Create adds a contact. It is u's own unless an admin sets owner
-// (setOwner true; owner nil = shared).
+// Create adds a contact. It is u's own unless an admin makes it shared
+// (setOwner true with owner nil); nobody writes into another user's phonebook.
 func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bool) (*Contact, error) {
 	if u == nil {
 		return nil, auth.ErrForbidden
@@ -231,6 +242,9 @@ func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bo
 			return nil, auth.ErrForbidden
 		}
 		owner = c.OwnerID
+		if owner != nil && *owner != u.ID {
+			return nil, auth.ErrForbidden
+		}
 	}
 	if err := validate(&c); err != nil {
 		return nil, err
@@ -268,7 +282,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id int64, c Contact) (
 	if err != nil {
 		return nil, err
 	}
-	if !auth.CanAccess(u, old.OwnerID) {
+	if !canWrite(u, old.OwnerID) {
 		return nil, auth.ErrForbidden
 	}
 	if err := validate(&c); err != nil {
@@ -297,7 +311,7 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 	if err != nil {
 		return err
 	}
-	if !auth.CanAccess(u, old.OwnerID) {
+	if !canWrite(u, old.OwnerID) {
 		return auth.ErrForbidden
 	}
 	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
@@ -384,7 +398,8 @@ type CallEntry struct {
 
 // CallsForHandset returns a call list as the handset sees it
 // (docs/list-access.md §1): incoming lists by the SIP accounts on its
-// lines, outgoing by the handset itself. Newest first, at most limit.
+// lines, outgoing by the handset itself. Newest first, at most limit. A SIP account shared between users rings
+// on every handset that has it as a line, so its calls are on each of their lists (docs/list-access.md §1).
 func (s *Store) CallsForHandset(ctx context.Context, handset uuid.UUID, list CallList, limit int) ([]CallEntry, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -430,13 +445,13 @@ func (s *Store) CallsForHandset(ctx context.Context, handset uuid.UUID, list Cal
 }
 
 // MarkMissedRead sets a missed call's shared read mark (one per call,
-// docs/list-access.md §2). u must be the call's owner or an admin.
+// docs/list-access.md §2). u must be the call's owner.
 func (s *Store) MarkMissedRead(ctx context.Context, u *auth.User, call int64) error {
 	var owner *uuid.UUID
 	var dir string
 	var answered bool
 	err := s.Pool.QueryRow(ctx, "SELECT owner_user_id, direction, answered_at IS NOT NULL FROM call_log WHERE id = $1", call).Scan(&owner, &dir, &answered)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !auth.CanAccess(u, owner)) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !auth.IsOwner(u, owner)) {
 		return ErrNotFound
 	}
 	if err != nil {

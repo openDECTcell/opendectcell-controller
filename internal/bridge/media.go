@@ -124,11 +124,10 @@ func (m *Manager) openFlow(ctx context.Context, ev core.CallEvent, sipCodec *cod
 		return nil, err
 	}
 	m.mu.Lock()
-	m.nextID++
-	id := m.nextID
 	if m.pending == nil {
 		m.pending, m.sessions = map[uint32]pendingOpen{}, map[uint32]*mediaSession{}
 	}
+	id := m.nextMediaIDLocked()
 	ack := make(chan wire.MediaOpenAckMsg, 1)
 	m.pending[id] = pendingOpen{cell: ev.Cell, ch: ack}
 	m.mu.Unlock()
@@ -267,4 +266,20 @@ func (m *Manager) MediaClosed(cell uuid.UUID, c wire.MediaClosedMsg) {
 		m.log().Info("the cell ended a call's speech", "media", c.MediaID, "reason", c.Reason)
 		s.cancel()
 	}
+}
+
+// nextMediaIDLocked returns a media id not in use. A media id travels as the 16-bit correlation of MEDIA_OPEN, which is
+// how a refusal finds its call: it stays within 1 to 65535, wraps, and skips the ids in use. m.mu is held.
+func (m *Manager) nextMediaIDLocked() uint32 {
+	id := m.nextID
+	for range 65535 {
+		id = id%65535 + 1
+		_, p := m.pending[id]
+		_, s := m.sessions[id]
+		if !p && !s {
+			break
+		}
+	}
+	m.nextID = id
+	return id
 }

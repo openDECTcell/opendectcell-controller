@@ -205,8 +205,12 @@ func (s *Store) list(ctx context.Context, where string, owner uuid.UUID, withLin
 		s.presence(ctx, out...)
 		return out, nil
 	}
+	ids := make([]uuid.UUID, 0, len(out))
+	for _, h := range out {
+		ids = append(ids, h.ID)
+	}
 	lr, err := s.Pool.Query(ctx, `SELECT hl.handset_id, hl.line, a.id, a.label, a.username || '@' || a.domain, hl.enabled
-		FROM handset_line hl JOIN sip_account a ON a.id = hl.sip_account_id ORDER BY hl.line`)
+		FROM handset_line hl JOIN sip_account a ON a.id = hl.sip_account_id WHERE hl.handset_id = ANY($1) ORDER BY hl.line`, ids)
 	if err != nil {
 		return nil, err
 	}

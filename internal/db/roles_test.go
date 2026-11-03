@@ -94,6 +94,22 @@ func TestRuntimeRoleHasTableRightsOnly(t *testing.T) {
 	if _, err := st.CreateSession(ctx, u, "local"); err != nil {
 		t.Fatal(err)
 	}
+
+	// The audit log is append-only for the runtime role: setting the old switch no longer opens it, and the purge
+	// function (what retention calls) is the one way to delete.
+	if _, err := rt.Exec(ctx, "INSERT INTO audit_log (actor_name, action) VALUES ('t', 'rt-test')"); err != nil {
+		t.Fatalf("the runtime role cannot write the audit log: %v", err)
+	}
+	tx, _ := rt.Begin(ctx)
+	tx.Exec(ctx, "SET LOCAL opendectcell.audit_purge = 'on'")
+	if _, err := tx.Exec(ctx, "DELETE FROM audit_log"); err == nil || !strings.Contains(err.Error(), "append-only") {
+		t.Errorf("the runtime role deleted audit entries with the switch: %v", err)
+	}
+	tx.Rollback(ctx)
+	var purged int64
+	if err := rt.QueryRow(ctx, "SELECT audit_purge(now() + interval '1 day')").Scan(&purged); err != nil || purged < 1 {
+		t.Errorf("the purge function as the runtime role: %d %v", purged, err)
+	}
 	if m, _ := db.NewMigrator(rt); m != nil {
 		if cur, latest, err := m.Status(ctx); err != nil || cur != latest {
 			t.Fatalf("the runtime role cannot read the migration status: %d/%d %v", cur, latest, err)

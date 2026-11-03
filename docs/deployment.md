@@ -62,7 +62,11 @@ does not mount its credentials.
 - **SIP and RTP through Docker's port mapping** work for a few calls, but
   Docker's userland proxy and NAT add latency and rewrite source addresses.
   For production, run the controller with `network_mode: host` and set
-  `OPENDECTCELL_SIP_RTP_PORTS` to the range you open in the firewall.
+  `OPENDECTCELL_SIP_RTP_PORTS` to the range you open in the firewall. **In host
+  network mode Docker's port publishing does not apply**: the web port
+  listens on every address unless you set `OPENDECTCELL_HTTP_LISTEN=127.0.0.1:8080`
+  (the Raspberry Pi deployment does), and the firewall of the host is the only
+  thing that decides what is reachable.
 
 - **Calls need two addresses.** The speech of a call crosses the controller
   twice: cell to controller (UDP `OPENDECTCELL_CELLS_MEDIA_PORTS`, to the address in
@@ -78,7 +82,7 @@ does not mount its credentials.
 
   | Port | Who must reach it | Set the address with | Firewall rule |
   |---|---|---|---|
-  | 8080/tcp (web) | the reverse proxy | fixed to 127.0.0.1 | none: it is not published beyond the host |
+  | 8080/tcp (web) | the reverse proxy | fixed to 127.0.0.1 with Docker's port mapping; with `network_mode: host` set `OPENDECTCELL_HTTP_LISTEN=127.0.0.1:8080` yourself | none: it is not published beyond the host |
   | 7300/tcp (cells) | the cells (their boxes) | `OPENDECTCELL_CELL_BIND` | allow the cells' addresses; the port takes enrolment (a one-time token, rate limited) and mutual-TLS sessions |
   | 5060/udp+tcp (SIP) | your SIP provider or telephone system | `OPENDECTCELL_SIP_BIND` | allow the provider's addresses only; a registered account takes calls only from its registrar, and a PBX without registration only from its addresses, but an open SIP port is still attack surface |
   | 41000-41099/udp (RTP) | the SIP peers | `OPENDECTCELL_MEDIA_BIND` | allow the same addresses as SIP |
@@ -110,7 +114,7 @@ does not mount its credentials.
 | `user create --username N --role admin\|user [--display-name] [--email] [--may-add-cells]` | yes | Creates a local user; password on stdin |
 | `user set-password --username N` | yes | Sets a local password and ends that user's sessions |
 | `rekey` | yes | Re-wraps data keys under a new master key |
-| `rotate-dek` | yes | Re-encrypts every secret under a new data key |
+| `rotate-dek` | yes | Re-encrypts every secret under a new data key. Stop the controller first: it holds a database lock while it runs and the command refuses to start if it is held |
 | `keygen` | no | Prints a new master key |
 | `init-secrets --dir D` | no | As the compose `init` service |
 | `healthcheck [--url U]` | no | Exit 0 if `/healthz` answers (container health check) |

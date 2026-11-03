@@ -876,6 +876,12 @@ func (s *Store) Seen(ctx context.Context, cell, id uuid.UUID, at time.Time) (uui
 	return *prev, nil
 }
 
+// MayUse reports whether a handset of owner may be put on cell (handset_may_use_cell). A failed lookup says no.
+func (s *Store) MayUse(ctx context.Context, owner, cell uuid.UUID) bool {
+	var ok bool
+	return s.Pool.QueryRow(ctx, "SELECT handset_may_use_cell($1, $2)", owner, cell).Scan(&ok) == nil && ok
+}
+
 // LastSeenCell returns the cell the handset was last heard on, uuid.Nil if none
 // or if the handset does not exist.
 func (s *Store) LastSeenCell(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {

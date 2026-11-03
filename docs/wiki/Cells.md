@@ -8,18 +8,19 @@ keeping them healthy and taking them out.
 1. In the controller: **Base stations > Enroll a base station** (visible to administrators, to every user while
    **Administration > Settings > Base stations > Every user may enroll base stations** is on, which is the default, and
    otherwise to the users an administrator ticked "May enroll base stations" for). Fill in a **note** (it becomes the cell's name if the cell sends
-   none), choose how long the token is **valid** (1 hour, 24 hours or 7 days) and whether the cell is
-   **approved automatically**. Press **Create token**.
+   none), choose how long the token is **valid** (1 hour, 24 hours or 7 days). Press **Create token**. A base station
+   that enrols with the token is **approved automatically**: nobody has to approve it.
 2. The page shows the **enrollment string**, starting with `opendectcell-enroll:v1?`, **once**. Copy it. The token
    list below shows tokens that are open, used or expired; you can delete one.
 3. On the box: **Network > DECT**, tab *General*, **Make this box a cell…**, paste, **Enrol**. Or on the command
    line: `/etc/init.d/opendectcell enroll '<string>'` (or `enroll @<file>` with the string in a file). It takes up to a
    minute; the box then runs in cell mode.
 4. Tick **Enable the cell** and save. The box boots the DECT chip and connects to the controller.
-5. Unless you chose automatic approval: **Administration > Cells**, open the new cell, press **Approve**.
+5. Nothing else: the cell is *active* as soon as it has enrolled. (A cell that enrolled with a token made before
+   tokens approved by themselves is *pending*; an administrator approves it under **Administration > Cells**.)
 
 What happens underneath: the cell makes a key and a certificate request and shows the token; the controller
-checks the token, and once the cell is approved it issues a certificate (valid 90 days). From then on the
+checks the token, and it issues a certificate (valid 90 days). From then on the
 link is TLS 1.3 with **mutual** authentication, and the cell renews its certificate over the link at two
 thirds of its life. The one-time token is no longer needed.
 

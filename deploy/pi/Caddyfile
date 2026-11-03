@@ -8,6 +8,13 @@
 	# HTTP/3 would need UDP 443 open as well; it adds nothing here
 	servers {
 		protocols h1 h2
+		# the controller's own timeouts only guard the leg behind this proxy; a client that dribbles a request in must
+		# not hold a connection open on the public side
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
 	}
 	# no management API
 	admin off
@@ -16,5 +23,8 @@
 {$OPENDECTCELL_HOST:opendectcell.example.org} {
 	encode zstd gzip
 	header -Server
+	# the operator's endpoints are for the host itself (the health check and Prometheus scrape 127.0.0.1:8080), not the internet
+	@internal path /metrics /metrics/* /healthz /readyz
+	respond @internal 404
 	reverse_proxy 127.0.0.1:8080
 }

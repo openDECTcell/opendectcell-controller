@@ -45,7 +45,7 @@ func (m *Manager) internalCall(o Handset) {
 	info := o.Info()
 	log := m.log().With("cell", info.Cell, "call", info.Call, "internal", true)
 	if m.Identity == nil || m.DECT == nil || info.Target == uuid.Nil || info.Target == info.Handset {
-		log.Info("an internal call to nobody", "handset", info.Handset, "dialled", info.Number)
+		log.Info("an internal call to nobody", "handset", info.Handset, "digits", len(info.Number))
 		o.Release("unreachable")
 		return
 	}

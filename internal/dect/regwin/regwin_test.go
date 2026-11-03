@@ -237,3 +237,30 @@ func TestHandsetReachesDone(t *testing.T) {
 		t.Error("a name was taken for a window that is no longer open")
 	}
 }
+
+// A cell the owner does not trust is not offered the owner's PIN (review finding C3): the handset's key would be
+// written into that cell's chip.
+func TestPINsForLeavesOutOwnersWhoDoNotTrustTheCell(t *testing.T) {
+	g, _ := newReg()
+	anna, ben, cell := uuid.New(), uuid.New(), uuid.New()
+	if _, _, err := g.Open(anna, anna, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := g.Open(ben, ben, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, p, _ := g.PINsFor(cell, nil); count(p) != 2 {
+		t.Fatalf("with no filter %d PINs, want 2", count(p))
+	}
+	_, p, _ := g.PINsFor(cell, func(o uuid.UUID) bool { return o == anna })
+	if count(p) != 1 {
+		t.Errorf("only anna trusts the cell: %d PINs offered, want 1", count(p))
+	}
+	if _, p, until := g.PINsFor(cell, func(uuid.UUID) bool { return false }); p != nil || !until.IsZero() {
+		t.Errorf("nobody trusts the cell: %v %v", p, until)
+	}
+	// the registry's own list is not changed by a filtered view
+	if _, p, _ := g.PINs(cell); count(p) != 2 {
+		t.Errorf("the shared list lost a PIN: %d", count(p))
+	}
+}

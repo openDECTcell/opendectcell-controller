@@ -93,14 +93,24 @@ type Day struct {
 // Days returns the last n days, oldest first, including days without calls.
 func (s *Store) Days(ctx context.Context, sc Scope, n int) ([]Day, error) {
 	now := s.now()
-	end := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
-	start := end.AddDate(0, 0, -n)
-	rows, err := s.Pool.Query(ctx, `SELECT d::date,
+	// The days are the local days of the controller's time zone. Their bounds are worked out here, not in SQL: the
+	// database session's zone is another one, and a day that starts at 22:00 UTC is still the local day.
+	days := make([]time.Time, 0, n)
+	starts := make([]time.Time, 0, n)
+	ends := make([]time.Time, 0, n)
+	first := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(n - 1))
+	for i := range n {
+		d := first.AddDate(0, 0, i)
+		days = append(days, time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)) // the calendar date, as a date
+		starts = append(starts, d)
+		ends = append(ends, d.AddDate(0, 0, 1))
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT t.day,
 		count(c.id), count(c.id) FILTER (WHERE c.answered_at IS NOT NULL),
 		coalesce(sum(extract(epoch FROM c.ended_at - c.answered_at)) FILTER (WHERE c.answered_at IS NOT NULL AND c.ended_at IS NOT NULL), 0)::bigint
-		FROM generate_series($2::timestamptz, $3::timestamptz - interval '1 day', interval '1 day') d
-		LEFT JOIN call_log c ON c.started_at >= d AND c.started_at < d + interval '1 day' AND ($1::uuid IS NULL OR c.owner_user_id = $1)
-		GROUP BY d ORDER BY d`, sc.User, start, end)
+		FROM unnest($2::date[], $3::timestamptz[], $4::timestamptz[]) AS t(day, s, e)
+		LEFT JOIN call_log c ON c.started_at >= t.s AND c.started_at < t.e AND ($1::uuid IS NULL OR c.owner_user_id = $1)
+		GROUP BY t.day ORDER BY t.day`, sc.User, days, starts, ends)
 	if err != nil {
 		return nil, err
 	}

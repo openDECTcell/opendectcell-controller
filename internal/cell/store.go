@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,6 +61,41 @@ type Store struct {
 	// into enrollment strings.
 	PublicAddr string
 	Now        func() time.Time
+	// EveryoneMayEnroll reports the installation's setting that lets every user enroll cells; nil: it does
+	// not. A token is honoured only while its creator may still enroll.
+	EveryoneMayEnroll func(context.Context) bool
+}
+
+// MaxOpenTokens is how many unused, unexpired tokens one user may hold.
+const MaxOpenTokens = 50
+
+// MaxCellsPerOperator is how many base stations (not revoked) a user who is not an administrator may have enrolled:
+// an enrolled cell is active at once and gets a DECT stack in a shared worker, so the number is limited.
+const MaxCellsPerOperator = 20
+
+// MaxRenewalsPerHour is how many certificates a cell may be issued within an hour (its enrolment counts).
+const MaxRenewalsPerHour = 5
+
+// ErrRenewTooOften is returned when a cell asks for certificates too often.
+var ErrRenewTooOften = errors.New("cell: certificate renewal too often")
+
+// ErrTooManyCells is returned when the token's creator has MaxCellsPerOperator cells already.
+var ErrTooManyCells = errors.New("cell: the operator has too many base stations")
+
+// ErrTooManyTokens is returned when the user holds MaxOpenTokens open tokens already.
+var ErrTooManyTokens = errors.New("cell: too many open enrollment tokens; delete some")
+
+// creatorMayEnroll reports whether the token's creator still exists, is not disabled and may enroll cells now
+// (an administrator, a user ticked may_add_cells, or anyone while the setting lets everyone).
+func (s *Store) creatorMayEnroll(ctx context.Context, tx pgx.Tx, creator *uuid.UUID) bool {
+	if creator == nil {
+		return false
+	}
+	var ok, may bool
+	if err := tx.QueryRow(ctx, "SELECT NOT disabled, role = 'admin' OR may_add_cells FROM app_user WHERE id = $1", *creator).Scan(&ok, &may); err != nil || !ok {
+		return false
+	}
+	return may || (s.EveryoneMayEnroll != nil && s.EveryoneMayEnroll(ctx))
 }
 
 func (s *Store) now() time.Time {
@@ -170,10 +206,13 @@ type Token struct {
 }
 
 // CreateToken makes a one-time enrollment token and returns it with its
-// enrollment string, which is shown once (§5.1). Admins and users with
-// may_add_cells may create tokens; only admins may set auto-approve.
-func (s *Store) CreateToken(ctx context.Context, u *auth.User, note string, ttl time.Duration, autoApprove bool) (*Token, string, error) {
-	if !auth.CanAddCells(u) || (autoApprove && !u.IsAdmin()) {
+// enrollment string, which is shown once (§5.1). Whoever may enroll cells
+// (CanAddCells) may create tokens, and the cell that enrolls with one is active
+// at once: it needs no approval (maintainer, 2026-11-03). Cells that enrolled
+// earlier without approval stay pending until an admin approves them.
+func (s *Store) CreateToken(ctx context.Context, u *auth.User, note string, ttl time.Duration) (*Token, string, error) {
+	const autoApprove = true
+	if !auth.CanAddCells(u) {
 		return nil, "", auth.ErrForbidden
 	}
 	if ttl == 0 {
@@ -191,6 +230,13 @@ func (s *Store) CreateToken(ctx context.Context, u *auth.User, note string, ttl 
 	}
 	t := &Token{Note: note, CreatedBy: &u.ID, AutoApprove: autoApprove}
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		var open int
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM cell_enrollment_token WHERE created_by = $1 AND used_at IS NULL AND expires_at > $2", u.ID, s.now()).Scan(&open); err != nil {
+			return err
+		}
+		if open >= MaxOpenTokens {
+			return ErrTooManyTokens
+		}
 		err := tx.QueryRow(ctx, `INSERT INTO cell_enrollment_token (token_hash, created_by, note, auto_approve, created_at, expires_at)
 			VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at, expires_at`,
 			auth.HashToken(string(raw)), u.ID, note, autoApprove, s.now(), s.now().Add(ttl)).Scan(&t.ID, &t.CreatedAt, &t.ExpiresAt)
@@ -251,7 +297,7 @@ func (s *Store) DeleteToken(ctx context.Context, u *auth.User, id uuid.UUID) err
 		if err != nil {
 			return err
 		}
-		if !auth.CanAccess(u, t.CreatedBy) || !auth.CanAddCells(u) {
+		if !auth.CanAccess(u, t.CreatedBy) { // the creator may delete their token even after losing the right to enroll
 			return ErrNotFound
 		}
 		if _, err := tx.Exec(ctx, "DELETE FROM cell_enrollment_token WHERE id = $1", id); err != nil {
@@ -301,6 +347,19 @@ func (s *Store) Enroll(ctx context.Context, req wire.EnrollRequestMsg, addr stri
 		if err != nil {
 			return err
 		}
+		// a token made by someone who may not enroll any more (disabled, demoted, the setting turned off) is no good
+		if !s.creatorMayEnroll(ctx, tx, by) {
+			return ErrTokenRejected
+		}
+		var cells int
+		var admin bool
+		if err := tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM cell WHERE enrolled_by = u.id AND state <> 'revoked'), u.role = 'admin'
+			FROM app_user u WHERE u.id = $1`, *by).Scan(&cells, &admin); err != nil {
+			return err
+		}
+		if !admin && cells >= MaxCellsPerOperator {
+			return fmt.Errorf("%w: %w", ErrTokenRejected, ErrTooManyCells) // the cell is told only that the token is no good
+		}
 		state := "pending"
 		if auto {
 			state = "active"
@@ -339,7 +398,11 @@ func (s *Store) Enroll(ctx context.Context, req wire.EnrollRequestMsg, addr stri
 		if ferr := s.recordEnrollFailure(ctx, addr); ferr != nil {
 			return nil, ferr
 		}
-		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "cell.enroll_failed", ObjectType: "cell", Details: map[string]any{"reason": "token rejected"}})
+		reason := "token rejected"
+		if errors.Is(err, ErrTooManyCells) {
+			reason = "the operator has too many base stations"
+		}
+		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "cell.enroll_failed", ObjectType: "cell", Details: map[string]any{"reason": reason}})
 	}
 	return res, err
 }
@@ -353,8 +416,20 @@ func firstNonEmpty(vs ...string) string {
 	return ""
 }
 
+// cleanName drops control characters (a line break in a name would break the subject of an alert mail) and
+// trims the rest.
+func cleanName(name string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name))
+}
+
 // uniqueName returns name, or name-2, name-3, … if it is taken.
 func (s *Store) uniqueName(ctx context.Context, tx pgx.Tx, name string) (string, error) {
+	name = cleanName(name)
 	if len(name) > 56 {
 		name = strings.ToValidUTF8(name[:56], "")
 	}
@@ -448,6 +523,14 @@ func (s *Store) Renew(ctx context.Context, cellID uuid.UUID, csr []byte) (*x509.
 	}
 	var cert *x509.Certificate
 	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		// a cell renews once in a few weeks: more than a few certificates an hour is a loop or an abuse
+		var recent int
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM cell_certificate WHERE cell_id = $1 AND created_at > $2", cellID, s.now().Add(-time.Hour)).Scan(&recent); err != nil {
+			return err
+		}
+		if recent >= MaxRenewalsPerHour {
+			return ErrRenewTooOften
+		}
 		cert, err = s.CA.CellCert(cellID, pub, s.now())
 		if err != nil {
 			return err
@@ -550,8 +633,8 @@ func scanCell(r pgx.Row) (*Cell, error) {
 }
 
 // ListCells returns cells by name. Admins get every cell; users get active
-// cells only, and the caller must show them only id, name and location
-// (docs/api/openapi.yaml, listCells).
+// cells only, with id and state, and the name and place only of their own
+// cells and of the others' that the operator shares (docs/api/openapi.yaml, listCells).
 func (s *Store) ListCells(ctx context.Context, u *auth.User) ([]*Cell, error) {
 	if u == nil {
 		return nil, auth.ErrForbidden
@@ -568,7 +651,17 @@ func (s *Store) ListCells(ctx context.Context, u *auth.User) ([]*Cell, error) {
 			return nil, err
 		}
 		if !u.IsAdmin() {
-			c = &Cell{ID: c.ID, Name: c.Name, Location: c.Location, State: c.State}
+			// what a user sees of somebody else's base station is what its operator shares: the name if
+			// they share the name, the place if they share the position; their own they see in full (PRIV-01)
+			mine := c.EnrolledBy != nil && *c.EnrolledBy == u.ID
+			v := &Cell{ID: c.ID, State: c.State}
+			if mine || c.ShareName {
+				v.Name = c.Name
+			}
+			if mine || c.SharePosition {
+				v.Location = c.Location
+			}
+			c = v
 		}
 		out = append(out, c)
 	}
@@ -732,6 +825,24 @@ func (s *Store) ListOwned(ctx context.Context, u *auth.User) ([]*Cell, error) {
 	return out, rows.Err()
 }
 
+// DisableCellsOf switches off the base stations a user enrolled (the user was disabled) and returns their ids, for
+// the caller to tell the links. An administrator turns them on again, one by one, if the user comes back.
+func (s *Store) DisableCellsOf(ctx context.Context, user uuid.UUID) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, "UPDATE cell SET state = 'disabled' WHERE enrolled_by = $1 AND state IN ('active', 'pending') RETURNING id", user)
+		if err != nil {
+			return err
+		}
+		ids, err = pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil || len(ids) == 0 {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Entry{Action: "cell.disabled_with_operator", ObjectType: "user", ObjectID: user.String(), Details: map[string]any{"cells": len(ids)}})
+	})
+	return ids, err
+}
+
 // ListDisclosed returns the base stations user enrolled and disclosed to the administrators; only an
 // administrator may ask.
 func (s *Store) ListDisclosed(ctx context.Context, admin *auth.User, user uuid.UUID) ([]*Cell, error) {
@@ -781,7 +892,7 @@ type ProfileUpdate struct {
 // owner or an admin may; the change is audited with the switches' new values
 // but never with the coordinates.
 func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, up ProfileUpdate) (*Cell, error) {
-	name := strings.TrimSpace(up.Name)
+	name := cleanName(up.Name)
 	if name == "" || len(name) > 64 {
 		return nil, errors.New("name must be 1 to 64 characters")
 	}
@@ -793,14 +904,6 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 	}
 	if up.Latitude != nil && (*up.Latitude < -90 || *up.Latitude > 90 || *up.Longitude < -180 || *up.Longitude > 180) {
 		return nil, errors.New("latitude is -90 to 90, longitude -180 to 180")
-	}
-	switch up.PositionPrecision {
-	case "exact", "approx", "region":
-	default:
-		return nil, errors.New("precision must be exact, approx or region")
-	}
-	if up.SharePosition && up.Latitude == nil {
-		return nil, errors.New("set a position before sharing it")
 	}
 	var c *Cell
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
@@ -814,10 +917,24 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 		if !u.IsAdmin() && (owner == nil || *owner != u.ID) {
 			return ErrNotFound
 		}
-		// only the operator decides what administrators may see; an administrator's save leaves it as it is
+		// Only the operator decides where the base station is, what it shares and what administrators may see; an
+		// administrator who is not the operator can change the name, the place text and the model, and nothing else.
 		operator := owner != nil && *owner == u.ID
-		_, err := tx.Exec(ctx, `UPDATE cell SET name = $2, location = $3, box_model = $4, latitude = $5, longitude = $6,
-			position_precision = $7, share_name = $8, share_position = $9, share_specs = $10, share_stats = $11,
+		if operator {
+			switch up.PositionPrecision {
+			case "exact", "approx", "region":
+			default:
+				return errors.New("precision must be exact, approx or region")
+			}
+			if up.SharePosition && up.Latitude == nil {
+				return errors.New("set a position before sharing it")
+			}
+		}
+		_, err := tx.Exec(ctx, `UPDATE cell SET name = $2, location = $3, box_model = $4,
+			latitude = CASE WHEN $12 THEN $5 ELSE latitude END, longitude = CASE WHEN $12 THEN $6 ELSE longitude END,
+			position_precision = CASE WHEN $12 THEN $7 ELSE position_precision END,
+			share_name = CASE WHEN $12 THEN $8 ELSE share_name END, share_position = CASE WHEN $12 THEN $9 ELSE share_position END,
+			share_specs = CASE WHEN $12 THEN $10 ELSE share_specs END, share_stats = CASE WHEN $12 THEN $11 ELSE share_stats END,
 			disclosed_to_admins = CASE WHEN $12 THEN $13 ELSE disclosed_to_admins END WHERE id = $1`,
 			id, name, up.Location, strings.TrimSpace(up.BoxModel), up.Latitude, up.Longitude, up.PositionPrecision,
 			up.ShareName, up.SharePosition, up.ShareSpecs, up.ShareStats, operator, up.Disclosed)

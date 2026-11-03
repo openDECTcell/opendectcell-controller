@@ -175,6 +175,10 @@ func (s *Server) verifyPost(w http.ResponseWriter, r *http.Request) {
 		s.message(w, http.StatusBadRequest, "Link not valid", "This link is not valid any more.")
 		return
 	}
+	if errors.Is(err, auth.ErrEmailInUse) {
+		s.message(w, http.StatusConflict, "Address in use", "Another account has confirmed this e-mail address already.")
+		return
+	}
 	if err != nil {
 		s.internalError(w, r, err)
 		return

@@ -675,3 +675,21 @@ func TestMediaOpenGoesToTheAddressTheCellConnectedTo(t *testing.T) {
 	}
 	h.events <- core.CallEvent{Kind: core.CallReleased, Reason: "hs"}
 }
+
+// Media ids stay within the 16 bits of MEDIA_OPEN's correlation, wrap, and skip the ones in use (review finding C10).
+func TestMediaIDsStayWithin16BitsAndSkipUsed(t *testing.T) {
+	m := &Manager{pending: map[uint32]pendingOpen{}, sessions: map[uint32]*mediaSession{}}
+	m.nextID = 65534
+	m.pending[65535] = pendingOpen{}
+	m.sessions[1] = &mediaSession{}
+	if id := m.nextMediaIDLocked(); id != 2 { // 65535 is taken, the wrap lands on 1, which is taken too
+		t.Errorf("after 65534 with 65535 and 1 in use: %d, want 2", id)
+	}
+	m.nextID = 0
+	for i := 0; i < 70000; i++ {
+		id := m.nextMediaIDLocked()
+		if id < 1 || id > 65535 {
+			t.Fatalf("media id %d out of range", id)
+		}
+	}
+}

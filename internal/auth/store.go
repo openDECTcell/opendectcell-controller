@@ -48,11 +48,14 @@ type User struct {
 	MayAddCells bool
 	// EnrollOpen: the installation lets every user enroll cells (a setting, set when
 	// the user is loaded for a request; not stored per user).
-	EnrollOpen  bool
-	AuthSource  string // "local" or "oidc"
-	Disabled    bool
-	CreatedAt   time.Time
-	LastLoginAt *time.Time
+	EnrollOpen bool
+	// Admin2FAPending: an administrator whom the settings require to have two-factor login and who has not set it
+	// up. For the request they are a plain user (Role is user), so no admin power works until they do.
+	Admin2FAPending bool
+	AuthSource      string // "local" or "oidc"
+	Disabled        bool
+	CreatedAt       time.Time
+	LastLoginAt     *time.Time
 	// PendingApproval: signed up by themselves, waiting for an admin
 	// (disabled until then).
 	PendingApproval bool
@@ -356,6 +359,10 @@ func (s *Store) SetPassword(ctx context.Context, userID uuid.UUID, password stri
 		if _, err := tx.Exec(ctx, "DELETE FROM session WHERE user_id = $1 AND ($2::bytea IS NULL OR token_hash <> $2)", userID, keepSession); err != nil {
 			return err
 		}
+		// a new password starts afresh: every device is asked for a code again
+		if _, err := tx.Exec(ctx, "DELETE FROM trusted_device WHERE user_id = $1", userID); err != nil {
+			return err
+		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.password_change", ObjectType: "user", ObjectID: userID.String()})
 	})
 }
@@ -441,14 +448,14 @@ func (s *Store) CheckPassword1(ctx context.Context, username, password, addr str
 	give, err := s.reserve(ctx, rateKeys(username, addr))
 	if errors.Is(err, ErrRateLimited) {
 		// Best effort: the outcome of a login must not depend on the audit write.
-		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": username}})
+		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": s.knownName(ctx, username)}})
 		return uuid.Nil, ErrRateLimited
 	}
 	if err != nil {
 		return uuid.Nil, err
 	}
 	fail := func() (uuid.UUID, error) {
-		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": username}})
+		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": s.knownName(ctx, username)}})
 		return uuid.Nil, ErrBadLogin
 	}
 	if len(password) > MaxPasswordLen {
@@ -594,6 +601,21 @@ func (s *Store) CreateSession(ctx context.Context, u *User, method string) (stri
 	return tok, err
 }
 
+// OIDCAdminMaxAge is how long a single-sign-on administrator's session lasts, whatever SessionMaxAge says:
+// the role is read from the provider's groups at login only, so an admin is sent back to the provider
+// (which decides again) after this.
+const OIDCAdminMaxAge = 12 * time.Hour
+
+// knownName is username if an account has it, else a fixed text: what was typed into the name field of a login
+// that failed may be a password, and the audit log must not keep it.
+func (s *Store) knownName(ctx context.Context, username string) string {
+	var ok bool
+	if len(username) <= 128 && s.Pool.QueryRow(ctx, "SELECT true FROM app_user WHERE lower(username) = lower($1)", username).Scan(&ok) == nil && ok {
+		return username
+	}
+	return "(no such user)"
+}
+
 // touchInterval limits how often a session's last_seen_at is written.
 const touchInterval = time.Minute
 
@@ -623,6 +645,12 @@ func (s *Store) LookupSession(ctx context.Context, tok string) (*Session, error)
 	u.Role = Role(role)
 	if s.EveryoneMayEnroll != nil {
 		u.EnrollOpen = s.EveryoneMayEnroll(ctx)
+	}
+	// An administrator who signs in through single sign-on has their role from the provider's groups at login;
+	// the session must not carry it for days after the provider took it away (SEC-11).
+	if u.AuthSource == "oidc" && u.Role == RoleAdmin && now.Sub(sess.CreatedAt) >= OIDCAdminMaxAge {
+		_, _ = s.Pool.Exec(ctx, "DELETE FROM session WHERE token_hash = $1", h)
+		return nil, ErrNoSession
 	}
 	if u.Disabled || !now.Before(expires) || now.Sub(lastSeen) >= s.SessionIdle {
 		_, _ = s.Pool.Exec(ctx, "DELETE FROM session WHERE token_hash = $1", h) // Cleanup retries
@@ -660,6 +688,9 @@ func (s *Store) Cleanup(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.Pool.Exec(ctx, "DELETE FROM mfa_challenge WHERE expires_at <= $1", now); err != nil {
+		return err
+	}
+	if _, err := s.Pool.Exec(ctx, "DELETE FROM trusted_device WHERE last_seen_at <= $1 OR last_2fa_at <= $2", now.Add(-deviceForget), now.Add(-deviceForget)); err != nil {
 		return err
 	}
 	// A sign-up that never followed its link is not kept (data minimisation).
@@ -706,7 +737,7 @@ func (s *Store) UpdateUser(ctx context.Context, admin *User, id uuid.UUID, up Us
 		}
 		u, err = scanUser(tx.QueryRow(ctx, `UPDATE app_user SET display_name = coalesce($2, display_name),
 			email = CASE WHEN $3::text IS NULL THEN email ELSE nullif($3, '') END, role = coalesce($4, role),
-			may_add_cells = coalesce($5, may_add_cells), disabled = coalesce($6, disabled),
+			may_add_cells = coalesce($5, may_add_cells), disabled = coalesce($6, disabled), admin_disabled = coalesce($6, admin_disabled),
 			pending_approval = CASE WHEN $6::boolean IS NOT NULL AND NOT $6::boolean THEN false ELSE pending_approval END WHERE id = $1 RETURNING `+userCols,
 			id, up.DisplayName, up.Email, role, up.MayAddCells, up.Disabled))
 		if err != nil {
@@ -714,6 +745,10 @@ func (s *Store) UpdateUser(ctx context.Context, admin *User, id uuid.UUID, up Us
 		}
 		if u.Disabled && !old.Disabled {
 			if _, err := tx.Exec(ctx, "DELETE FROM session WHERE user_id = $1", id); err != nil {
+				return err
+			}
+			// their open enrollment tokens would let a cell in after they were turned off
+			if _, err := tx.Exec(ctx, "DELETE FROM cell_enrollment_token WHERE created_by = $1 AND used_at IS NULL", id); err != nil {
 				return err
 			}
 		}

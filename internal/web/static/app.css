@@ -53,3 +53,4 @@ code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-sele
 .sip-tabs.tabs-on .sip-pane > h4 { display: none; }
 .sip-tabs .sip-pane > h4 { margin: 1.5rem 0 1rem; }
 .sip-tabs .form-hint { margin-top: .25rem; }
+.qr svg { width: 220px; height: 220px; max-width: 100%; border: 1px solid var(--tblr-border-color, #ddd); border-radius: 4px; }

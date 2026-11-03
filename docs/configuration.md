@@ -13,7 +13,7 @@ echoed in error messages or logs.
 | `OPENDECTCELL_HTTP_LISTEN` | `http.listen` | `:8080` | Web UI and API address |
 | `OPENDECTCELL_HTTP_BASE_URL` | `http.base_url` | **required** | External URL, e.g. `https://dect.example.org`. `https://` turns on Secure, `__Host-` cookies; it also sets the OIDC redirect URL `<base>/auth/oidc/callback` |
 | `OPENDECTCELL_HTTP_TRUSTED_PROXIES` | `http.trusted_proxies` | none | Comma-separated CIDRs of reverse proxies whose `X-Forwarded-For` is believed |
-| `OPENDECTCELL_HTTP_METRICS_TOKEN` 🔒 | `http.metrics_token` | none | Turns on `/metrics` (Prometheus text) for clients that send this as `Authorization: Bearer`. Empty: no endpoint. The metrics name your cells, so do not publish the token |
+| `OPENDECTCELL_HTTP_METRICS_TOKEN` 🔒 | `http.metrics_token` | none | Turns on `/metrics` (Prometheus text) for clients that send this as `Authorization: Bearer`. At least 32 characters. Empty: no endpoint. The metrics name your cells, so do not publish the token |
 | `OPENDECTCELL_DATABASE_URL` 🔒 | `database.url` | **required** | PostgreSQL URL |
 | `OPENDECTCELL_DATABASE_ADMIN_URL` 🔒 | `database.admin_url` | none | The role that owns the schema, **for `migrate` only**: it creates the role in `DATABASE_URL`, applies the migrations and grants that role the table rights. Do not give it to the running controller (`deployment.md`, "Database roles") |
 | `OPENDECTCELL_DATABASE_MAX_CONNS` | `database.max_conns` | 10 | Pool size |

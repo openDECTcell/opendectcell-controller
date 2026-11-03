@@ -4,7 +4,6 @@ package core
 
 import (
 	"context"
-	"encoding/hex"
 	"math"
 	"strconv"
 	"strings"
@@ -198,7 +197,7 @@ func (r *cellRun) fetched(ev event) {
 		return
 	}
 	h, ok := ev.h, ev.ok
-	r.log.Debug("the store answered a lookup", "ipui", hex.EncodeToString(ev.ipui), "found", ok, "full", ev.full, "err", ev.err)
+	r.log.Debug("the store answered a lookup", "found", ok, "full", ev.full, "err", ev.err)
 	if ev.err != nil {
 		r.log.Error("the store could not look a handset up", "err", ev.err)
 		ok = false

@@ -215,7 +215,7 @@ func TestCallsFileKeepsPrivateNamesApart(t *testing.T) {
 }
 
 // A handset owned by an admin edits and deletes only the admin's own contacts, never another user's
-// (an admin may see every contact in the web interface, a handset's radio path must not).
+// (nor may an admin read or change them in the web interface, since 2026-11-03).
 func TestHandsetOfAnAdminCannotChangeAnotherUsersContact(t *testing.T) {
 	s, admin, anna, _ := setup(t)
 	h := handset(t, s.Pool, admin.ID, 1)
@@ -223,10 +223,10 @@ func TestHandsetOfAnAdminCannotChangeAnotherUsersContact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ApplyChange(ctx, h, "1\tput\t9\t"+hex8(theirs.ID)+"\tHacked\t\t0\t*\t08:1"); !errors.Is(err, contacts.ErrReadOnly) {
+	if _, err := s.ApplyChange(ctx, h, "1\tput\t9\t"+hex8(theirs.ID)+"\tHacked\t\t0\t*\t08:1"); !errors.Is(err, contacts.ErrReadOnly) && !errors.Is(err, contacts.ErrNotFound) {
 		t.Errorf("an admin's handset edited another user's contact: %v", err)
 	}
-	if _, err := s.ApplyChange(ctx, h, "2\tdel\t9\t"+hex8(theirs.ID)); !errors.Is(err, contacts.ErrReadOnly) {
+	if _, err := s.ApplyChange(ctx, h, "2\tdel\t9\t"+hex8(theirs.ID)); !errors.Is(err, contacts.ErrReadOnly) && !errors.Is(err, contacts.ErrNotFound) {
 		t.Errorf("an admin's handset deleted another user's contact: %v", err)
 	}
 	if got, err := s.Get(ctx, anna, theirs.ID); err != nil || got.LastName != "Private" {

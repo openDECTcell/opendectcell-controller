@@ -56,6 +56,11 @@ func (s *Server) stationView(r *http.Request, c *cell.Cell) stationData {
 	if u := auth.UserFrom(r.Context()); u != nil && c.EnrolledBy != nil && *c.EnrolledBy == u.ID {
 		d.Operator = true
 	}
+	// an administrator who does not operate the base station sees its position and statistics only if the operator
+	// disclosed it (the page says what disclosing shows: name, place, model, state, last connection)
+	if !d.Operator && !c.Disclosed {
+		return d
+	}
 	if c.Latitude != nil && c.Longitude != nil {
 		d.Lat = strconv.FormatFloat(*c.Latitude, 'f', -1, 64)
 		d.Lon = strconv.FormatFloat(*c.Longitude, 'f', -1, 64)

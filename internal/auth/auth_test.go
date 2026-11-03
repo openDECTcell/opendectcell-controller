@@ -434,3 +434,42 @@ func TestRateLimitHoldsUnderParallelAttempts(t *testing.T) {
 		}
 	}
 }
+
+// A single-sign-on administrator's session ends after 12 hours, so a role the provider withdrew does not linger for
+// the whole session lifetime; other sessions are not shortened.
+func TestOIDCAdminSessionIsShort(t *testing.T) {
+	s, clk := newStore(t)
+	s.SessionIdle, s.SessionMaxAge = 2*time.Hour, 7*24*time.Hour
+	mk := func(name, role string) string {
+		var id uuid.UUID
+		if err := s.Pool.QueryRow(ctx, `INSERT INTO app_user (username, display_name, role, auth_source, oidc_issuer, oidc_subject)
+			VALUES ($1, $1, $2, 'oidc', 'https://idp.example', $1) RETURNING id`, name, role).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		u, err := s.UserByID(ctx, s.Pool, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tok, err := s.CreateSession(ctx, u, "oidc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	adm, usr := mk("oadmin", "admin"), mk("ouser", "user")
+	for range 11 { // an hour apart keeps both alive
+		clk.t = clk.t.Add(time.Hour)
+		for _, tok := range []string{adm, usr} {
+			if _, err := s.LookupSession(ctx, tok); err != nil {
+				t.Fatalf("session ended early: %v", err)
+			}
+		}
+	}
+	clk.t = clk.t.Add(70 * time.Minute) // 12 h 10 min after login
+	if _, err := s.LookupSession(ctx, usr); err != nil {
+		t.Errorf("a plain single-sign-on session was cut short: %v", err)
+	}
+	if _, err := s.LookupSession(ctx, adm); !errors.Is(err, auth.ErrNoSession) {
+		t.Errorf("a single-sign-on admin's session outlived 12 hours: %v", err)
+	}
+}

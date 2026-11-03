@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
+	"github.com/openDECTcell/opendectcell-controller/internal/cell/wire"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 )
 
@@ -107,6 +109,9 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, u *auth.User
 	role := auth.Role(r.PostFormValue("role"))
 	may, dis := r.PostFormValue("may_add_cells") == "on", r.PostFormValue("disabled") == "on"
 	_, err := s.Auth.UpdateUser(r.Context(), u, t.ID, auth.UserUpdate{DisplayName: &dn, Email: &em, Role: &role, MayAddCells: &may, Disabled: &dis})
+	if err == nil && dis && !t.Disabled {
+		s.disableCellsOf(r.Context(), t.ID)
+	}
 	if err != nil {
 		msg := "Could not save: " + err.Error()
 		if errors.Is(err, auth.ErrSelf) {
@@ -116,6 +121,23 @@ func (s *Server) userUpdate(w http.ResponseWriter, r *http.Request, u *auth.User
 		return
 	}
 	http.Redirect(w, r, "/admin/users/"+t.ID.String()+"?done=Saved.", http.StatusSeeOther) //nolint:gosec // G710: our UUID
+}
+
+// disableCellsOf switches off the base stations of a user who was just disabled, and tells their links.
+func (s *Server) disableCellsOf(ctx context.Context, user uuid.UUID) {
+	if s.Cells == nil {
+		return
+	}
+	ids, err := s.Cells.DisableCellsOf(ctx, user)
+	if err != nil {
+		s.Log.Error("base stations of a disabled user not switched off", "user", user, "err", err)
+		return
+	}
+	if s.CellLink != nil {
+		for _, id := range ids {
+			s.CellLink.NotifyState(id, wire.StateDisabled, "its operator was disabled")
+		}
+	}
 }
 
 func (s *Server) userPassword(w http.ResponseWriter, r *http.Request, u *auth.User) {

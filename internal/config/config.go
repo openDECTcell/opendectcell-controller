@@ -427,6 +427,9 @@ func (c Config) Validate() error {
 	} else if u, err := url.Parse(c.HTTP.BaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		add("base URL %q must be an absolute http(s) URL", c.HTTP.BaseURL)
 	}
+	if t := c.HTTP.MetricsToken; t != "" && len(t) < 32 {
+		add("the metrics token is too short (%d characters): it is the only thing that guards /metrics, use at least 32 (`opendectcell-controller keygen` makes one)", len(t))
+	}
 	for _, p := range c.HTTP.TrustedProxies {
 		if _, err := netip.ParsePrefix(p); err != nil {
 			add("trusted proxy %q is not a CIDR prefix (e.g. 172.16.0.0/12)", p)

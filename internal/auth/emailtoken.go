@@ -23,6 +23,9 @@ const (
 // three are not told apart.
 var ErrBadToken = errors.New("auth: the link is invalid or has expired")
 
+// ErrEmailInUse is returned when another account has verified the address first.
+var ErrEmailInUse = errors.New("auth: another account has verified this e-mail address")
+
 // ErrResetRate is returned when one client address asks for resets too often.
 var ErrResetRate = errors.New("auth: too many requests from this address; try again later")
 
@@ -77,7 +80,11 @@ func (s *Store) VerifyEmail(ctx context.Context, tok string) (*User, error) {
 		if err != nil {
 			return err
 		}
-		u, err = scanUser(tx.QueryRow(ctx, `UPDATE app_user SET email_verified = true, disabled = pending_approval WHERE id = $1 RETURNING `+userCols, id))
+		// an account an administrator disabled stays disabled; an address another account verified first is not ours
+		u, err = scanUser(tx.QueryRow(ctx, `UPDATE app_user SET email_verified = true, disabled = (pending_approval OR admin_disabled) WHERE id = $1 RETURNING `+userCols, id))
+		if isUniqueViolation(err) {
+			return ErrEmailInUse
+		}
 		if err != nil {
 			return err
 		}
@@ -100,7 +107,7 @@ func (s *Store) RequestReset(ctx context.Context, email, addr string) (*User, er
 			return nil, err
 		}
 	}
-	u, err := scanUser(s.Pool.QueryRow(ctx, "SELECT "+userCols+" FROM app_user WHERE lower(email) = lower($1) AND auth_source = 'local' AND NOT disabled AND email_verified LIMIT 1", email))
+	u, err := scanUser(s.Pool.QueryRow(ctx, "SELECT "+userCols+" FROM app_user WHERE lower(email) = lower($1) AND auth_source = 'local' AND NOT disabled AND email_verified", email))
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}
@@ -132,6 +139,9 @@ func (s *Store) ResetPassword(ctx context.Context, tok, password string) error {
 		if _, err := tx.Exec(ctx, "DELETE FROM session WHERE user_id = $1", id); err != nil {
 			return err
 		}
+		if _, err := tx.Exec(ctx, "DELETE FROM trusted_device WHERE user_id = $1", id); err != nil {
+			return err
+		}
 		return audit.RecordAs(ctx, tx, audit.Actor{UserID: &id, Name: "reset link"}, audit.Entry{Action: "user.password_reset", ObjectType: "user", ObjectID: id.String()})
 	})
 }
@@ -148,7 +158,13 @@ func (s *Store) RequestVerification(ctx context.Context, email, addr string) (*U
 			return nil, err
 		}
 	}
-	u, err := scanUser(s.Pool.QueryRow(ctx, "SELECT "+userCols+" FROM app_user WHERE lower(email) = lower($1) AND NOT email_verified LIMIT 1", email))
+	// two sign-ups under one address (one of them not the owner's): the link goes to neither, since it cannot be told
+	// whose it is; each got the link in the mail it signed up with
+	var n int
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM app_user WHERE lower(email) = lower($1) AND NOT email_verified", email).Scan(&n); err != nil || n != 1 {
+		return nil, err
+	}
+	u, err := scanUser(s.Pool.QueryRow(ctx, "SELECT "+userCols+" FROM app_user WHERE lower(email) = lower($1) AND NOT email_verified", email))
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}

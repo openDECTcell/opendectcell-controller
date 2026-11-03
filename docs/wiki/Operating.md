@@ -64,10 +64,11 @@ or deletion of one user's data yet; see [Limits](Limits.md).
 
 - **Master key**: `rekey` re-wraps the data keys under a new master key (set the new one as `OPENDECTCELL_MASTER_KEY`
   and the old as `OPENDECTCELL_MASTER_KEY_OLD` while you run it, then remove the old one). `rotate-dek` re-encrypts every
-  secret under a new data key. Both are in [deployment.md](../deployment.md) and [threat-model.md](../threat-model.md).
+  secret under a new data key; **stop the controller first** (it refuses to run beside a live one: the controller keeps the old
+  keys in memory). Both are in [deployment.md](../deployment.md) and [threat-model.md](../threat-model.md).
 - **Cell certificates** renew themselves (90 days). A cell whose certificate ran out cannot renew and must enrol
   again. **Revoke** a cell on its page to stop it connecting.
-- **Users**: **Administration > Users** to approve, disable, reset passwords. Local passwords use Argon2id and a
+- **Users**: **Administration > Users** to approve, disable, reset passwords and see what a user disclosed to the administrators. Local passwords use Argon2id and a
   12-character minimum; failed sign-ins are rate-limited per user name and per address.
 
 ## Scaling

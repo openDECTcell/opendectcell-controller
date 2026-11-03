@@ -15,7 +15,9 @@
         {{else if .Secret}}
           <ol>
             <li>Open an authenticator app (any that supports time-based codes).</li>
-            <li>Add an account with this key: <code class="secret">{{.Secret}}</code> or open <a href="{{.URI}}">this link</a> on the phone.</li>
+            <li>Scan this QR code with it:
+              {{with .QR}}<div class="qr my-3">{{.}}</div>{{end}}
+              or add the account by hand with this key: <code class="secret">{{.Secret}}</code> (or open <a href="{{.URI}}">this link</a> on the phone).</li>
             <li>Enter the 6-digit code it shows.</li>
           </ol>
           <form method="post" action="/account/2fa/confirm" class="d-flex gap-2">
@@ -24,6 +26,8 @@
           </form>
         {{else if .On}}
           <p>Two-factor login is <span class="badge bg-success-lt">on</span>. You have {{.Left}} unused recovery {{if eq .Left 1}}code{{else}}codes{{end}}.</p>
+          <p class="text-secondary">You are asked for a code on a device that has not logged in before, and again every three weeks on a known one. {{if .Devices}}{{.Devices}} {{if eq .Devices 1}}device is{{else}}devices are{{end}} not asked at the moment.{{end}}</p>
+          {{if .Devices}}<form method="post" action="/account/2fa/devices/forget" class="mb-3"><button type="submit" class="btn btn-outline-secondary btn-sm">Ask on every device again</button></form>{{end}}
           <form method="post" action="/account/2fa/disable" class="d-flex gap-2 align-items-end">
             <div class="flex-fill"><label class="form-label" for="pw">Your password, to turn it off</label>
               <input class="form-control" id="pw" name="password" type="password" autocomplete="current-password" required></div>

@@ -151,7 +151,7 @@ func (s *Server) enrollCreate(w http.ResponseWriter, r *http.Request, u *auth.Us
 	if !ok {
 		ttl = cell.DefaultTokenTTL
 	}
-	_, es, err := s.Cells.CreateToken(r.Context(), u, r.PostFormValue("note"), ttl, r.PostFormValue("auto_approve") == "on")
+	_, es, err := s.Cells.CreateToken(r.Context(), u, r.PostFormValue("note"), ttl)
 	if errors.Is(err, auth.ErrForbidden) {
 		s.renderEnroll(w, r, u, http.StatusForbidden, page{Error: "Only administrators can create auto-approving tokens."}, "")
 		return

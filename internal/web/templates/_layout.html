@@ -74,6 +74,9 @@
 {{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
 {{if .Notice}}<div class="alert alert-success" role="status">{{.Notice}}</div>{{end}}
 {{if .Warn}}<div class="alert alert-warning" role="status">{{icon "alert-triangle"}} {{.Warn}}</div>{{end}}
+{{if .PromptTOTP}}<div class="alert alert-info d-flex flex-wrap gap-2 align-items-center" role="status">{{icon "shield-lock"}} <span class="flex-fill">Protect your account with two-factor login: a code from an app on your phone, asked on new devices.</span>
+  <a class="btn btn-sm btn-primary" href="/account/2fa">Set it up</a>
+  <form method="post" action="/account/2fa/later" class="d-inline"><input type="hidden" name="next" value="{{.Path}}"><button type="submit" class="btn btn-sm btn-link">Not now</button></form></div>{{end}}
 {{end}}
 
 {{/* A handset's presence: the badge shown in lists and on its page. */}}

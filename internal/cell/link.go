@@ -338,6 +338,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	s.mu.Unlock()
 	tl := tls.NewListener(ln, s.TLSConfig())
 	go func() { <-ctx.Done(); tl.Close() }()
+	var acceptWait time.Duration
 	for {
 		c, err := tl.Accept()
 		if err != nil {
@@ -345,13 +346,20 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 				s.sessions.Wait()
 				return nil //nolint:nilerr // Accept fails because we closed the listener on shutdown
 			}
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
-				time.Sleep(100 * time.Millisecond)
-				continue
+			if errors.Is(err, net.ErrClosed) {
+				return err
 			}
-			return err
+			// a timeout, or a failure that passes (out of file descriptors, a connection reset before it was accepted):
+			// wait and go on; stopping would end every cell's session and every call
+			acceptWait = min(max(acceptWait*2, 50*time.Millisecond), time.Second)
+			s.Log.Warn("accepting a cell connection failed", "err", err, "retry_in", acceptWait)
+			select {
+			case <-time.After(acceptWait):
+			case <-ctx.Done():
+			}
+			continue
 		}
+		acceptWait = 0
 		release, ok := s.pre.acquire(remoteAddr(c))
 		if !ok {
 			s.Log.Debug("too many unauthenticated cell connections: one is turned away", "addr", remoteAddr(c))
@@ -489,7 +497,12 @@ type session struct {
 	// revoked is set by Kick or by the re-check: from then on no frame of this
 	// session is handled.
 	revoked atomic.Bool
+	// seenWritten is when last_seen_at was last written for this session (only the session's goroutine uses it).
+	seenWritten time.Time
 }
+
+// seenWriteEvery is how often a session's STATS frames update the cell's last-seen time in the database.
+const seenWriteEvery = 10 * time.Second
 
 // errClosed ends a session without an error to report.
 var errClosed = errors.New("session closed")
@@ -818,8 +831,12 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			named[n] = v
 		}
 		ss.srv.updateStatus(ss.cell.ID, func(st *Status) { st.Stats, st.StatsAt = named, time.Now() })
-		if err := ss.srv.Store.Seen(ctx, ss.cell.ID); err != nil {
-			ss.log.Warn("record last seen", "err", err)
+		// the database hears of it at most every seenWriteEvery: a cell that sends STATS in a loop costs no writes
+		if time.Since(ss.seenWritten) >= seenWriteEvery {
+			ss.seenWritten = time.Now()
+			if err := ss.srv.Store.Seen(ctx, ss.cell.ID); err != nil {
+				ss.log.Warn("record last seen", "err", err)
+			}
 		}
 	case wire.Flow:
 		m, err := wire.DecodeFlow(f.Body)
@@ -844,6 +861,9 @@ func (ss *session) handleFrame(ctx context.Context, f wire.Frame) error {
 			ss.send(wire.Frame{Type: wire.RenewResponse, Corr: f.Corr, Body: wire.EncodeRenewResponse(0, cert.Raw)})
 		case errors.Is(err, pki.ErrBadCSR):
 			ss.send(wire.Frame{Type: wire.RenewResponse, Corr: f.Corr, Body: wire.EncodeRenewResponse(2, nil)})
+		case errors.Is(err, ErrRenewTooOften):
+			ss.log.Warn("certificate renewal refused: too often")
+			ss.send(wire.Frame{Type: wire.RenewResponse, Corr: f.Corr, Body: wire.EncodeRenewResponse(4, nil)})
 		default:
 			ss.log.Error("certificate renewal", "err", err)
 			ss.send(wire.Frame{Type: wire.RenewResponse, Corr: f.Corr, Body: wire.EncodeRenewResponse(4, nil)})

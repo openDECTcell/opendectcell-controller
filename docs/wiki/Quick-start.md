@@ -62,7 +62,7 @@ says so at start. Then `docker compose up -d`. More in [Install the controller](
 ## 2. Get an enrollment string
 
 In the controller: **Base stations > Enroll a base station**, choose how long the token is valid and
-whether the cell is approved automatically, press **Create token**. The page shows an **enrollment string**
+press **Create token**. The page shows an **enrollment string**
 (it starts with `opendectcell-enroll:v1?`) **once**. Copy it.
 
 ## 3. Prepare the box
@@ -94,11 +94,11 @@ and press *Enrol*. It takes up to a minute; the page reloads in cell mode. Tick 
 
 Or on the command line: `/etc/init.d/opendectcell enroll '<enrollment string>'`.
 
-## 5. Approve the cell
+## 5. Check the cell
 
-In the controller: **Administration > Cells**. If you did not choose automatic approval, the new cell is
-*waiting*: open it and press **Approve**. Its state becomes *active* and its link *up*; the DECT radio is
-switched on by the controller. Details: [Cells](Cells.md).
+In the controller: **Administration > Cells**. The new cell is *active* at once (nobody has to approve it) and
+its link *up* a moment after the box has started its cell service; the DECT radio is switched on by the controller.
+Details: [Cells](Cells.md).
 
 ## 6. Add a SIP line
 

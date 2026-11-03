@@ -107,3 +107,38 @@ func TestScopedStatistics(t *testing.T) {
 		t.Errorf("fleet %+v %v", f, err)
 	}
 }
+
+// The days are the days of the controller's own time zone: a call just after local midnight (still the day before in
+// UTC) counts for the new local day, and the bar is labelled with that date (review finding R4).
+func TestDaysFollowTheControllersZone(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.Migrated(t)
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skip("no zone database")
+	}
+	now := time.Date(2026, 11, 4, 0, 30, 0, 0, berlin) // 23:30 UTC on 3 November
+	s := &Store{Pool: pool, Now: func() time.Time { return now }}
+	var u uuid.UUID
+	if err := pool.QueryRow(ctx, "INSERT INTO app_user (username, role, auth_source, password_hash) VALUES ('z', 'user', 'local', 'x') RETURNING id").Scan(&u); err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []time.Time{time.Date(2026, 11, 4, 0, 10, 0, 0, berlin), time.Date(2026, 11, 3, 23, 50, 0, 0, berlin)} {
+		if _, err := pool.Exec(ctx, "INSERT INTO call_log (owner_user_id, direction, started_at) VALUES ($1, 'out', $2)", u, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	days, err := s.Days(ctx, Own(u), 3)
+	if err != nil || len(days) != 3 {
+		t.Fatalf("days %v %v", days, err)
+	}
+	want := []string{"2026-11-02", "2026-11-03", "2026-11-04"}
+	for i, d := range days {
+		if got := d.Day.Format("2006-01-02"); got != want[i] {
+			t.Errorf("day %d is labelled %s, want %s", i, got, want[i])
+		}
+	}
+	if days[2].Calls != 1 || days[1].Calls != 1 || days[0].Calls != 0 {
+		t.Errorf("calls per day: %+v", days)
+	}
+}

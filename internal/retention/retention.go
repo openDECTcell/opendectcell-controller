@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
@@ -65,15 +64,8 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, now time
 	}
 	if r.AuditDays > 0 {
 		var n int64
-		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-			if _, err := tx.Exec(ctx, "SET LOCAL opendectcell.audit_purge = 'on'"); err != nil {
-				return err
-			}
-			tag, err := tx.Exec(ctx, "DELETE FROM audit_log WHERE at < $1", now.AddDate(0, 0, -r.AuditDays))
-			n = tag.RowsAffected()
-			return err
-		})
-		if err != nil {
+		// audit_purge() is the one way to delete audit entries: it runs as the table's owner (migration 0024)
+		if err := pool.QueryRow(ctx, "SELECT audit_purge($1)", now.AddDate(0, 0, -r.AuditDays)).Scan(&n); err != nil {
 			return err
 		}
 		if n > 0 {

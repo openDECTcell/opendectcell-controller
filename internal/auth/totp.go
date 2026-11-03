@@ -215,8 +215,15 @@ func (s *Store) VerifySecondFactor(ctx context.Context, id uuid.UUID, code, addr
 			return ErrBadCode
 		}
 		if step := matchTOTP(key, code, s.now()); step != 0 && step > last {
-			_, err := tx.Exec(ctx, "UPDATE user_totp SET last_step = $2 WHERE user_id = $1", id, int64(step))
-			return err
+			// the guard makes the use of a step atomic: of two parallel requests with one code, one wins
+			tag, err := tx.Exec(ctx, "UPDATE user_totp SET last_step = $2 WHERE user_id = $1 AND last_step < $2", id, int64(step))
+			if err != nil {
+				return err
+			}
+			if tag.RowsAffected() == 1 {
+				return nil
+			}
+			return ErrBadCode
 		}
 		tag, err := tx.Exec(ctx, "UPDATE user_recovery_code SET used_at = $3 WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL", id, recoveryHash(code), s.now())
 		if err != nil {
@@ -250,6 +257,9 @@ func (s *Store) DisableTOTP(ctx context.Context, id uuid.UUID) error {
 			return err
 		}
 		if _, err := tx.Exec(ctx, "DELETE FROM user_totp WHERE user_id = $1", id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM trusted_device WHERE user_id = $1", id); err != nil {
 			return err
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.totp_off", ObjectType: "user", ObjectID: id.String()})

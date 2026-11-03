@@ -39,6 +39,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the zone database, so TZ works in an image without one
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -340,6 +341,14 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	if err := ensureSchema(ctx, pool, !*noMigrate, log); err != nil {
 		return err
 	}
+	// say that a controller runs (a command such as rotate-dek refuses to run beside one); two on one database is a mistake
+	if release, held, err := db.HoldRunLock(ctx, pool); err != nil {
+		log.Warn("the run lock could not be taken", "err", err)
+	} else if !held {
+		log.Warn("another controller seems to run against this database")
+	} else {
+		defer release()
+	}
 	instance := &settings.Store{Pool: pool}
 	var saved logctl.State
 	if ok, err := instance.Get(ctx, settings.KeyLogging, &saved); err != nil {
@@ -363,6 +372,12 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	if err != nil {
 		return err
 	}
+	// whether every user may enroll cells is a setting; it is read each time, so a change counts at once
+	everyoneMayEnroll := func(ctx context.Context) bool {
+		c, err := instance.Cells(ctx)
+		return err == nil && c.EveryoneMayEnroll
+	}
+	cells.EveryoneMayEnroll = everyoneMayEnroll
 	base, _ := url.Parse(cfg.HTTP.BaseURL)
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
 	var windows *regwin.Registry
@@ -469,10 +484,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	defer sipMgr.Close()
 
 	store := authStore(cfg, pool)
-	store.EveryoneMayEnroll = func(ctx context.Context) bool {
-		c, err := (&settings.Store{Pool: pool}).Cells(ctx)
-		return err == nil && c.EveryoneMayEnroll
-	}
+	store.EveryoneMayEnroll = everyoneMayEnroll
 	store.Keyring = kr
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
@@ -673,6 +685,11 @@ func keys(ctx context.Context, cmd string, cfg config.Config, pool *pgxpool.Pool
 		}
 		fmt.Fprintf(out, "re-wrapped %d data key(s) under master key %s; remove OPENDECTCELL_MASTER_KEY_OLD now\n", n, mk.ID())
 	case "rotate-dek":
+		// a running controller holds the old keys in memory: after the rotation it could not open a rotated value, and
+		// what it seals meanwhile would sit under a key the rotation deletes
+		if err := db.CheckNoController(ctx, pool); err != nil {
+			return fmt.Errorf("rotate-dek: %w (docker compose stop controller, run this, start it again)", err)
+		}
 		kr, err := db.LoadKeyring(ctx, pool, mk, old)
 		if err != nil {
 			return err

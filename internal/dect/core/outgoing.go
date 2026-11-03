@@ -150,7 +150,7 @@ func (c *Core) callOut(cell uuid.UUID, kv map[string]string, hid uuid.UUID, targ
 	rs.out[outKey{cell, oc.Call}] = o
 	rs.mu.Unlock()
 	if c.Originate == nil {
-		c.Log.Warn("a handset's call is released: no SIP side is attached", "cell", cell, "number", oc.Number)
+		c.Log.Warn("a handset's call is released: no SIP side is attached", "cell", cell, "digits", len(oc.Number))
 		go o.Release("unreachable")
 		return
 	}

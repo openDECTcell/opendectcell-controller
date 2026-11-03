@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
@@ -28,6 +29,7 @@ import (
 )
 
 type env struct {
+	pool  *pgxpool.Pool
 	store *cell.Store
 	srv   *cell.Server
 	admin *auth.User
@@ -64,12 +66,25 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{store: st, srv: srv, admin: admin, users: users, ctx: audit.WithActor(ctx, admin.Actor())}
+	return &env{pool: pool, store: st, srv: srv, admin: admin, users: users, ctx: audit.WithActor(ctx, admin.Actor())}
+}
+
+// token makes an enrollment token for u. CreateToken's tokens approve the cell by themselves; a token that
+// does not stands for one made before that (such a cell enrolls as pending).
+func (e *env) token(t *testing.T, u *auth.User, note string, ttl time.Duration, auto bool) (*cell.Token, string, error) {
+	t.Helper()
+	tok, es, err := e.store.CreateToken(e.ctx, u, note, ttl)
+	if err == nil && !auto {
+		if _, err := e.pool.Exec(e.ctx, "UPDATE cell_enrollment_token SET auto_approve = false WHERE id = $1", tok.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return tok, es, err
 }
 
 func (e *env) enrolled(t *testing.T, auto bool) *celltest.Cell {
 	t.Helper()
-	_, es, err := e.store.CreateToken(e.ctx, e.admin, "test", 0, auto)
+	_, es, err := e.token(t, e.admin, "test", 0, auto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +109,7 @@ func expectState(t *testing.T, cn *celltest.Conn, want wire.CellStateValue) {
 
 func TestEnrollment(t *testing.T) {
 	e := newEnv(t)
-	_, es, err := e.store.CreateToken(e.ctx, e.admin, "Garage", time.Hour, false)
+	_, es, err := e.token(t, e.admin, "Garage", time.Hour, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +130,7 @@ func TestEnrollment(t *testing.T) {
 		t.Errorf("reused token: %d", status)
 	}
 	// Auto-approve gives an active cell; names are made unique.
-	_, es2, _ := e.store.CreateToken(e.ctx, e.admin, "Garage", time.Hour, true)
+	_, es2, _ := e.token(t, e.admin, "Garage", time.Hour, true)
 	c2, _, _ := celltest.Enroll(e.ctx, es2, "")
 	got2, _ := e.store.GetCell(e.ctx, e.admin, c2.ID)
 	if c2.State != wire.StateActive || got2.Name != "Garage-2" {
@@ -148,18 +163,15 @@ func TestEnrollment(t *testing.T) {
 func TestTokenAuthorisation(t *testing.T) {
 	e := newEnv(t)
 	u, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "u", Password: "user password", Role: auth.RoleUser})
-	if _, _, err := e.store.CreateToken(e.ctx, u, "", 0, false); !errors.Is(err, auth.ErrForbidden) {
+	if _, _, err := e.token(t, u, "", 0, false); !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("user without may_add_cells: %v", err)
 	}
 	u.MayAddCells = true
-	if _, _, err := e.store.CreateToken(e.ctx, u, "", 0, true); !errors.Is(err, auth.ErrForbidden) {
-		t.Fatalf("user set auto-approve: %v", err)
-	}
-	mine, _, err := e.store.CreateToken(e.ctx, u, "mine", 0, false)
+	mine, _, err := e.token(t, u, "mine", 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adm, _, _ := e.store.CreateToken(e.ctx, e.admin, "admin's", 0, false)
+	adm, _, _ := e.token(t, e.admin, "admin's", 0, false)
 	list, _ := e.store.ListTokens(e.ctx, u)
 	if len(list) != 1 || list[0].ID != mine.ID {
 		t.Fatalf("user sees %d tokens", len(list))
@@ -173,7 +185,7 @@ func TestTokenAuthorisation(t *testing.T) {
 	if err := e.store.DeleteToken(e.ctx, u, mine.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.store.CreateToken(e.ctx, e.admin, "", time.Minute, false); err == nil {
+	if _, _, err := e.token(t, e.admin, "", time.Minute, false); err == nil {
 		t.Error("1-minute lifetime accepted")
 	}
 	// Users see active cells, reduced to id, name and location.
@@ -194,7 +206,8 @@ func TestRevokeOwned(t *testing.T) {
 	owner, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "owner", Password: "user password", Role: auth.RoleUser})
 	other, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "other", Password: "user password", Role: auth.RoleUser})
 	owner.MayAddCells, other.MayAddCells = true, true
-	_, es, err := e.store.CreateToken(e.ctx, owner, "mine", 0, false)
+	e.pool.Exec(e.ctx, "UPDATE app_user SET may_add_cells = true") // a token is honoured only while its creator may enroll
+	_, es, err := e.token(t, owner, "mine", 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -783,4 +796,187 @@ func TestKickEndsTheLink(t *testing.T) {
 		}
 	}
 	t.Fatal("the link stayed open after Kick")
+}
+
+// A user who may enroll cells needs no administrator to approve the cell: it is active when it enrolls.
+func TestUserEnrolledCellIsActive(t *testing.T) {
+	e := newEnv(t)
+	u, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "u", Password: "user password", Role: auth.RoleUser, MayAddCells: true})
+	tok, es, err := e.store.CreateToken(e.ctx, u, "Attic", time.Hour)
+	if err != nil || !tok.AutoApprove {
+		t.Fatalf("token: %+v %v", tok, err)
+	}
+	c, status, err := celltest.Enroll(e.ctx, es, "")
+	if err != nil || status != wire.EnrollOK || c.State != wire.StateActive {
+		t.Fatalf("enroll: %d %v %+v", status, err, c)
+	}
+	got, err := e.store.GetCell(e.ctx, e.admin, c.ID)
+	if err != nil || got.State != "active" || got.EnrolledBy == nil || *got.EnrolledBy != u.ID {
+		t.Fatalf("cell row: %+v %v", got, err)
+	}
+}
+
+// A user sees of another operator's base station only what that operator shares (PRIV-01).
+func TestListCellsRespectsSharing(t *testing.T) {
+	e := newEnv(t)
+	u, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "u", Password: "user password", Role: auth.RoleUser})
+	o, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "o", Password: "other password", Role: auth.RoleUser})
+	ins := func(name string, by *auth.User, shareName, sharePos bool) {
+		if _, err := e.pool.Exec(e.ctx, `INSERT INTO cell (name, location, state, enrolled_by, share_name, share_position)
+			VALUES ($1, $1 || ' place', 'active', $2, $3, $4)`, name, by.ID, shareName, sharePos); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ins("Mine", u, false, false)
+	ins("Private", o, false, false)
+	ins("NamedOnly", o, true, false)
+	ins("Shared", o, true, true)
+	cells, err := e.store.ListCells(e.ctx, u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][2]string{}
+	for _, c := range cells {
+		got[c.Name] = [2]string{c.Name, c.Location}
+		if c.EnrolledBy != nil || c.SoftwareVersion != nil {
+			t.Errorf("a user's list carries operator details: %+v", c)
+		}
+	}
+	if len(cells) != 4 {
+		t.Fatalf("%d cells", len(cells))
+	}
+	if got["Mine"] != [2]string{"Mine", "Mine place"} {
+		t.Errorf("own base station: %v", got["Mine"])
+	}
+	if _, ok := got["Private"]; ok {
+		t.Error("the name of a base station that does not share its name is listed")
+	}
+	if got["NamedOnly"] != [2]string{"NamedOnly", ""} {
+		t.Errorf("name shared, position not: %v", got["NamedOnly"])
+	}
+	if got["Shared"] != [2]string{"Shared", "Shared place"} {
+		t.Errorf("shared: %v", got["Shared"])
+	}
+}
+
+// A token is good only while its creator may still enroll cells, and a user holds a limited number of them.
+func TestTokenFollowsItsCreator(t *testing.T) {
+	e := newEnv(t)
+	mk := func(name string) *auth.User {
+		u, err := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: name, Password: "user password", Role: auth.RoleUser, MayAddCells: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u
+	}
+	enrol := func(es string) uint16 {
+		_, status, _ := celltest.Enroll(e.ctx, es, "")
+		return status
+	}
+
+	// the permission is taken away
+	u := mk("u1")
+	_, es, _ := e.store.CreateToken(e.ctx, u, "", time.Hour)
+	e.pool.Exec(e.ctx, "UPDATE app_user SET may_add_cells = false WHERE id = $1", u.ID)
+	if st := enrol(es); st != wire.EnrollTokenRejected {
+		t.Errorf("a token of a user who may not enroll any more: %d", st)
+	}
+	// ...but not if the installation lets everyone
+	_, es, _ = e.store.CreateToken(e.ctx, mk("u2"), "", time.Hour)
+	e.pool.Exec(e.ctx, "UPDATE app_user SET may_add_cells = false WHERE username = 'u2'")
+	e.store.EveryoneMayEnroll = func(context.Context) bool { return true }
+	if st := enrol(es); st != wire.EnrollOK {
+		t.Errorf("a token while everyone may enroll: %d", st)
+	}
+	e.store.EveryoneMayEnroll = nil
+
+	// the user is disabled by an administrator: the token goes
+	u3 := mk("u3")
+	_, es, _ = e.store.CreateToken(e.ctx, u3, "", time.Hour)
+	off := true
+	if _, err := e.users.UpdateUser(e.ctx, e.admin, u3.ID, auth.UserUpdate{Disabled: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if st := enrol(es); st != wire.EnrollTokenRejected {
+		t.Errorf("a token of a disabled user: %d", st)
+	}
+	// and a disabled user's token that was not deleted is refused too
+	u4 := mk("u4")
+	_, es, _ = e.store.CreateToken(e.ctx, u4, "", time.Hour)
+	e.pool.Exec(e.ctx, "UPDATE app_user SET disabled = true WHERE id = $1", u4.ID)
+	if st := enrol(es); st != wire.EnrollTokenRejected {
+		t.Errorf("a token of a user disabled behind our back: %d", st)
+	}
+
+	// the creator may delete a token after losing the right, and the number of open tokens is capped
+	u5 := mk("u5")
+	for range cell.MaxOpenTokens {
+		if _, _, err := e.store.CreateToken(e.ctx, u5, "", time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := e.store.CreateToken(e.ctx, u5, "", time.Hour); !errors.Is(err, cell.ErrTooManyTokens) {
+		t.Errorf("token number %d: %v", cell.MaxOpenTokens+1, err)
+	}
+	toks, _ := e.store.ListTokens(e.ctx, u5)
+	e.pool.Exec(e.ctx, "UPDATE app_user SET may_add_cells = false WHERE id = $1", u5.ID)
+	if err := e.store.DeleteToken(e.ctx, u5, toks[0].ID); err != nil {
+		t.Errorf("a creator deleting their own token: %v", err)
+	}
+}
+
+// A cell that asks for certificates in a loop is refused after a few (review finding C9).
+func TestRenewalIsThrottled(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	var refused error
+	for range cell.MaxRenewalsPerHour + 2 {
+		if refused = c.Renew(cn); refused != nil {
+			break
+		}
+	}
+	if refused == nil {
+		t.Error("a cell renewed its certificate without limit")
+	}
+}
+
+// A base station is active at once, so how many one operator may have is limited; and a disabled user's are switched off
+// (review findings C4 and C5).
+func TestOperatorLimitsAndDisabledOperator(t *testing.T) {
+	e := newEnv(t)
+	u, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "op", Password: "user password", Role: auth.RoleUser, MayAddCells: true})
+	for i := range cell.MaxCellsPerOperator {
+		if _, err := e.pool.Exec(e.ctx, "INSERT INTO cell (name, state, enrolled_by) VALUES ($1, 'active', $2)", fmt.Sprintf("c%d", i), u.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, es, _ := e.store.CreateToken(e.ctx, u, "one too many", time.Hour)
+	if _, status, _ := celltest.Enroll(e.ctx, es, ""); status != wire.EnrollTokenRejected {
+		t.Errorf("the %dth cell of one operator: %d", cell.MaxCellsPerOperator+1, status)
+	}
+	// an administrator is not limited
+	_, es, _ = e.store.CreateToken(e.ctx, e.admin, "admin's", time.Hour)
+	if _, status, _ := celltest.Enroll(e.ctx, es, ""); status != wire.EnrollOK {
+		t.Errorf("an administrator's cell: %d", status)
+	}
+
+	ids, err := e.store.DisableCellsOf(e.ctx, u.ID)
+	if err != nil || len(ids) != cell.MaxCellsPerOperator {
+		t.Fatalf("disable: %d cells, %v", len(ids), err)
+	}
+	var active int
+	e.pool.QueryRow(e.ctx, "SELECT count(*) FROM cell WHERE enrolled_by = $1 AND state = 'active'", u.ID).Scan(&active)
+	if active != 0 {
+		t.Errorf("%d of a disabled user's cells are still active", active)
+	}
+	var adminCells int
+	e.pool.QueryRow(e.ctx, "SELECT count(*) FROM cell WHERE enrolled_by = $1 AND state = 'active'", e.admin.ID).Scan(&adminCells)
+	if adminCells != 1 {
+		t.Errorf("another operator's cell was touched: %d", adminCells)
+	}
 }

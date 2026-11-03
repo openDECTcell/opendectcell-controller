@@ -117,3 +117,45 @@ func TestDiscloseToAdministrators(t *testing.T) {
 	}
 	_ = cellar
 }
+
+// An administrator who does not operate a base station sees its position only if it was disclosed, and cannot change
+// the operator's position or sharing switches (review finding W5).
+func TestAdminSeesOnlyDisclosedStationDetails(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+		s.CellLink = &fakeLink{states: map[uuid.UUID]wire.CellStateValue{}}
+	})
+	var uid, hall uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	e.store.Pool.QueryRow(ctx, `INSERT INTO cell (name, state, enrolled_by, latitude, longitude, position_precision)
+		VALUES ('Hall', 'active', $1, 52.123456, 9.654321, 'exact') RETURNING id`, uid).Scan(&hall)
+	a := e.adminBrowser(t)
+	page := "/stations/" + hall.String()
+
+	if _, b := e.get(t, a, page); strings.Contains(b, "52.123456") || strings.Contains(b, "9.654321") {
+		t.Error("an admin sees the position of a base station that was not disclosed")
+	}
+	// the admin saves the page (the name, say): the operator's position and switches stay
+	e.store.Pool.Exec(ctx, "UPDATE cell SET share_position = false, share_name = false, share_stats = false WHERE id = $1", hall)
+	if r := e.post(t, a, page, url.Values{"name": {"Hall B"}, "precision": {"region"}, "share_position": {"on"}, "share_name": {"on"}, "share_stats": {"on"}, "lat": {"1"}, "lon": {"2"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("admin save: %d", r.StatusCode)
+	}
+	var name, prec string
+	var lat float64
+	var sp, sn, ss bool
+	e.store.Pool.QueryRow(ctx, "SELECT name, position_precision, latitude, share_position, share_name, share_stats FROM cell WHERE id = $1", hall).Scan(&name, &prec, &lat, &sp, &sn, &ss)
+	if name != "Hall B" || prec != "exact" || lat != 52.123456 || sp || sn || ss {
+		t.Errorf("an admin's save changed the operator's choices: %q %q %v %v %v %v", name, prec, lat, sp, sn, ss)
+	}
+	// disclosed, the admin sees it
+	e.store.Pool.Exec(ctx, "UPDATE cell SET disclosed_to_admins = true WHERE id = $1", hall)
+	if _, b := e.get(t, a, page); !strings.Contains(b, "52.123456") {
+		t.Error("an admin does not see the position of a disclosed base station")
+	}
+}

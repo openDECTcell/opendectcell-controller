@@ -87,8 +87,14 @@ latency and rewrites source addresses.
   provider. A worked example for Authentik: [authentik.md](../authentik.md).
 - **Sign-up.** **Administration > Settings** decides whether visitors may create accounts and whether an
   administrator approves them first.
-- **Two-factor sign-in** for local accounts can be required of administrators in the same place. A locked-out
-  administrator is reset on the server with `opendectcell-controller user reset-2fa`.
+- **Two-factor sign-in** for local accounts can be required of administrators in the same place. Every local user is
+  offered it (a banner, "Not now" puts it away for a month) but never forced. With it on, a login from a new
+  device asks for the code, and a known device again every three weeks. A locked-out administrator is reset on the
+  server with `opendectcell-controller user reset-2fa`.
+- **Who may enroll base stations**: the setting *Every user may enroll base stations* (on by default); off, only
+  administrators and the users ticked "May enroll base stations" may.
+- **Time zone.** The pages show times in the controller's zone, UTC unless `OPENDECTCELL_TZ` is set in `.env` (for
+  example `OPENDECTCELL_TZ=Europe/Berlin`).
 
 Every setting and its default: [configuration.md](../configuration.md). Every command:
 [deployment.md](../deployment.md).

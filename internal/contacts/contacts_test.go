@@ -150,3 +150,33 @@ func TestHandsetViews(t *testing.T) {
 	}
 	_ = mine
 }
+
+// A personal phonebook is private to its user: an admin neither lists, reads, changes, deletes nor writes into it.
+func TestAdminCannotTouchPersonalContacts(t *testing.T) {
+	s, admin, anna, _ := setup(t)
+	mine, err := s.Create(ctx, anna, contacts.Contact{LastName: "Private", Numbers: []contacts.Number{{Number: "0301"}}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, admin, mine.ID); !errors.Is(err, contacts.ErrNotFound) {
+		t.Errorf("admin read: %v", err)
+	}
+	if _, err := s.List(ctx, admin, "personal", anna.ID.String()); err == nil {
+		t.Error("admin listed another user's contacts by owner")
+	}
+	if l, err := s.List(ctx, admin, "personal", ""); err != nil || len(l) != 0 {
+		t.Errorf("admin's own list: %v %v", l, err)
+	}
+	if _, err := s.Update(ctx, admin, mine.ID, contacts.Contact{LastName: "Hacked", Numbers: []contacts.Number{{Number: "1"}}}); err == nil {
+		t.Error("admin updated another user's contact")
+	}
+	if err := s.Delete(ctx, admin, mine.ID); err == nil {
+		t.Error("admin deleted another user's contact")
+	}
+	if _, err := s.Create(ctx, admin, contacts.Contact{OwnerID: &anna.ID, LastName: "Planted", Numbers: []contacts.Number{{Number: "1"}}}, true); !errors.Is(err, auth.ErrForbidden) {
+		t.Errorf("admin wrote into another user's phonebook: %v", err)
+	}
+	if got, err := s.Get(ctx, anna, mine.ID); err != nil || got.LastName != "Private" {
+		t.Errorf("the contact changed: %+v %v", got, err)
+	}
+}

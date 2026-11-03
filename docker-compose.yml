@@ -79,6 +79,8 @@ services:
       OPENDECTCELL_DATABASE_URL_FILE: /secrets/database_url
       OPENDECTCELL_MASTER_KEY_FILE: /secrets/master_key
       OPENDECTCELL_HTTP_BASE_URL: ${OPENDECTCELL_HTTP_BASE_URL:-http://localhost:8080}
+      # the zone the pages show times in (an IANA name, e.g. Europe/Berlin); the container is on UTC otherwise
+      TZ: ${OPENDECTCELL_TZ:-UTC}
       # Docker maps big UDP ranges slowly; 100 ports = 50 calls. For more,
       # widen both, or use network_mode: host (docs/deployment.md).
       OPENDECTCELL_SIP_RTP_PORTS: 41000-41099

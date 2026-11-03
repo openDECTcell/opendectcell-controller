@@ -9,6 +9,7 @@ Type=oneshot
 ExecStart=/usr/local/sbin/opendectcell-ddns
 # it needs the network and its own state directory, nothing else
 ProtectSystem=strict
+StateDirectory=opendectcell-ddns
 ReadWritePaths=/var/lib/opendectcell-ddns
 ProtectHome=true
 PrivateTmp=true

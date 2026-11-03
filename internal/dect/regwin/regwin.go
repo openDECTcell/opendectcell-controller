@@ -245,6 +245,49 @@ func (g *Registry) PINs(cell uuid.UUID) (ver uint64, pins []string, until time.T
 	return g.ver.Load(), g.pins, g.until
 }
 
+// PINsFor is PINs for a cell without the PINs of the windows whose owner may not put a handset on that cell (allow says;
+// nil allows all). A handset that registers on a cell holds its key there, so a cell the owner does not trust must not
+// even be offered the PIN (ADR 0007). The result is a copy when something was left out. allow runs without the lock.
+func (g *Registry) PINsFor(cell uuid.UUID, allow func(owner uuid.UUID) bool) (ver uint64, pins []string, until time.Time) {
+	g.mu.Lock()
+	now := g.now()
+	g.sweep(now)
+	if t, ok := g.locked[cell]; ok && now.Before(t) {
+		g.mu.Unlock()
+		return g.ver.Load(), nil, time.Time{}
+	}
+	ver, pins, until = g.ver.Load(), g.pins, g.until
+	var owners []uuid.UUID
+	if allow != nil && len(pins) > 0 {
+		owners = make([]uuid.UUID, len(pins))
+		for i := range pins {
+			if i < MaxPINs && g.slots[i].win != nil {
+				owners[i] = g.slots[i].win.Owner
+			}
+		}
+	}
+	g.mu.Unlock()
+	if owners == nil {
+		return ver, pins, until
+	}
+	out := slices.Clone(pins)
+	live := false
+	for i, p := range out {
+		if p == "" {
+			continue
+		}
+		if owners[i] != uuid.Nil && !allow(owners[i]) {
+			out[i] = ""
+			continue
+		}
+		live = true
+	}
+	if !live {
+		return ver, nil, time.Time{}
+	}
+	return ver, out, until
+}
+
 // Claim binds an enrolment on cell to the window of the PIN it proved
 // (pin1 = 1 + its index, the record's reg_pin1). A live PIN, or one
 // expired within Grace, is spent; ok is false for anything else.

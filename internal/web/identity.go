@@ -133,7 +133,11 @@ func (s *Server) identitySave(w http.ResponseWriter, r *http.Request, u *auth.Us
 		source = cell.IdentityAllocated
 	}
 	id, err := identityForm(r, source)
-	cur, _ := s.Cells.SystemIdentity(r.Context())
+	cur, curErr := s.Cells.SystemIdentity(r.Context())
+	if curErr != nil { // without knowing what is there, the confirmation of a replacement cannot be asked for
+		s.internalError(w, r, curErr)
+		return
+	}
 	replacing := cur != nil && (cur.EIC != id.EIC || cur.FPN != id.FPN || cur.FPS != id.FPS)
 	switch {
 	case err != nil:

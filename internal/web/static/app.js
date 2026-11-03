@@ -241,3 +241,9 @@
     });
   }
 })();
+
+// a field with data-select-all selects its text when clicked (an inline onclick would not run: the content policy forbids it)
+document.addEventListener("click", function (e) {
+  var t = e.target;
+  if (t && t.matches && t.matches("[data-select-all]") && t.select) { t.select(); }
+});

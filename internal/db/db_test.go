@@ -121,11 +121,10 @@ func TestAuditLogIsAppendOnly(t *testing.T) {
 			t.Errorf("%s: %v", q, err)
 		}
 	}
-	tx, _ := pool.Begin(ctx)
-	defer tx.Rollback(ctx)
-	tx.Exec(ctx, "SET LOCAL opendectcell.audit_purge = 'on'")
-	if tag, err := tx.Exec(ctx, "DELETE FROM audit_log"); err != nil || tag.RowsAffected() != 1 {
-		t.Errorf("purge: %v %v", tag, err)
+	// the purge function is the way
+	var n int64
+	if err := pool.QueryRow(ctx, "SELECT audit_purge(now() + interval '1 day')").Scan(&n); err != nil || n != 1 {
+		t.Errorf("purge: %d %v", n, err)
 	}
 }
 
@@ -249,5 +248,27 @@ func TestKeyringLifecycle(t *testing.T) {
 		if err != nil || string(pt) != c.want {
 			t.Errorf("%s: %q %v", c.tbl, pt, err)
 		}
+	}
+}
+
+// A running controller holds a lock that a command like rotate-dek checks (review finding R1).
+func TestRunLock(t *testing.T) {
+	pool := dbtest.Migrated(t)
+	if err := db.CheckNoController(ctx, pool); err != nil {
+		t.Fatalf("no controller, but: %v", err)
+	}
+	release, held, err := db.HoldRunLock(ctx, pool)
+	if err != nil || !held {
+		t.Fatalf("hold: %v %v", held, err)
+	}
+	if err := db.CheckNoController(ctx, pool); !errors.Is(err, db.ErrControllerRunning) {
+		t.Errorf("a running controller was not seen: %v", err)
+	}
+	if _, held2, _ := db.HoldRunLock(ctx, pool); held2 {
+		t.Error("two holders of the lock")
+	}
+	release()
+	if err := db.CheckNoController(ctx, pool); err != nil {
+		t.Errorf("the lock was not released: %v", err)
 	}
 }

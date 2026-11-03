@@ -195,6 +195,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /account/2fa/start", s.requireUser(s.twoFAStart))
 	s.mux.Handle("POST /account/2fa/confirm", s.requireUser(s.twoFAConfirm))
 	s.mux.Handle("POST /account/2fa/disable", s.requireUser(s.twoFADisable))
+	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
+	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
@@ -357,8 +359,16 @@ func (s *Server) withSession(h http.Handler) http.Handler {
 			sess, err := s.Auth.LookupSession(r.Context(), c.Value)
 			switch {
 			case err == nil:
-				ctx := auth.WithUser(r.Context(), sess.User)
-				a := sess.User.Actor()
+				user := sess.User
+				if s.adminNeeds2FA(r, user) {
+					// not an administrator at all until they have set up two-factor login: every route that checks
+					// the role, not only the admin pages, then refuses them
+					plain := *user
+					plain.Role, plain.Admin2FAPending = auth.RoleUser, true
+					user = &plain
+				}
+				ctx := auth.WithUser(r.Context(), user)
+				a := user.Actor()
 				a.Addr = addrFrom(ctx)
 				ctx = audit.WithActor(ctx, a)
 				ctx = context.WithValue(ctx, sessionKey{}, sess)
@@ -410,12 +420,12 @@ func (s *Server) requireUser(h func(http.ResponseWriter, *http.Request, *auth.Us
 // requireAdmin answers 404 to non-admins, so admin pages are not discoverable.
 func (s *Server) requireAdmin(h func(http.ResponseWriter, *http.Request, *auth.User)) http.Handler {
 	return s.requireUser(func(w http.ResponseWriter, r *http.Request, u *auth.User) {
-		if auth.RequireAdmin(u) != nil {
-			s.notFound(w, r, u)
+		if u.Admin2FAPending {
+			http.Redirect(w, r, "/account/2fa?need=1", http.StatusSeeOther)
 			return
 		}
-		if s.adminNeeds2FA(r, u) {
-			http.Redirect(w, r, "/account/2fa?need=1", http.StatusSeeOther)
+		if auth.RequireAdmin(u) != nil {
+			s.notFound(w, r, u)
 			return
 		}
 		h(w, r, u)

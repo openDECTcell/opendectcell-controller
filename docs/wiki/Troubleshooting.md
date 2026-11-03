@@ -9,7 +9,7 @@ tab *Log* in LuCI. Most problems are the network between the two.
 |---|---|
 | Enrolling fails: "cannot reach the controller" | The box must reach the address in the enrollment string (`OPENDECTCELL_CELLS_PUBLIC_ADDRESS`, port 7300). Check from the box that the port answers (for example with `curl -v telnet://<address>:7300`, or from another computer in the box's network), the firewall and, behind Docker, that port 7300 is published. |
 | Enrolling fails: token invalid | The token is single use and expires (1 hour to 7 days). Create a new one. |
-| The cell stays *pending* | An administrator has to **Approve** it (**Administration > Cells**), unless you chose automatic approval. |
+| The cell stays *pending* | It enrolled with a token made before tokens approved by themselves. An administrator has to **Approve** it (**Administration > Cells**). |
 | The cell is *active* but the link is down | Look at the box log: the date (the certificate needs a right clock, check NTP), the address, a firewall. A certificate that ran out cannot renew: enrol again. |
 | "built without libopendectcell" in the controller log | The image was built without the DECT core: cells connect but their messages are dropped. Rebuild with `docker compose up -d --build` with the `opendectcell` submodule checked out. |
 

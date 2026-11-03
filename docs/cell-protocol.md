@@ -269,10 +269,10 @@ CA pin. HELLO_ACK carries the controller's time so the cell can detect skew.
 
 ### 5.1 Token and enrollment string
 
-1. An admin, or a user with `may_add_cells`, creates a token in the web UI:
+1. An admin, a user with `may_add_cells`, or any user while the setting "every user may enroll" is on, creates a token in the web UI:
    20 random bytes, single use, expiring after 24 h by default (maximum 7
-   days). Optional settings: pre-assigned cell name/location, and
-   *auto-approve*.
+   days). Optional setting: a note that becomes the cell's name. A cell that enrols with the token is
+   approved by it (changed 2026-11-03: it used to wait for an admin unless the token said *auto-approve*).
 2. The database stores only the token's SHA-256 (`cell_enrollment_token`).
 3. The UI shows the token **once**, as an enrollment string:
 

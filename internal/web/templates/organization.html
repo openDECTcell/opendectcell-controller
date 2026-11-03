@@ -5,8 +5,8 @@
 <div class="alert alert-info" role="status">
   <h4 class="alert-title">Invitation</h4>
   <p class="mb-2">Give this to the person you want to invite. <strong>It is shown only now</strong>, works once and expires on {{fmtTime .Expires}}.</p>
-  <div class="mb-2"><label class="form-label mb-1">Link</label><input class="form-control" readonly value="{{.JoinURL}}" onclick="this.select()"></div>
-  <div><label class="form-label mb-1">Token</label><input class="form-control" readonly value="{{.Token}}" onclick="this.select()"></div>
+  <div class="mb-2"><label class="form-label mb-1">Link</label><input class="form-control" readonly data-select-all value="{{.JoinURL}}"></div>
+  <div><label class="form-label mb-1">Token</label><input class="form-control" readonly data-select-all value="{{.Token}}"></div>
 </div>
 {{end}}
 <div class="row row-cards mb-3">

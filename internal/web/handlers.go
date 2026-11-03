@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
@@ -23,7 +24,9 @@ type page struct {
 	Error   string
 	Notice  string
 	Warn    string // a warning that is not an error: the page works, but the user should know
-	Data    any
+	// PromptTOTP: offer the user two-factor login (filled in by render; never a demand)
+	PromptTOTP bool
+	Data       any
 
 	// filled in by render
 	Brand   brand
@@ -47,6 +50,9 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, p page) 
 	p.Brand = s.brand(ctx)
 	p.Nav = navFor(p.User, p.Path)
 	p.Section = section(p.Nav)
+	if p.User != nil && s.Auth != nil && !strings.HasPrefix(p.Path, "/account/2fa") {
+		p.PromptTOTP = s.Auth.ShouldPromptTOTP(ctx, p.User)
+	}
 	if p.Leaflet {
 		m, _ := s.mapConfig(ctx)
 		p.Tiles, p.TilesAttribution = m.TileURL, m.Attribution
@@ -126,7 +132,7 @@ func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, r, err)
 			return
 		}
-		if on {
+		if on && !s.deviceKnown(r, id) {
 			tok, err := s.Auth.NewMFAChallenge(r.Context(), id, d.Next)
 			if err != nil {
 				s.internalError(w, r, err)
@@ -171,6 +177,9 @@ func (s *Server) login2FA(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.internalError(w, r, err)
 		return
+	}
+	if r.PostFormValue("remember") == "on" {
+		s.rememberDevice(w, r, id)
 	}
 	s.startSession(w, r, u, "local", next)
 }
