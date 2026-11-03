@@ -469,6 +469,10 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	defer sipMgr.Close()
 
 	store := authStore(cfg, pool)
+	store.EveryoneMayEnroll = func(ctx context.Context) bool {
+		c, err := (&settings.Store{Pool: pool}).Cells(ctx)
+		return err == nil && c.EveryoneMayEnroll
+	}
 	store.Keyring = kr
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,

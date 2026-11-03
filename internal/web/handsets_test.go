@@ -76,9 +76,10 @@ func TestHandsetPages(t *testing.T) {
 	if !strings.Contains(list, "Kitchen") || strings.Contains(list, "Admin phone") {
 		t.Errorf("a user's list: %s", list)
 	}
+	// handsets are private: an admin sees their own, not anyone else's
 	_, all := e.get(t, a, "/handsets")
-	if !strings.Contains(all, "Kitchen") || !strings.Contains(all, "Admin phone") || !strings.Contains(all, "<th>Owner</th>") {
-		t.Error("the admin's list lacks someone's handset or the owner column")
+	if strings.Contains(all, "Kitchen") || !strings.Contains(all, "Admin phone") || strings.Contains(all, "<th>Owner</th>") {
+		t.Errorf("the admin's list: %s", all)
 	}
 	if resp, _ := e.get(t, u, "/handsets/"+theirs.String()); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("someone else's handset: %d", resp.StatusCode)
@@ -135,26 +136,26 @@ func TestHandsetPages(t *testing.T) {
 	if _, pg := e.get(t, u, "/handsets/"+mine.String()); !strings.Contains(pg, `value="gigaset-c430a" selected`) {
 		t.Error("the profile is not selected on the page")
 	}
-	// phone lines are the owner's: an admin sees the handset, not its lines
+	// handsets are the owner's alone: an admin gets nothing of them, not the page, the lines, a save
 	e.store.Pool.Exec(ctx, "INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, 1, $2) ON CONFLICT DO NOTHING", mine, acct)
-	if _, ap := e.get(t, a, "/handsets/"+mine.String()); strings.Contains(ap, "Line 1") || strings.Contains(ap, ">Home<") || !strings.Contains(ap, "private to the handset") {
-		t.Errorf("an admin sees the owner's lines: %s", ap)
-	}
-	if _, al := e.get(t, a, "/handsets"); strings.Contains(al, "1: Home") || !strings.Contains(al, "private") {
-		t.Error("the admin's list shows the owner's lines")
+	e.store.Pool.Exec(ctx, "UPDATE handset SET default_line = 1 WHERE id = $1", mine)
+	if r, ap := e.get(t, a, "/handsets/"+mine.String()); r.StatusCode != http.StatusNotFound || strings.Contains(ap, ">Home<") {
+		t.Errorf("an admin sees the owner's handset: %d", r.StatusCode)
 	}
 	if r := e.post(t, a, "/handsets/"+mine.String()+"/lines/1", url.Values{"account": {""}}); r.StatusCode != http.StatusNotFound {
 		t.Errorf("an admin changed the owner's line: %d", r.StatusCode)
 	}
-	// saving the name as an admin leaves the owner's default line alone
-	e.store.Pool.Exec(ctx, "UPDATE handset SET default_line = 1 WHERE id = $1", mine)
-	if r := e.post(t, a, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen phone"}, "dual_ring": {"busy"}}); r.StatusCode != http.StatusSeeOther {
+	if r := e.post(t, a, "/handsets/"+mine.String(), url.Values{"name": {"Hacked"}, "dual_ring": {"busy"}}); r.StatusCode != http.StatusNotFound {
 		t.Errorf("admin save: %d", r.StatusCode)
 	}
+	if r := e.post(t, a, "/handsets/"+mine.String()+"/deregister", url.Values{}); r.StatusCode != http.StatusNotFound {
+		t.Errorf("admin deregister: %d", r.StatusCode)
+	}
 	var kept *int
-	e.store.Pool.QueryRow(ctx, "SELECT default_line FROM handset WHERE id = $1", mine).Scan(&kept)
-	if kept == nil || *kept != 1 {
-		t.Error("an admin's save cleared the owner's default line")
+	var nm string
+	e.store.Pool.QueryRow(ctx, "SELECT default_line, display_name FROM handset WHERE id = $1", mine).Scan(&kept, &nm)
+	if kept == nil || *kept != 1 || nm == "Hacked" {
+		t.Error("an admin changed the owner's handset")
 	}
 	// the IPEI is on the list and the page
 	if _, al := e.get(t, u, "/handsets"); !strings.Contains(al, "<th>IPEI</th>") {
@@ -203,10 +204,6 @@ func TestHandsetPages(t *testing.T) {
 	e.store.Pool.QueryRow(ctx, "SELECT default_line FROM handset WHERE id = $1", mine).Scan(&def)
 	if def != nil {
 		t.Error("the default line survived its line")
-	}
-	// the admin may edit anyone's
-	if r := e.post(t, a, "/handsets/"+mine.String(), url.Values{"name": {"Kitchen"}, "dual_ring": {"call_waiting"}}); r.StatusCode != http.StatusSeeOther {
-		t.Errorf("admin edit: %d", r.StatusCode)
 	}
 	if resp, body := e.get(t, u, "/handsets/register"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="reg-go"`) ||
 		!strings.Contains(body, `id="reg-name"`) || !strings.Contains(body, "Gigaset A540") || !strings.Contains(body, "Manufacturer") {

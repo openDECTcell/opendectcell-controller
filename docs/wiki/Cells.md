@@ -5,8 +5,9 @@ keeping them healthy and taking them out.
 
 ## Enrolling a cell
 
-1. In the controller: **Base stations > Enroll a base station** (visible to administrators, and to users an
-   administrator allowed to enrol cells). Fill in a **note** (it becomes the cell's name if the cell sends
+1. In the controller: **Base stations > Enroll a base station** (visible to administrators, to every user while
+   **Administration > Settings > Base stations > Every user may enroll base stations** is on, which is the default, and
+   otherwise to the users an administrator ticked "May enroll base stations" for). Fill in a **note** (it becomes the cell's name if the cell sends
    none), choose how long the token is **valid** (1 hour, 24 hours or 7 days) and whether the cell is
    **approved automatically**. Press **Create token**.
 2. The page shows the **enrollment string**, starting with `opendectcell-enroll:v1?`, **once**. Copy it. The token

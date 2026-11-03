@@ -38,21 +38,18 @@ type Line struct {
 
 // Handset is a handset as the UI lists it.
 type Handset struct {
-	ID           uuid.UUID
-	OwnerID      uuid.UUID
-	Owner        string
-	Name         string
-	Model        string
-	Profile      string // the id of its device profile; "" is the standard behaviour
-	RegisteredAt time.Time
-	LastSeenAt   *time.Time
-	LastSeenCell string
-	DefaultLine  *int
-	DualRing     string // call_waiting or busy
-	Lines        []Line
-	// LinesPrivate: the viewer is not the owner (an admin): the lines are not shown
-	// to them, they hold the owner's accounts.
-	LinesPrivate  bool
+	ID            uuid.UUID
+	OwnerID       uuid.UUID
+	Owner         string
+	Name          string
+	Model         string
+	Profile       string // the id of its device profile; "" is the standard behaviour
+	RegisteredAt  time.Time
+	LastSeenAt    *time.Time
+	LastSeenCell  string
+	DefaultLine   *int
+	DualRing      string // call_waiting or busy
+	Lines         []Line
 	IPUI          []byte         // the identity it registered with (an IPEI for a type N)
 	TPUI          int            // its temporary identity
 	Capabilities  map[string]any // what it said of itself (TERMINAL-CAPABILITY), as the DECT core stored it
@@ -167,10 +164,10 @@ func scan(r pgx.Row) (*Handset, error) {
 	return &h, nil
 }
 
-// List returns the handsets u may see: their own, or every handset for an
-// admin. Lines are filled in.
+// List returns the handsets u owns. A handset is private to its owner: an
+// administrator does not see other users' handsets. Lines are filled in.
 func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT "+cols+from+" WHERE $1 OR h.owner_user_id = $2 ORDER BY lower(u.username), h.registered_at", u.IsAdmin(), u.ID)
+	rows, err := s.Pool.Query(ctx, "SELECT "+cols+from+" WHERE h.owner_user_id = $1 ORDER BY h.registered_at", u.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -201,24 +198,21 @@ func (s *Store) List(ctx context.Context, u *auth.User) ([]*Handset, error) {
 		if err := lr.Scan(&hid, &l.Line, &l.AccountID, &l.Label, &l.Address, &l.Enabled); err != nil {
 			return nil, err
 		}
-		if h := byID[hid]; h != nil && h.OwnerID == u.ID {
+		if h := byID[hid]; h != nil {
 			h.Lines = append(h.Lines, l)
 		}
-	}
-	for _, h := range out {
-		h.LinesPrivate = h.OwnerID != u.ID
 	}
 	s.presence(ctx, out...)
 	return out, lr.Err()
 }
 
-// Get returns one handset if u may see it.
+// Get returns one handset if u owns it; for anyone else it is not found.
 func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Handset, error) {
 	h, err := scan(s.Pool.QueryRow(ctx, "SELECT "+cols+from+" WHERE h.id = $1", id))
 	if err != nil {
 		return nil, err
 	}
-	if err := auth.RequireAccess(u, &h.OwnerID); err != nil {
+	if !auth.IsOwner(u, &h.OwnerID) {
 		return nil, ErrNotFound
 	}
 	all, err := s.List(ctx, u)
@@ -230,7 +224,6 @@ func (s *Store) Get(ctx context.Context, u *auth.User, id uuid.UUID) (*Handset, 
 			return x, nil
 		}
 	}
-	h.LinesPrivate = h.OwnerID != u.ID
 	s.presence(ctx, h)
 	return h, nil
 }
@@ -260,9 +253,6 @@ type Update struct {
 	// Model the name the pages show for it; nil keeps both as they are.
 	Profile *string
 	Model   string
-	// KeepDefaultLine leaves the default line as it is: the editor is not the
-	// owner and does not see the lines.
-	KeepDefaultLine bool
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -282,12 +272,10 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 			}
 			return err
 		}
-		if auth.RequireAccess(u, &owner) != nil {
+		if !auth.IsOwner(u, &owner) {
 			return ErrNotFound
 		}
-		if up.KeepDefaultLine {
-			up.DefaultLine = nil
-		} else if up.DefaultLine != nil {
+		if up.DefaultLine != nil {
 			var has bool
 			if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM handset_line WHERE handset_id = $1 AND line = $2)", id, *up.DefaultLine).Scan(&has); err != nil {
 				return err
@@ -296,11 +284,7 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 				return ErrInvalid
 			}
 		}
-		if up.KeepDefaultLine {
-			if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, dual_ring_policy = $3 WHERE id = $1", id, up.Name, up.DualRing); err != nil {
-				return err
-			}
-		} else if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
+		if _, err := tx.Exec(ctx, "UPDATE handset SET display_name = $2, default_line = $3, dual_ring_policy = $4 WHERE id = $1", id, up.Name, up.DefaultLine, up.DualRing); err != nil {
 			return err
 		}
 		if up.Profile != nil {
@@ -325,7 +309,7 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
 			}
 			return err
 		}
-		if auth.RequireAccess(u, &owner) != nil {
+		if !auth.IsOwner(u, &owner) {
 			return ErrNotFound
 		}
 		if _, err := tx.Exec(ctx, "UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now() WHERE handset_id = $1", id); err != nil {

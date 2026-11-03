@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
@@ -242,5 +243,58 @@ func TestSystemIdentityPages(t *testing.T) {
 		if r := e.post(t, user, p, url.Values{"action": {"random"}}); r.StatusCode != http.StatusNotFound {
 			t.Errorf("user POST %s: %d", p, r.StatusCode)
 		}
+	}
+}
+
+// Who may enroll base stations is a setting: every user while it is on (the
+// default), only admins and users ticked "may enroll" when an admin turns it off.
+func TestEveryoneMayEnrollSetting(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+		s.CellLink = &fakeLink{states: map[uuid.UUID]wire.CellStateValue{}}
+	})
+	e.store.EveryoneMayEnroll = func(ctx context.Context) bool {
+		c, err := e.app.Settings.Cells(ctx)
+		return err == nil && c.EveryoneMayEnroll
+	}
+	admin, user := e.adminBrowser(t), e.userBrowser(t)
+	status := func(c *http.Client) int { r, _ := e.get(t, c, "/enroll"); return r.StatusCode }
+	if got, _ := e.app.Settings.Cells(ctx); !got.EveryoneMayEnroll {
+		t.Fatal("not on by default")
+	}
+	if s := status(user); s != http.StatusOK {
+		t.Errorf("a plain user on /enroll with the setting on (the default): %d", s)
+	}
+	if _, pg := e.get(t, admin, "/admin/settings"); !strings.Contains(pg, `name="everyone_may_enroll" checked`) {
+		t.Error("the settings page does not show it on")
+	}
+	if r := e.post(t, admin, "/admin/settings/cells", url.Values{}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("turn off: %d", r.StatusCode)
+	}
+	if s := status(user); s != http.StatusNotFound {
+		t.Errorf("a plain user on /enroll with the setting off: %d", s)
+	}
+	if s := status(admin); s != http.StatusOK {
+		t.Errorf("an admin on /enroll with the setting off: %d", s)
+	}
+	e.store.Pool.Exec(ctx, "UPDATE app_user SET may_add_cells = true WHERE username = 'user'")
+	if s := status(user); s != http.StatusOK {
+		t.Errorf("a ticked user on /enroll with the setting off: %d", s)
+	}
+	e.store.Pool.Exec(ctx, "UPDATE app_user SET may_add_cells = false WHERE username = 'user'")
+	if r := e.post(t, user, "/admin/settings/cells", url.Values{"everyone_may_enroll": {"on"}}); r.StatusCode == http.StatusSeeOther {
+		t.Error("a plain user changed the setting")
+	}
+	if r := e.post(t, admin, "/admin/settings/cells", url.Values{"everyone_may_enroll": {"on"}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("turn on: %d", r.StatusCode)
+	}
+	if s := status(user); s != http.StatusOK {
+		t.Errorf("a plain user on /enroll with the setting back on: %d", s)
 	}
 }

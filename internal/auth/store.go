@@ -46,6 +46,9 @@ type User struct {
 	Email       string
 	Role        Role
 	MayAddCells bool
+	// EnrollOpen: the installation lets every user enroll cells (a setting, set when
+	// the user is loaded for a request; not stored per user).
+	EnrollOpen  bool
 	AuthSource  string // "local" or "oidc"
 	Disabled    bool
 	CreatedAt   time.Time
@@ -107,6 +110,9 @@ type Store struct {
 	Now           func() time.Time
 	// Keyring protects two-factor secrets; without it two-factor login is off.
 	Keyring *secret.Keyring
+	// EveryoneMayEnroll reports the installation's setting that lets every user enroll
+	// cells; nil: it does not, and only MayAddCells and admins do.
+	EveryoneMayEnroll func(context.Context) bool
 
 	// HashConcurrency bounds the password hashes (Argon2id uses tens of MiB
 	// each) that run at once; others wait, for at most hashWait. Zero is
@@ -615,6 +621,9 @@ func (s *Store) LookupSession(ctx context.Context, tok string) (*Session, error)
 		return nil, err
 	}
 	u.Role = Role(role)
+	if s.EveryoneMayEnroll != nil {
+		u.EnrollOpen = s.EveryoneMayEnroll(ctx)
+	}
 	if u.Disabled || !now.Before(expires) || now.Sub(lastSeen) >= s.SessionIdle {
 		_, _ = s.Pool.Exec(ctx, "DELETE FROM session WHERE token_hash = $1", h) // Cleanup retries
 		return nil, ErrNoSession

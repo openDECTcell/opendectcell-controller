@@ -136,9 +136,8 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 	if !ok {
 		return
 	}
-	up := handset.Update{Name: strings.TrimSpace(r.PostFormValue("name")), DualRing: r.PostFormValue("dual_ring"),
-		KeepDefaultLine: h.OwnerID != u.ID} // an admin does not see the owner's lines
-	if v := r.PostFormValue("default_line"); v != "" && !up.KeepDefaultLine {
+	up := handset.Update{Name: strings.TrimSpace(r.PostFormValue("name")), DualRing: r.PostFormValue("dual_ring")}
+	if v := r.PostFormValue("default_line"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			s.handsetFail(w, r, u, h, handset.ErrInvalid)

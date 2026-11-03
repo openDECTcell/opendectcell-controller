@@ -151,7 +151,7 @@ func (s *Server) apiContactDelete(w http.ResponseWriter, r *http.Request, u *aut
 }
 
 // apiHandsetList returns a list as the handset reads it. The caller must be
-// the handset's owner or an admin.
+// the handset's owner: handsets are private, an admin has no access either.
 func (s *Server) apiHandsetList(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	hid, ok := pathID(w, r)
 	if !ok {
@@ -159,7 +159,7 @@ func (s *Server) apiHandsetList(w http.ResponseWriter, r *http.Request, u *auth.
 	}
 	var owner *uuid.UUID
 	err := s.Pool.QueryRow(r.Context(), "SELECT owner_user_id FROM handset WHERE id = $1", hid).Scan(&owner)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !auth.CanAccess(u, owner)) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !auth.IsOwner(u, owner)) {
 		notFoundAPI(w)
 		return
 	}

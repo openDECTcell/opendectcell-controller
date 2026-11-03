@@ -95,6 +95,10 @@ func TestAuthorisationRules(t *testing.T) {
 		t.Error("anonymous allowed")
 	case auth.CanAddCells(u), !auth.CanAddCells(&auth.User{MayAddCells: true}), !auth.CanAddCells(a):
 		t.Error("CanAddCells")
+	case !auth.CanAddCells(&auth.User{EnrollOpen: true}), auth.CanAddCells(&auth.User{EnrollOpen: true, Disabled: true}):
+		t.Error("CanAddCells with the installation open to everyone")
+	case !auth.IsOwner(u, &u.ID), auth.IsOwner(a, &other), auth.IsOwner(u, nil), auth.IsOwner(nil, &other):
+		t.Error("IsOwner: only the owner, an admin is not one")
 	}
 	u.Disabled = true
 	if auth.CanAccess(u, &u.ID) {

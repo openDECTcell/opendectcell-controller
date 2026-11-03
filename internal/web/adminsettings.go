@@ -25,6 +25,7 @@ func (s *Server) settingsRoutes() {
 	s.mux.Handle("POST /admin/settings/retention", s.requireAdmin(s.settingsRetention))
 	s.mux.Handle("POST /admin/settings/security", s.requireAdmin(s.settingsSecurity))
 	s.mux.Handle("POST /admin/settings/roaming", s.requireAdmin(s.settingsRoaming))
+	s.mux.Handle("POST /admin/settings/cells", s.requireAdmin(s.settingsCells))
 }
 
 type settingsData struct {
@@ -41,6 +42,7 @@ type settingsData struct {
 	Retention    settings.Retention
 	Security     settings.Security
 	Roaming      settings.Roaming
+	Cells        settings.Cells
 	SMTP         bool
 	SMTPHost     string
 }
@@ -83,6 +85,9 @@ func (s *Server) settingsView(r *http.Request) (settingsData, error) {
 		return d, err
 	}
 	if d.Roaming, err = s.Settings.Roaming(r.Context()); err != nil {
+		return d, err
+	}
+	if d.Cells, err = s.Settings.Cells(r.Context()); err != nil {
 		return d, err
 	}
 	d.SMTP, d.SMTPHost = s.mailOn(), s.SMTPHost
@@ -248,6 +253,19 @@ func (s *Server) settingsSecurity(w http.ResponseWriter, r *http.Request, u *aut
 	}
 	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeySecurity,
 		Details: map[string]any{"require_admin_2fa": sec.RequireAdmin2FA}})
+	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
+}
+
+// settingsCells: who may enroll base stations.
+func (s *Server) settingsCells(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	c := settings.Cells{EveryoneMayEnroll: r.PostFormValue("everyone_may_enroll") == "on"}
+	if err := s.Settings.Put(r.Context(), settings.KeyCells, c); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	_ = audit.Record(r.Context(), s.Pool, audit.Entry{Action: "settings.update", ObjectType: "setting", ObjectID: settings.KeyCells,
+		Details: map[string]any{"everyone_may_enroll": c.EveryoneMayEnroll}})
 	http.Redirect(w, r, "/admin/settings?done=Saved.", http.StatusSeeOther)
 }
 

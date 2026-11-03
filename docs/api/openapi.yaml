@@ -15,8 +15,9 @@ info:
     | `any` | No login (health only) |
     | `user` | Any logged-in user |
     | `admin` | Role `admin` |
+    | `owner` | Only the object's owner, **an admin included**. Handsets are private: an admin neither lists nor reads nor changes another user's handset, and gets **404** like anyone else |
     | `owner-or-admin` | The object's owner, or an admin. Shared objects (owner `null`) are admin-only. A user asking for an object they may not see gets **404**, never 403, so existence is not revealed |
-    | `may-add-cells` | Role `admin`, or a user with `may_add_cells` |
+    | `may-add-cells` | Role `admin`, a user with `may_add_cells`, or any user while the installation setting `cells.everyone_may_enroll` is on (the default) |
     | `org-member` | A member of the organization, or a controller admin. Anyone else gets **404**; a member who may not do the thing gets **403** |
     | `org-admin` | An admin or the owner of the organization, or a controller admin |
     | `org-owner` | The owner of the organization, or a controller admin |
@@ -24,7 +25,8 @@ info:
 
     List endpoints apply the same rule per item: a user's list contains
     only their own objects; an admin's contains everything and accepts
-    `owner` to filter.
+    `owner` to filter, except handsets (rule `owner`): everyone's list holds
+    only their own.
 
     **Authentication.** The browser session cookie. State-changing requests
     from a browser must be same-origin (checked with Fetch metadata / Origin).
@@ -206,11 +208,10 @@ paths:
     get:
       tags: [handsets]
       operationId: listHandsets
-      x-authz: owner-or-admin
+      x-authz: owner
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Before" }
-        - { $ref: "#/components/parameters/OwnerFilter" }
       responses:
         "200":
           description: OK
@@ -220,7 +221,7 @@ paths:
     get:
       tags: [handsets]
       operationId: getHandset
-      x-authz: owner-or-admin
+      x-authz: owner
       responses:
         "200":
           description: OK
@@ -229,8 +230,8 @@ paths:
     patch:
       tags: [handsets]
       operationId: updateHandset
-      description: Changing `owner_id` is admin-only; lines whose account the new owner may not use are removed. A handset always has an owner.
-      x-authz: owner-or-admin
+      description: A handset's owner cannot be changed; a handset always has an owner.
+      x-authz: owner
       requestBody:
         required: true
         content:
@@ -241,7 +242,6 @@ paths:
                 display_name: { type: string, maxLength: 64 }
                 default_line: { type: integer, enum: [1, 2], nullable: true }
                 dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
-                owner_id: { type: string, format: uuid, nullable: true, description: Admin only }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
         "200":
@@ -253,7 +253,7 @@ paths:
       tags: [handsets]
       operationId: deleteHandset
       description: Deregisters the handset. Its subscription records are overwritten on every cell that held one (`cell-protocol.md` §7.4).
-      x-authz: owner-or-admin
+      x-authz: owner
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -268,7 +268,7 @@ paths:
         Assigns a SIP account to line 1 or 2. The account must belong to the
         handset's owner, or be shared (admin only). A user naming someone
         else's account gets `404` for the account.
-      x-authz: owner-or-admin
+      x-authz: owner
       requestBody:
         required: true
         content:
@@ -288,7 +288,7 @@ paths:
     delete:
       tags: [handsets]
       operationId: clearHandsetLine
-      x-authz: owner-or-admin
+      x-authz: owner
       responses:
         "204": { description: Cleared }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -303,7 +303,7 @@ paths:
         listed to them by `listCells`. *Proposed 2026-10-31
         (`adr/0004-shared-network.md`):* in the shared network the home set
         becomes a placement hint (prefetch), not the access rule.
-      x-authz: owner-or-admin
+      x-authz: owner
       requestBody:
         required: true
         content:
@@ -325,7 +325,7 @@ paths:
       tags: [handsets]
       operationId: listHandsetFeatures
       description: Feature modules available for this handset's model and capabilities (`dect-features.md`), with their settings.
-      x-authz: owner-or-admin
+      x-authz: owner
       responses:
         "200":
           description: OK
@@ -341,7 +341,7 @@ paths:
       tags: [handsets]
       operationId: setHandsetFeature
       description: "`409 unsupported` if the handset's capabilities or model don't allow the feature."
-      x-authz: owner-or-admin
+      x-authz: owner
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/FeatureSettingInput" } } }
@@ -763,7 +763,7 @@ paths:
         handset: the shared ones only). Incoming call lists: the calls on the SIP
         accounts of the handset's lines. `outgoing_calls`: calls placed from this
         handset (docs/list-access.md §1).
-      x-authz: owner-or-admin
+      x-authz: owner
       parameters:
         - { $ref: "#/components/parameters/Limit" }
       responses:
@@ -1502,6 +1502,7 @@ components:
       properties:
         slot_policy: { type: string, enum: [auto, manual], description: "cell-protocol.md §7.4" }
         audit_retention_days: { type: integer, minimum: 30, nullable: true, description: "null = keep forever" }
+        everyone_may_enroll: { type: boolean, default: true, description: "Every user may enroll base stations; when false only admins and users with `may_add_cells` may" }
 
     TrustScope: { type: string, enum: [all, own, orgs] }
     Trust:

@@ -28,6 +28,7 @@ const (
 	KeyRetention    = "retention"
 	KeySecurity     = "security"
 	KeyRoaming      = "roaming"
+	KeyCells        = "cells"
 )
 
 // MaxLogoBytes is the largest logo the controller stores.
@@ -326,4 +327,19 @@ func (s *Store) Roaming(ctx context.Context) (Roaming, error) {
 	r := Roaming{DefaultLocateValiditySec, DefaultExpireAfterSec, DefaultMovedAfterSec}
 	_, err := s.Get(ctx, KeyRoaming, &r)
 	return r, err
+}
+
+// Cells holds the rules for base stations.
+type Cells struct {
+	// EveryoneMayEnroll: every user may enroll base stations. When off, only
+	// administrators and users an administrator ticked "may enroll cells" for
+	// may. On unless an administrator switched it off (maintainer, 2026-11-03).
+	EveryoneMayEnroll bool `json:"everyone_may_enroll"`
+}
+
+// Cells returns the base station rules; unset means everyone may enroll.
+func (s *Store) Cells(ctx context.Context) (Cells, error) {
+	c := Cells{EveryoneMayEnroll: true}
+	_, err := s.Get(ctx, KeyCells, &c)
+	return c, err
 }

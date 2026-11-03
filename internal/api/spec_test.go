@@ -13,7 +13,7 @@ import (
 
 const specPath = "../../docs/api/openapi.yaml"
 
-var rules = map[string]bool{"any": true, "user": true, "admin": true, "owner-or-admin": true, "may-add-cells": true, "owner-or-admin-shared-read": true,
+var rules = map[string]bool{"any": true, "user": true, "admin": true, "owner": true, "owner-or-admin": true, "may-add-cells": true, "owner-or-admin-shared-read": true,
 	"org-member": true, "org-admin": true, "org-owner": true}
 
 func loadSpec(t *testing.T) *openapi3.T {

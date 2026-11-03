@@ -24,14 +24,14 @@
 | **SIP stack** | One UA per handset line (≤ 2 per handset): registration, calls, MWI subscription, encryption (see `voip-requirements.md`) |
 | **Media engine** | Audio bridging cell ↔ RTP: jitter buffer, pass-through or transcoding between the cell-link format (per direction and per cell: L16 8 kHz today, G.722 if a cell reports it) and the SIP codec (`media-engine.md`), SRTP, statistics |
 | **Database** | Users, handsets, SIP accounts, cells, call log and statistics (secrets encrypted) |
-| **Web/API** | Users manage their handsets and accounts; admins see stats, logs and cells and manage policies. REST/JSON API used by the web frontend |
+| **Web/API** | Users manage their handsets and accounts; admins see stats, logs and cells and manage policies. **Handsets are private to their owner**: admins do not list, read or change another user's handsets (maintainer, 2026-11-03). REST/JSON API used by the web frontend |
 | **Auth** | Local accounts plus OIDC (Authentik and others); roles `admin`, `user`; optional per-user permission "may add cells" |
 
 ## 3. Data model (first cut)
 
 | Entity | Key fields |
 |---|---|
-| `user` | id, name, email, auth source (local/OIDC subject; created on first OIDC login), role (mapped from OIDC groups or set locally), `may_add_cells` |
+| `user` | id, name, email, auth source (local/OIDC subject; created on first OIDC login), role (mapped from OIDC groups or set locally), `may_add_cells` (matters only while the setting "every user may enroll base stations" is off; it is on by default) |
 | `handset` | id, owner (a user, **always set**; a team's handset belongs to an organisation or admin account), IPUI, TPUI, auth key (UAK, **encrypted**), model info (manufacturer/EMC, model, profile/capabilities), display name, default line, last seen cell, registration time |
 | `sip_account` | id, owner (user), display name, user, domain, auth user, password (**encrypted**), registrar, outbound proxy, transport, encryption policy, codec list, DTMF mode, NAT options, … (`voip-requirements.md` §2) |
 | `handset_line` | handset, slot (1 or 2), sip_account. **0–2 lines per handset**; one account may serve several handsets. Per handset: `dual_ring_policy` (call waiting / busy) for when both lines ring |

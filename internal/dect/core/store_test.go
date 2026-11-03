@@ -198,9 +198,16 @@ func TestStoreSeen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t0 := time.Now().Truncate(time.Millisecond)
-	if prev, err := s.Seen(ctx, a, id, t0); err != nil || prev != uuid.Nil {
-		t.Fatalf("first sighting: prev %v, %v", prev, err)
+	// the registration itself is the first contact: it was on a, and just now
+	var regSeen *time.Time
+	var regCell *uuid.UUID
+	s.Pool.QueryRow(ctx, "SELECT last_seen_at, last_seen_cell_id FROM handset WHERE id = $1", id).Scan(&regSeen, &regCell)
+	if regSeen == nil || time.Since(*regSeen) > time.Minute || regCell == nil || *regCell != a {
+		t.Fatalf("a handset just registered is not marked as heard on its cell: %v %v", regSeen, regCell)
+	}
+	t0 := time.Now().Add(time.Second).Truncate(time.Millisecond)
+	if prev, err := s.Seen(ctx, a, id, t0); err != nil || prev != a {
+		t.Fatalf("first sighting after the registration: prev %v, %v (want a)", prev, err)
 	}
 	if prev, err := s.Seen(ctx, b, id, t0.Add(time.Minute)); err != nil || prev != a {
 		t.Fatalf("moved to b: prev %v, %v (want a)", prev, err)
@@ -578,6 +585,8 @@ func TestStoreDetachedAndPageFailed(t *testing.T) {
 	}
 	t1 := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
 	t2 := t1.Add(time.Minute)
+	// the registration counted as a contact; this is about the later ones
+	s.Pool.Exec(ctx, "UPDATE handset SET last_seen_at = NULL, last_seen_cell_id = NULL WHERE id = $1", id)
 	for _, at := range []time.Time{t2, t1} { // the older one after the newer one changes nothing
 		if err := s.Detached(ctx, id, at); err != nil {
 			t.Fatal(err)

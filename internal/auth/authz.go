@@ -43,9 +43,16 @@ func RequireAdmin(u *User) error {
 }
 
 // CanAddCells reports whether u may create cell enrollment tokens: admins,
-// and users with the may_add_cells permission (architecture.md §2).
+// users with the may_add_cells permission, and everyone while the installation
+// lets every user enroll (architecture.md §2).
 func CanAddCells(u *User) bool {
-	return u != nil && !u.Disabled && (u.IsAdmin() || u.MayAddCells)
+	return u != nil && !u.Disabled && (u.IsAdmin() || u.MayAddCells || u.EnrollOpen)
+}
+
+// IsOwner is the rule for private objects (handsets): only the owner, an
+// administrator included. owner nil is nobody.
+func IsOwner(u *User, owner *uuid.UUID) bool {
+	return u != nil && !u.Disabled && owner != nil && *owner == u.ID
 }
 
 type userKey struct{}

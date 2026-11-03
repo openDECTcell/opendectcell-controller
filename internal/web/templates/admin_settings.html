@@ -98,6 +98,18 @@
 
   <div class="col-lg-6">
     <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "plus"}} Base stations</h3></div>
+      <form method="post" action="/admin/settings/cells">
+        <div class="card-body">
+          <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="everyone_may_enroll" {{if .Cells.EveryoneMayEnroll}}checked{{end}}><span class="form-check-label"><strong>Every user may enroll base stations.</strong> When this is off, only administrators and the users whose account has "May enroll base stations" ticked can. Base stations that are already enrolled keep working either way.</span></label>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
       <div class="card-header"><h3 class="card-title">{{icon "antenna-bars-5"}} Roaming</h3></div>
       <form method="post" action="/admin/settings/roaming">
         <div class="card-body">

@@ -699,9 +699,9 @@ func (s *Store) SaveRecord(ctx context.Context, cell, id, owner uuid.UUID, r sta
 				if err != nil {
 					return err
 				}
-				if _, err := tx.Exec(ctx, `INSERT INTO handset (id, owner_user_id, ipui, tpui, uak_enc, cc_port_id, cc_fixed_id, pooled)
-					VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, id, owner, r.PortID, tpui, enc,
-					nullIfEmpty(r.CCPortID), nullIfEmpty(r.CCFixedID), pooled); err != nil {
+				if _, err := tx.Exec(ctx, `INSERT INTO handset (id, owner_user_id, ipui, tpui, uak_enc, cc_port_id, cc_fixed_id, pooled, last_seen_at, last_seen_cell_id)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), $9)`, id, owner, r.PortID, tpui, enc,
+					nullIfEmpty(r.CCPortID), nullIfEmpty(r.CCFixedID), pooled, cell); err != nil {
 					return err
 				}
 				if _, err := tx.Exec(ctx, `INSERT INTO handset_home_cell (handset_id, cell_id) VALUES ($1, $2)

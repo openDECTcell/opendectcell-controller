@@ -18,8 +18,8 @@ A handset is registered **once**, at the controller. It then works on every cell
 If nothing happens, the window may have closed (press *Start registration* again), or no cell is online.
 
 The handset registers on the cell it hears best; the controller stores its key and from then on every cell
-can serve it. Only the owner (the user who started the registration) can see and change the handset; an
-administrator sees all.
+can serve it. Only the owner (the user who started the registration) can see and change the handset. Handsets are
+private: administrators do not see other users' handsets either.
 
 ## After registering: give it a line
 
