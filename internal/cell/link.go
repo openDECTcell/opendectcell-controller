@@ -57,9 +57,19 @@ type Server struct {
 	Hosts []string // extra DNS/IP SANs for the server certificate
 
 	Heartbeat, Dead, Grace, Orphan time.Duration
+	// Recheck is how often a session looks its cell up again to see that it
+	// was not revoked in the meantime (the immediate path, Kick, is best
+	// effort for a session that is busy or a controller that restarted); zero
+	// is a minute.
+	Recheck time.Duration
 	// EnrollDelay is how long a rate-limited enrollment waits before its
 	// answer (§5.2); tests shorten it.
 	EnrollDelay time.Duration
+	// MaxPreAuth and MaxPreAuthPerAddr bound the connections that are not
+	// authenticated yet, in all and per source address (an IPv6 /64); zero
+	// takes the defaults. A connection over a limit is closed without a
+	// handshake. Set before Serve.
+	MaxPreAuth, MaxPreAuthPerAddr int
 	// Mails receives the STUB mail tunnel of every active cell (§7); nil
 	// drops the mails. Set before Serve.
 	Mails MailSink
@@ -73,6 +83,7 @@ type Server struct {
 	certExp  time.Time
 	tlsConf  *tls.Config
 	sessions sync.WaitGroup
+	pre      *preAuth
 }
 
 // MailSink is the far end of the STUB mail tunnel (§7), the DECT core.
@@ -270,7 +281,7 @@ func (s *Server) defaults() {
 	if s.Log == nil {
 		s.Log = slog.Default()
 	}
-	for p, d := range map[*time.Duration]time.Duration{&s.Heartbeat: DefaultHeartbeat, &s.Dead: DefaultDead, &s.Grace: DefaultGrace, &s.Orphan: DefaultOrphan, &s.EnrollDelay: enrollDelay} {
+	for p, d := range map[*time.Duration]time.Duration{&s.Recheck: time.Minute, &s.Heartbeat: DefaultHeartbeat, &s.Dead: DefaultDead, &s.Grace: DefaultGrace, &s.Orphan: DefaultOrphan, &s.EnrollDelay: enrollDelay} {
 		if *p == 0 {
 			*p = d
 		}
@@ -320,6 +331,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	if s.cells == nil {
 		s.cells = map[uuid.UUID]*record{}
 	}
+	s.pre = newPreAuth(s.MaxPreAuth, s.MaxPreAuthPerAddr)
 	s.mu.Unlock()
 	tl := tls.NewListener(ln, s.TLSConfig())
 	go func() { <-ctx.Done(); tl.Close() }()
@@ -337,10 +349,17 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			}
 			return err
 		}
+		release, ok := s.pre.acquire(remoteAddr(c))
+		if !ok {
+			s.Log.Debug("too many unauthenticated cell connections: one is turned away", "addr", remoteAddr(c))
+			c.Close()
+			continue
+		}
 		s.sessions.Add(1)
 		go func() {
 			defer s.sessions.Done()
-			s.handle(ctx, c.(*tls.Conn))
+			defer release()
+			s.handle(ctx, c.(*tls.Conn), release)
 		}()
 	}
 }
@@ -352,7 +371,10 @@ func remoteAddr(c net.Conn) netip.Addr {
 	return netip.Addr{}
 }
 
-func (s *Server) handle(ctx context.Context, c *tls.Conn) {
+// handle serves one connection. authenticated is called once the peer has
+// shown a certificate that checks out: from then on it no longer counts
+// against the pre-authentication limits.
+func (s *Server) handle(ctx context.Context, c *tls.Conn, authenticated func()) {
 	defer c.Close()
 	addr := remoteAddr(c)
 	ctx = audit.WithActor(ctx, audit.Actor{Name: "cell-link", Addr: addr})
@@ -378,6 +400,7 @@ func (s *Server) handle(ctx context.Context, c *tls.Conn) {
 		_ = writeFrame(c, wire.Frame{Type: wire.Goodbye, Body: wire.GoodbyeMsg{Reason: wire.ByeAuth}.Encode()})
 		return
 	}
+	authenticated()
 	s.runSession(ctx, c, info, peers[0], addr)
 }
 
@@ -452,6 +475,9 @@ type session struct {
 	// active mirrors cell.State == StateActive for SendMail, which runs
 	// on other goroutines.
 	active atomic.Bool
+	// revoked is set by Kick or by the re-check: from then on no frame of this
+	// session is handled.
+	revoked atomic.Bool
 }
 
 // errClosed ends a session without an error to report.
@@ -537,11 +563,17 @@ func (s *Server) runSession(ctx context.Context, c *tls.Conn, info *Info, cert *
 	defer hb.Stop()
 	dead := time.NewTimer(s.Dead)
 	defer dead.Stop()
+	recheck := time.NewTicker(s.Recheck)
+	defer recheck.Stop()
 	var reason error
 loop:
 	for {
 		select {
 		case f := <-frames:
+			if ss.revoked.Load() {
+				reason = ErrRevoked // nothing a revoked cell sends is handled
+				break loop
+			}
 			dead.Reset(s.Dead)
 			if err := ss.handleFrame(ctx, f); err != nil {
 				reason = err
@@ -569,6 +601,17 @@ loop:
 				for k := range ss.hbSent {
 					delete(ss.hbSent, k)
 				}
+			}
+		case <-recheck.C:
+			qctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			_, err := s.Store.Authenticate(qctx, ss.cert)
+			cancel()
+			if errors.Is(err, ErrRevoked) {
+				ss.revoked.Store(true)
+				ss.active.Store(false)
+				ss.sendNow(wire.Frame{Type: wire.Goodbye, Body: wire.GoodbyeMsg{Reason: wire.ByeRevoked}.Encode()})
+				reason = ErrRevoked
+				break loop
 			}
 		case fn := <-ss.ctrl:
 			fn()
@@ -1035,12 +1078,30 @@ func (s *Server) NotifyState(id uuid.UUID, st wire.CellStateValue, reason string
 	})
 }
 
-// Kick closes a cell's link with GOODBYE REVOKED (§5.5).
+// Kick closes a cell's link with GOODBYE REVOKED (§5.5). It does not wait for
+// the session's own goroutine: the session stops handling frames at once, the
+// GOODBYE is queued, and the connection is closed shortly after whether or not
+// it was sent.
 func (s *Server) Kick(id uuid.UUID) {
-	s.withSession(id, func(ss *session) {
-		ss.sendNow(wire.Frame{Type: wire.Goodbye, Body: wire.GoodbyeMsg{Reason: wire.ByeRevoked}.Encode()})
-		ss.shutdown()
-	})
+	s.mu.Lock()
+	var ss *session
+	if rec := s.cells[id]; rec != nil {
+		ss = rec.sess
+	}
+	s.mu.Unlock()
+	if ss != nil {
+		ss.revoke()
+	}
+}
+
+// revoke ends the session as revoked, from any goroutine.
+func (ss *session) revoke() {
+	if ss.revoked.Swap(true) {
+		return
+	}
+	ss.active.Store(false) // nothing more is sent to the DECT side
+	ss.send(wire.Frame{Type: wire.Goodbye, Body: wire.GoodbyeMsg{Reason: wire.ByeRevoked}.Encode()})
+	time.AfterFunc(500*time.Millisecond, ss.shutdown)
 }
 
 // withSession runs fn on the session's own goroutine.

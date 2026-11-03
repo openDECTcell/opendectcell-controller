@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +55,7 @@ func newEnv(t *testing.T) *env {
 	}
 	srv := &cell.Server{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Heartbeat: 50 * time.Millisecond, Dead: 300 * time.Millisecond, Grace: 400 * time.Millisecond,
-		Orphan: 2 * time.Second, EnrollDelay: 10 * time.Millisecond}
+		Orphan: 2 * time.Second, EnrollDelay: 10 * time.Millisecond, Recheck: 100 * time.Millisecond}
 	done := make(chan struct{})
 	go func() { srv.Serve(ctx, ln); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
@@ -669,4 +670,117 @@ func TestHelloRFPIShowsInTheStatus(t *testing.T) {
 			t.Fatal("the HELLO's RFPI never reached the live status")
 		}
 	}
+}
+
+// Connections that never authenticate cannot pile up: one source gets
+// DefaultMaxPreAuthPerAddr of them and the next is closed at once; when they
+// end, a cell connects again.
+func TestPreAuthFloodDoesNotBlockACell(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	var idle []net.Conn
+	for range cell.DefaultMaxPreAuthPerAddr {
+		nc, err := net.Dial("tcp", c.Addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		idle = append(idle, nc)
+	}
+	t.Cleanup(func() {
+		for _, nc := range idle {
+			nc.Close()
+		}
+	})
+	// The listener has taken them all once its count shows it.
+	deadline := time.Now().Add(3 * time.Second)
+	for e.srv.PreAuthCount() < cell.DefaultMaxPreAuthPerAddr {
+		if time.Now().After(deadline) {
+			t.Fatalf("only %d connections counted", e.srv.PreAuthCount())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	extra, err := net.Dial("tcp", c.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer extra.Close()
+	extra.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := extra.Read(make([]byte, 1)); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("the connection over the limit was kept open: %v", err)
+	}
+	// The same source cannot connect while the idle ones hold its places ...
+	if cn, err := c.Connect(e.ctx, celltest.Options{}); err == nil {
+		cn.Close()
+		t.Fatal("a connection over the per-source limit was served")
+	}
+	// ... and can again once they are gone.
+	for _, nc := range idle {
+		nc.Close()
+	}
+	idle = nil
+	for e.srv.PreAuthCount() > 0 {
+		if time.Now().After(deadline.Add(10 * time.Second)) {
+			t.Fatalf("%d connections still counted", e.srv.PreAuthCount())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatalf("cell could not connect after the flood: %v", err)
+	}
+	cn.Close()
+}
+
+// A revocation reaches a connected cell even if nobody calls Kick (the message
+// was lost, or the controller restarted between the change and the kick): the
+// session looks its cell up again and closes.
+func TestRevocationIsRecheckedWithoutKick(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	if err := e.store.Revoke(e.ctx, e.admin, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var sawGoodbye bool
+	for time.Now().Before(deadline) {
+		f, err := cn.Next(time.Second)
+		if err != nil {
+			if !sawGoodbye {
+				t.Log("link closed without a GOODBYE (acceptable); error:", err)
+			}
+			return
+		}
+		if f.Type == wire.Goodbye {
+			sawGoodbye = true
+			if m, err := wire.DecodeGoodbye(f.Body); err != nil || m.Reason != wire.ByeRevoked {
+				t.Fatalf("goodbye %+v %v", m, err)
+			}
+		}
+	}
+	t.Fatal("a revoked cell stayed connected")
+}
+
+// After Kick the session handles nothing more, even from a cell that keeps
+// sending.
+func TestKickEndsTheLink(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	e.srv.Kick(c.ID)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := cn.Next(time.Second); err != nil {
+			return
+		}
+	}
+	t.Fatal("the link stayed open after Kick")
 }
