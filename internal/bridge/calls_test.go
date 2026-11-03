@@ -652,3 +652,26 @@ func TestFinishedCallTellsTheCallLists(t *testing.T) {
 		t.Errorf("told %v", cl.got)
 	}
 }
+
+// With MediaFromLink a cell is sent to the address it connected to, not to the one address of the setting:
+// cells on different networks each get one they can reach.
+func TestMediaOpenGoesToTheAddressTheCellConnectedTo(t *testing.T) {
+	r := newRig(t, fakeLines{acct: uuid.New(), has: true})
+	public := netip.MustParseAddr("2001:db8::7")
+	r.cells.status.LocalAddr = public
+	r.m.MediaFromLink = true
+	sc := newFakeSIP(t, pcma)
+	r.m.SIP = &fakeCaller{call: sc}
+	h := newFakeHandset(true)
+	go r.m.handsetCall(h)
+	sc.events <- sip.Event{Kind: sip.EvRinging}
+	waitFor(t, "ringing", func() bool { return len(h.actions()) == 1 })
+	sc.events <- sip.Event{Kind: sip.EvAnswered}
+	waitFor(t, "answered", func() bool { return len(h.actions()) == 2 })
+	h.events <- core.CallEvent{Kind: core.CallMediaUp, Cell: h.info.Cell, Handle: 0, Channel: 1}
+	waitFor(t, "MEDIA_OPEN", func() bool { n, _ := r.cells.counts(); return n == 1 })
+	if got := r.cells.opened[0].CtlAddr.Addr(); got != public {
+		t.Errorf("the cell was told to send speech to %v, want the address it connected to, %v", got, public)
+	}
+	h.events <- core.CallEvent{Kind: core.CallReleased, Reason: "hs"}
+}

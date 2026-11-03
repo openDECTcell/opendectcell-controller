@@ -1,18 +1,36 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# The test ground (a Raspberry Pi 4, docs/test-ground.md): the project's docker-compose.yml plus a TLS proxy and the
-# settings of this site. Run from the repository root:
+# The test ground (a Raspberry Pi 4, docs/test-ground.md): the project's docker-compose.yml plus a TLS proxy, the
+# controller in the host network and the settings of this site. Run from the repository root:
 #   docker compose --env-file deploy/pi/.env -f docker-compose.yml -f deploy/pi/docker-compose.pi.yml up -d
 name: opendectcell
 
 services:
+  db:
+    # the controller runs in the host network (below) and reaches the database on the loopback address
+    ports:
+      - "127.0.0.1:5432:5432"
+
   controller:
+    # In the host network: it listens on the host's own IPv6 and IPv4 addresses, so remote cells reach it directly (no
+    # port mapping, no address translation: the cell's real address is seen, and each cell is sent its speech to the address
+    # it connected to, OPENDECTCELL_CELLS_MEDIA_IP=auto). What is reachable from where is decided by the host firewall
+    # (deploy/pi/nftables.conf), not by Docker.
+    network_mode: host
+    ports: !reset []
+    extra_hosts:
+      - "db:127.0.0.1"
     environment:
       OPENDECTCELL_HTTP_BASE_URL: https://${OPENDECTCELL_HOST:-opendectcell.example.org}
-      # the proxy reaches the controller through the compose network's gateway: believe X-Forwarded-For from there only
-      OPENDECTCELL_HTTP_TRUSTED_PROXIES: 172.29.88.0/24
-      # the cells (the lab's boxes) are on the LAN: as they reach the controller, by its IPv4 address
-      OPENDECTCELL_CELLS_PUBLIC_ADDRESS: ${OPENDECTCELL_LAN_IP:?set OPENDECTCELL_LAN_IP in deploy/pi/.env}:7300
-      OPENDECTCELL_CELLS_MEDIA_IP: ${OPENDECTCELL_LAN_IP}
+      # only the proxy on this host talks to the web port, and only on the loopback address
+      OPENDECTCELL_HTTP_LISTEN: 127.0.0.1:8080
+      OPENDECTCELL_HTTP_TRUSTED_PROXIES: 127.0.0.1/32,::1/128
+      # the cells find the controller by name (the AAAA record): remote ones over IPv6 across the internet, the lab's boxes
+      # over the LAN; speech goes to the address each cell connected to
+      OPENDECTCELL_CELLS_PUBLIC_ADDRESS: ${OPENDECTCELL_HOST:-opendectcell.example.org}:7300
+      OPENDECTCELL_CELLS_MEDIA_IP: auto
+      # SIP is for the LAN only (a peer for the soak's scripted calls): not on the internet's addresses
+      OPENDECTCELL_SIP_UDP_LISTEN: ${OPENDECTCELL_LAN_IP:?set OPENDECTCELL_LAN_IP in deploy/pi/.env}:5060
+      OPENDECTCELL_SIP_TCP_LISTEN: ${OPENDECTCELL_LAN_IP}:5060
       OPENDECTCELL_SIP_MEDIA_IP: ${OPENDECTCELL_LAN_IP}
       # the soak's configuration (docs/adr/0003-stack-isolation.md): a worker per CPU
       OPENDECTCELL_CELLS_STACK_WORKERS: ${OPENDECTCELL_STACK_WORKERS:-4}

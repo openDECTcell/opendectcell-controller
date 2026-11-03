@@ -187,3 +187,20 @@ func TestCellPublicAddress(t *testing.T) {
 		t.Error("address without port accepted")
 	}
 }
+
+func TestCellMediaIPAuto(t *testing.T) {
+	c := Default()
+	c.Cells.MediaIP = "auto"
+	if !c.CellMediaAuto() || c.CellMediaIP().IsValid() {
+		t.Fatal("auto should be the per-cell address and no fixed one")
+	}
+	c.HTTP.BaseURL = "https://x.example"
+	c.Database.URL, c.Secrets.MasterKey = "postgres://x", "x"
+	if err := c.Validate(); err != nil && strings.Contains(err.Error(), "media IP") {
+		t.Errorf("auto was refused: %v", err)
+	}
+	c.Cells.MediaIP = "not-an-address"
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "media IP") {
+		t.Errorf("a made-up address was accepted: %v", err)
+	}
+}

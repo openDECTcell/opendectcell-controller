@@ -169,7 +169,9 @@ type Cells struct {
 	// MediaIP is the address cells send a call's speech to (docs/cell-protocol.md
 	// §8), MediaPorts the UDP range the controller listens on for it ("min-max",
 	// published like the SIP RTP range). Default MediaIP: the host of
-	// PublicAddress, when that is an IP address.
+	// PublicAddress, when that is an IP address. "auto": each cell is sent to the address it
+	// connected to, which is right with no address translation in between (the host network) and
+	// when cells reach the controller by different addresses (LAN and public IPv6).
 	MediaIP    string `yaml:"media_ip"`
 	MediaPorts string `yaml:"media_ports"`
 	// StackWorkers is how many worker processes run the cells' DECT stacks
@@ -193,6 +195,9 @@ func (c Cells) MediaRange() (lo, hi int) {
 // CellMediaIP returns MediaIP, or the host of the public address if that is an
 // IP address; invalid when neither is.
 func (c Config) CellMediaIP() netip.Addr {
+	if c.CellMediaAuto() {
+		return netip.Addr{}
+	}
 	if c.Cells.MediaIP != "" {
 		a, _ := netip.ParseAddr(c.Cells.MediaIP)
 		return a
@@ -204,6 +209,9 @@ func (c Config) CellMediaIP() netip.Addr {
 	a, _ := netip.ParseAddr(h)
 	return a
 }
+
+// CellMediaAuto says the cells' speech goes to the address each cell connected to.
+func (c Config) CellMediaAuto() bool { return strings.EqualFold(c.Cells.MediaIP, "auto") }
 
 // CellPublicAddress returns PublicAddress or its default.
 func (c Config) CellPublicAddress() string {
@@ -474,9 +482,9 @@ func (c Config) Validate() error {
 	if lo, hi := c.Cells.MediaRange(); lo < 1024 || hi > 65535 || hi-lo < 3 {
 		add("cells media ports %q must be a range like 41100-41199 above 1023", c.Cells.MediaPorts)
 	}
-	if c.Cells.MediaIP != "" {
+	if c.Cells.MediaIP != "" && !c.CellMediaAuto() {
 		if _, err := netip.ParseAddr(c.Cells.MediaIP); err != nil {
-			add("cells media IP %q is not an IP address", c.Cells.MediaIP)
+			add("cells media IP %q is not an IP address (or \"auto\")", c.Cells.MediaIP)
 		}
 	}
 	if c.SIP.MediaIP != "" {

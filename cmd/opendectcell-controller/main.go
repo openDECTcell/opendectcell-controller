@@ -379,7 +379,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Log: log.With("component", "calls"), MediaIP: cfg.CellMediaIP()}
 	calls.MediaPorts[0], calls.MediaPorts[1] = cfg.Cells.MediaRange()
 	link.Media = calls
-	if !calls.MediaIP.IsValid() {
+	calls.MediaFromLink = cfg.CellMediaAuto()
+	if !calls.MediaIP.IsValid() && !calls.MediaFromLink {
 		log.Warn("no address for the cells' speech: set OPENDECTCELL_CELLS_MEDIA_IP (the controller's address as the cells reach it); calls have no audio until then")
 	}
 	if dectStack != nil {

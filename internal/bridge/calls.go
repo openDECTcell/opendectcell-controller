@@ -155,6 +155,10 @@ type Manager struct {
 	// UDP ports the controller listens on for it (inclusive; 0: any port).
 	MediaIP    netip.Addr
 	MediaPorts [2]int
+	// MediaFromLink: send each cell to the address it connected to (Status.LocalAddr) instead of MediaIP.
+	// Right when the controller sees the cells' real connections, as in the host network, and for cells
+	// on different networks (a LAN address for one, a public IPv6 address for another).
+	MediaFromLink bool
 
 	// Timeouts, defaults below; tests shorten them.
 	OpenTimeout time.Duration

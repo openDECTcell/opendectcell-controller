@@ -234,9 +234,12 @@ type record struct {
 
 // Status is a cell's live state for the UI.
 type Status struct {
-	Online      bool
-	Since       time.Time
-	RemoteAddr  string
+	Online     bool
+	Since      time.Time
+	RemoteAddr string
+	// LocalAddr is the server end of the cell's link: the address the cell connected to. Where the
+	// controller is not behind address translation it is the address the cell can send speech to.
+	LocalAddr   netip.Addr
 	SWVersion   string
 	RadioState  uint8
 	ChipState   uint8
@@ -362,6 +365,14 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			s.handle(ctx, c.(*tls.Conn), release)
 		}()
 	}
+}
+
+// localAddr is the address of the server's end of a connection (invalid if it cannot be told).
+func localAddr(c net.Conn) netip.Addr {
+	if ap, err := netip.ParseAddrPort(c.LocalAddr().String()); err == nil {
+		return ap.Addr().Unmap()
+	}
+	return netip.Addr{}
 }
 
 func remoteAddr(c net.Conn) netip.Addr {
@@ -965,6 +976,7 @@ func (s *Server) attach(ss *session, h wire.HelloMsg) (resumed bool, token [16]b
 	}
 	st := rec.status
 	st.Online, st.Since, st.RemoteAddr, st.SWVersion = true, time.Now(), ss.addr.String(), h.SWVersion
+	st.LocalAddr = localAddr(ss.conn)
 	st.RadioState = h.RadioState
 	st.ChipEpoch = h.ChipEpoch
 	if h.HasRFPI { // a cell that sends no STATUS after its HELLO still shows what its chip broadcasts

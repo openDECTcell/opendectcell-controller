@@ -106,10 +106,14 @@ type cellFlow struct {
 // openFlow ties a cell's audio channel to a UDP port here (MEDIA_OPEN, SRTP) for a call whose other
 // side speaks sipCodec, and waits for the cell to accept.
 func (m *Manager) openFlow(ctx context.Context, ev core.CallEvent, sipCodec *codec.Codec) (*cellFlow, error) {
-	if !m.MediaIP.IsValid() {
+	st := m.Cells.CellStatus(ev.Cell)
+	ip := m.MediaIP
+	if m.MediaFromLink && st.LocalAddr.IsValid() {
+		ip = st.LocalAddr
+	}
+	if !ip.IsValid() {
 		return nil, errNoMediaIP
 	}
-	st := m.Cells.CellStatus(ev.Cell)
 	caps := media.CellCaps{Down: st.AudioDown, Up: st.AudioUp, WidebandEndpoints: st.CapAudioWB}
 	plan, err := media.Choose(caps, ev.Wideband, sipCodec)
 	if err != nil {
@@ -133,7 +137,7 @@ func (m *Manager) openFlow(ctx context.Context, ev core.CallEvent, sipCodec *cod
 		delete(m.pending, id)
 		m.mu.Unlock()
 	}
-	mo, err := media.NewMediaOpen(id, ev.Channel, plan, cellPayloadType(plan), netip.AddrPortFrom(m.MediaIP, port), wire.SRTPAES128SHA80)
+	mo, err := media.NewMediaOpen(id, ev.Channel, plan, cellPayloadType(plan), netip.AddrPortFrom(ip, port), wire.SRTPAES128SHA80)
 	if err != nil {
 		drop()
 		conn.Close()
