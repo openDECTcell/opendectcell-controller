@@ -57,13 +57,20 @@
       <div class="card-header"><h3 class="card-title">{{icon "activity-heartbeat"}} Right now</h3></div>
       <div class="card-body">
         <dl class="kv mb-0">
-          <dt>Link</dt><dd>{{if .Live.Online}}<span class="badge bg-success-lt">online</span> since {{fmtTime .Live.Since}}{{else}}<span class="badge bg-danger-lt">offline</span>{{with .Cell.LastSeenAt}} · last seen {{fmtTime .}}{{end}}{{end}}</dd>
+          <dt>Link</dt><dd>{{if .Live.Online}}<span class="badge bg-success-lt">online</span> since {{fmtTime .Live.Since}}{{else}}{{if .Cell.LastSeenAt}}<span class="badge bg-danger-lt">offline</span> · last seen {{fmtTime .Cell.LastSeenAt}}{{else if eq .Cell.State "active"}}<span class="badge bg-warning-lt">never connected</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}{{end}}</dd>
           <dt>State</dt><dd>{{.Cell.State}}</dd>
           <dt>Software</dt><dd>{{with .Cell.SoftwareVersion}}{{.}}{{else}}—{{end}}</dd>
           {{if .HasStats}}<dt>Handsets, last 24 h</dt><dd>{{.Stats.HandsetsSeen24h}}</dd>
           <dt>Calls, last 7 days</dt><dd>{{.Stats.Calls7d}}</dd>
           <dt>Talk time, last 7 days</dt><dd>{{.Stats.TalkSeconds7d}} s</dd>{{end}}
         </dl>
+        {{if and (not .Live.Online) (not .Cell.LastSeenAt) (eq .Cell.State "active")}}
+        <div class="alert alert-warning mt-3 mb-0" role="note">
+          This box enrolled{{with .Cell.EnrolledAt}} on {{fmtTime .}}{{end}} but has not connected since. Enrolling works without the rest, so a box that is not yet set up looks like this:
+          the cell service on the box starts only when the DECT service is switched on (<em>Network → DECT</em>) <strong>and</strong> the chip firmware from your own FRITZ!OS image is installed. On the box, <code>logread | grep opendectcell</code> says which is missing.
+          If both are fine, check that the box can reach <code>{{.CellAddr}}</code> (TCP).
+        </div>
+        {{end}}
       </div>
     </div>
 

@@ -10,7 +10,7 @@
       <div class="card-body">
         <div class="d-flex align-items-center mb-2">
           <h3 class="card-title mb-0"><a href="/stations/{{.ID}}">{{.Name}}</a></h3>
-          <span class="ms-auto">{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else if eq .State "active"}}<span class="badge bg-danger-lt">offline</span>{{else}}<span class="badge bg-secondary-lt">{{.State}}</span>{{end}}</span>
+          <span class="ms-auto">{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else if eq .State "active"}}{{if .LastSeenAt}}<span class="badge bg-danger-lt">offline</span>{{else}}<span class="badge bg-warning-lt" title="enrolled, but it has never connected: see the cell's page">never connected</span>{{end}}{{else}}<span class="badge bg-secondary-lt">{{.State}}</span>{{end}}</span>
         </div>
         <dl class="kv mb-0">
           <dt>Model</dt><dd>{{with .BoxModel}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</dd>

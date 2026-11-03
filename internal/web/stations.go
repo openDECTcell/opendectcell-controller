@@ -45,12 +45,13 @@ type stationData struct {
 	HasStats bool
 	Lat, Lon string
 	Models   []string
+	CellAddr string // host:port the cells connect to, for the hint to a cell that never connected
 }
 
 var boxModels = []string{"FRITZ!Box 7520", "FRITZ!Box 7520 B", "FRITZ!Box 7412"}
 
 func (s *Server) stationView(r *http.Request, c *cell.Cell) stationData {
-	d := stationData{Cell: c, Live: s.liveStatus(c.ID), Models: boxModels}
+	d := stationData{Cell: c, Live: s.liveStatus(c.ID), Models: boxModels, CellAddr: s.Cells.PublicAddr}
 	if c.Latitude != nil && c.Longitude != nil {
 		d.Lat = strconv.FormatFloat(*c.Latitude, 'f', -1, 64)
 		d.Lon = strconv.FormatFloat(*c.Longitude, 'f', -1, 64)

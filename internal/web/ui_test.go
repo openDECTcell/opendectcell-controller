@@ -406,6 +406,20 @@ func TestStationProfile(t *testing.T) {
 	if resp, _ := e.get(t, u, "/stations/"+other.String()); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("someone else's station: %d", resp.StatusCode)
 	}
+	// A cell that enrolled and never connected says so, and what to look at (a box without the chip firmware or with
+	// the DECT service switched off enrols fine and then never connects); one that has been seen is just offline.
+	if !strings.Contains(list, "never connected") {
+		t.Errorf("the list does not say the cell never connected: %s", list)
+	}
+	if _, page := e.get(t, u, "/stations/"+mine.String()); !strings.Contains(page, "has not connected since") || !strings.Contains(page, "chip firmware") || !strings.Contains(page, "logread | grep opendectcell") {
+		t.Errorf("the cell's page has no hint for a cell that never connected")
+	}
+	if _, err := e.store.Pool.Exec(ctx, "UPDATE cell SET last_seen_at = now() WHERE id = $1", mine); err != nil {
+		t.Fatal(err)
+	}
+	if _, page := e.get(t, u, "/stations/"+mine.String()); strings.Contains(page, "has not connected since") || strings.Contains(page, "never connected") {
+		t.Errorf("a cell that was seen is still reported as never connected")
+	}
 	if r := e.post(t, u, "/stations/"+other.String(), url.Values{"name": {"Mine now"}, "precision": {"exact"}}); r.StatusCode != http.StatusNotFound {
 		t.Errorf("edit of someone else's station: %d", r.StatusCode)
 	}
