@@ -34,6 +34,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -107,7 +108,7 @@ commands:
   cellworker               a DECT stack worker process (started by serve; not for hand use)
   version
   healthcheck [--url URL]  exit 0 if the controller answers /healthz (for container health checks)
-  init-secrets --dir DIR   create a master key and database credentials in DIR if missing (compose bring-up)
+  init-secrets --dir DIR [--admin-dir DIR] [--limited-role]   create a master key and database credentials if missing (compose bring-up)
 `
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -127,6 +128,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	switch cmd {
 	case "version":
 		fmt.Fprintln(stdout, buildVersion())
+		fmt.Fprintf(stdout, "dect-core: %s\n", map[bool]string{true: "yes", false: "no"}[dectStack != nil])
 		return nil
 	case "keygen":
 		k, err := secret.GenerateMasterKey()
@@ -153,6 +155,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	log, logCtl := newLogger(cfg.Log, stderr)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// With the owner of the schema given, the role the controller runs as is made and the schema is brought
+	// up to date before the controller connects (it may not exist yet).
+	if cfg.Database.AdminURL != "" {
+		switch {
+		case cmd == "migrate":
+			return migrateAsAdmin(ctx, cfg, rest, stdout, log)
+		case cmd == "serve" && !slices.Contains(rest, "--no-migrate"):
+			if err := setupAsAdmin(ctx, cfg, log); err != nil {
+				return err
+			}
+		}
+	}
 
 	pool, err := db.Open(ctx, cfg.Database.URL, cfg.Database.MaxConns)
 	if err != nil {
@@ -204,6 +219,74 @@ func masterKeys(cfg config.Config) (secret.MasterKey, *secret.MasterKey, error) 
 	return mk, &old, nil
 }
 
+// adminPool opens the connection of the role that owns the schema and says which role the controller runs as.
+//
+// limited is false when both URLs name the same role (an installation from before the split): that role is then left as
+// it is, since making it a limited role would strip the owner of the schema of its rights.
+func adminPool(ctx context.Context, cfg config.Config, log *slog.Logger) (admin *pgxpool.Pool, runtimeUser, runtimePassword string, limited bool, err error) {
+	runtimeUser, runtimePassword, err = db.RuntimeCredentials(cfg.Database.URL)
+	if err != nil {
+		return nil, "", "", false, err
+	}
+	adminUser, _, err := db.RuntimeCredentials(cfg.Database.AdminURL)
+	if err != nil {
+		return nil, "", "", false, errors.New("the database admin URL names no user")
+	}
+	if limited = adminUser != runtimeUser; !limited {
+		log.Warn("the database URL and the admin URL name the same role: the controller runs with the rights of the schema's owner, and no limited role is made", "role", adminUser)
+	}
+	admin, err = db.Open(ctx, cfg.Database.AdminURL, 2)
+	return admin, runtimeUser, runtimePassword, limited, err
+}
+
+// setupAsAdmin makes the runtime role, applies the migrations and gives the role its table rights, as the owner
+// of the schema, and lets go of that connection.
+func setupAsAdmin(ctx context.Context, cfg config.Config, log *slog.Logger) error {
+	admin, user, pw, limited, err := adminPool(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer admin.Close()
+	if limited {
+		if err := db.EnsureRuntimeRole(ctx, admin, user, pw); err != nil {
+			return fmt.Errorf("database role %q: %w", user, err)
+		}
+	}
+	if err := ensureSchema(ctx, admin, true, log); err != nil {
+		return err
+	}
+	if !limited {
+		return nil
+	}
+	return db.GrantRuntime(ctx, admin, user)
+}
+
+// migrateAsAdmin is `migrate` run as the owner of the schema: up also makes the runtime role first and grants it its
+// rights afterwards.
+func migrateAsAdmin(ctx context.Context, cfg config.Config, args []string, out io.Writer, log *slog.Logger) error {
+	admin, user, pw, limited, err := adminPool(ctx, cfg, log)
+	if err != nil {
+		return err
+	}
+	defer admin.Close()
+	up := len(args) > 0 && args[0] == "up" && limited
+	if up {
+		if err := db.EnsureRuntimeRole(ctx, admin, user, pw); err != nil {
+			return fmt.Errorf("database role %q: %w", user, err)
+		}
+	}
+	if err := migrate(ctx, admin, args, out); err != nil {
+		return err
+	}
+	if up {
+		if err := db.GrantRuntime(ctx, admin, user); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "role %s may read and write the tables\n", user)
+	}
+	return nil
+}
+
 func ensureSchema(ctx context.Context, pool *pgxpool.Pool, apply bool, log *slog.Logger) error {
 	m, err := db.NewMigrator(pool)
 	if err != nil {
@@ -244,6 +327,15 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	noMigrate := fs.Bool("no-migrate", false, "do not apply pending migrations; refuse to start if any are pending")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if cfg.Cells.RequireDECTCore && dectStack == nil {
+		return errors.New("this binary was built without libopendectcell (-tags libopendectcell) but OPENDECTCELL_CELLS_REQUIRE_DECT_CORE is set: it would drop every cell's mails; build the image with LIBOPENDECTCELL=1")
+	}
+	if super, err := db.IsSuperuser(ctx, pool); err == nil && super {
+		log.Warn("the controller is connected to PostgreSQL as a superuser: a flaw that lets someone run SQL then reaches the whole server; use a limited role (docs/deployment.md, \"Database roles\")")
+	}
+	if dectStack != nil && cfg.Cells.StackWorkers == 0 {
+		log.Warn("the DECT stacks run inside the controller process: a crash in the C library ends the controller and every call; set OPENDECTCELL_CELLS_STACK_WORKERS (docs/adr/0003-stack-isolation.md)")
 	}
 	if err := ensureSchema(ctx, pool, !*noMigrate, log); err != nil {
 		return err
@@ -693,28 +785,41 @@ func healthcheck(args []string) error {
 	return nil
 }
 
-// initSecrets creates the files a compose bring-up needs, without ever
-// overwriting one: a master key, a database password, and a database URL
-// that uses it. Files are 0600, except db_password (0644), which the
-// database container reads as a different user; the volume is mounted only
-// into the database and the controller.
+// initSecrets creates the files a compose bring-up needs, without ever overwriting one.
+//
+// With --admin-dir the credentials are split: in --dir the controller's own files (the master key and the URL of the
+// limited runtime role) and in --admin-dir the ones only the database and the migration step may see (the password
+// of the role PostgreSQL was initialised with, and its URL). Without it everything goes into --dir and the controller
+// connects as the initialising role, as it did before. A database_url that already exists is left alone, also when
+// it names the initialising role: an existing installation keeps working until its owner removes that file
+// (docs/deployment.md, "Database roles"). Files are 0600, except db_password (0644), which the database container
+// reads as a different user.
 func initSecrets(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("init-secrets", flag.ContinueOnError)
-	dir := fs.String("dir", "", "directory to write the secrets to")
+	dir := fs.String("dir", "", "directory to write the controller's secrets to")
+	adminDir := fs.String("admin-dir", "", "directory for the database's administrative credentials (default: --dir)")
 	host := fs.String("db-host", "db", "database host for the URL")
 	name := fs.String("db-name", "opendectcell", "database name")
-	user := fs.String("db-user", "opendectcell", "database user")
+	user := fs.String("db-user", "opendectcell", "the role PostgreSQL is initialised with (the schema's owner)")
+	runtimeUser := fs.String("db-runtime-user", "opendectcell_app", "the limited role the controller runs as (with --admin-dir)")
+	limited := fs.Bool("limited-role", false, "an existing database_url that names the owning role is replaced by one for the limited role (with --admin-dir)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *dir == "" {
 		return errors.New("init-secrets: --dir is required")
 	}
-	if err := os.MkdirAll(*dir, 0o700); err != nil {
-		return err
+	split := *adminDir != "" && *adminDir != *dir
+	if !split {
+		*adminDir = *dir
 	}
-	write := func(file string, mode os.FileMode, gen func() (string, error)) (string, error) {
-		p := filepath.Join(*dir, file)
+	for _, d := range []string{*dir, *adminDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return err
+		}
+	}
+	write := func(dir, file string, mode os.FileMode, gen func() (string, error)) (string, error) {
+		p := filepath.Join(dir, file)
 		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304: path built from the operator's --dir
 			return strings.TrimRight(string(b), "\r\n"), nil
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -738,18 +843,57 @@ func initSecrets(args []string, out io.Writer) error {
 		fmt.Fprintf(out, "created %s\n", p)
 		return v, f.Close()
 	}
-	if _, err := write("master_key", 0o600, secret.GenerateMasterKey); err != nil {
+	urlFor := func(u, pw string) func() (string, error) {
+		return func() (string, error) {
+			x := url.URL{Scheme: "postgres", User: url.UserPassword(u, pw), Host: *host, Path: "/" + *name, RawQuery: "sslmode=disable"}
+			return x.String(), nil
+		}
+	}
+	if _, err := write(*dir, "master_key", 0o600, secret.GenerateMasterKey); err != nil {
 		return err
 	}
-	pw, err := write("db_password", 0o644, auth.NewToken)
+	// the initialising role's password: an installation from before the split has it in --dir already
+	pwGen := auth.NewToken
+	if split {
+		if b, err := os.ReadFile(filepath.Join(*dir, "db_password")); err == nil { //nolint:gosec // G304: as above
+			old := strings.TrimRight(string(b), "\r\n")
+			pwGen = func() (string, error) { return old, nil }
+		}
+	}
+	pw, err := write(*adminDir, "db_password", 0o644, pwGen)
 	if err != nil {
 		return err
 	}
-	_, err = write("database_url", 0o600, func() (string, error) {
-		u := url.URL{Scheme: "postgres", User: url.UserPassword(*user, pw), Host: *host, Path: "/" + *name, RawQuery: "sslmode=disable"}
-		return u.String(), nil
-	})
-	return err
+	if !split {
+		_, err = write(*dir, "database_url", 0o600, urlFor(*user, pw))
+		return err
+	}
+	if _, err := write(*adminDir, "database_admin_url", 0o600, urlFor(*user, pw)); err != nil {
+		return err
+	}
+	runtimePW, err := auth.NewToken()
+	if err != nil {
+		return err
+	}
+	if *limited {
+		p := filepath.Join(*dir, "database_url")
+		if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304: path built from the operator's --dir
+			if u, _, err := db.RuntimeCredentials(strings.TrimSpace(string(b))); err == nil && u == *user {
+				if err := os.Remove(p); err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "replacing %s (it named the role %s) with one for %s\n", p, u, *runtimeUser)
+			}
+		}
+	}
+	have, err := write(*dir, "database_url", 0o600, urlFor(*runtimeUser, runtimePW))
+	if err != nil {
+		return err
+	}
+	if u, _, err := db.RuntimeCredentials(have); err == nil && u == *user {
+		fmt.Fprintf(out, "note: %s names the role %s, which owns the database: the controller keeps running with those rights; delete the file and run init again to give it a limited role (docs/deployment.md, \"Database roles\")\n", filepath.Join(*dir, "database_url"), u)
+	}
+	return nil
 }
 
 // roamingFrom gives the DECT core the admin's roaming settings.

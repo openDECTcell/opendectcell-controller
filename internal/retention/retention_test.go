@@ -28,9 +28,14 @@ func TestRetention(t *testing.T) {
 	}
 	exec(`INSERT INTO call_log (direction, remote_party, started_at, quality) VALUES ('out', '+4930123456', $1, '{"mos":4.2}'), ('in', '+4930999999', $2, '{"mos":3.9}')`,
 		now.AddDate(0, 0, -100), now.AddDate(0, 0, -5))
-	exec(`ALTER TABLE audit_log DISABLE TRIGGER audit_log_append_only`)
+	// planting old audit entries means switching the append-only trigger off, which only the schema's owner may do
+	if _, err := dbtest.Owner(pool).Exec(ctx, `ALTER TABLE audit_log DISABLE TRIGGER audit_log_append_only`); err != nil {
+		t.Fatal(err)
+	}
 	exec(`INSERT INTO audit_log (at, actor_name, action) VALUES ($1, 'x', 'old'), ($2, 'x', 'recent')`, now.AddDate(0, 0, -400), now.AddDate(0, 0, -10))
-	exec(`ALTER TABLE audit_log ENABLE TRIGGER audit_log_append_only`)
+	if _, err := dbtest.Owner(pool).Exec(ctx, `ALTER TABLE audit_log ENABLE TRIGGER audit_log_append_only`); err != nil {
+		t.Fatal(err)
+	}
 
 	var uid, hid, cid string
 	if err := pool.QueryRow(ctx, "INSERT INTO app_user (username, role, auth_source) VALUES ('r', 'user', 'local') RETURNING id").Scan(&uid); err != nil {

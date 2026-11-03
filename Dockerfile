@@ -4,7 +4,7 @@
 # --build-arg LIBOPENDECTCELL=1 (needs the openDECTcell submodule checked out) links
 # libopendectcell with cgo, statically, and turns the DECT core on (C3).
 
-FROM golang:1.27.3-bookworm AS build
+FROM golang:1.27.3-bookworm@sha256:d9b6a1beb9474adc2a1ce842573639b44b2a0dd49b6669f51d3821baf9ec37c9 AS build
 ARG VERSION=dev
 ARG LIBOPENDECTCELL=0
 WORKDIR /src
@@ -22,13 +22,15 @@ RUN if [ "$LIBOPENDECTCELL" = 1 ]; then \
       CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
         -o /out/opendectcell-controller ./cmd/opendectcell-controller; \
     fi \
- && mkdir -p /out/secrets /out/tmp
+ && mkdir -p /out/secrets /out/dbsecrets /out/tmp
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=build /out/opendectcell-controller /usr/local/bin/opendectcell-controller
 # A named volume mounted here starts out owned by the non-root user, so
-# `init-secrets` can write to it.
+# `init-secrets` can write to it. /dbsecrets holds the database's administrative
+# credentials; only the database, `init` and `migrate` mount it.
 COPY --from=build --chown=65532:65532 /out/secrets /secrets
+COPY --from=build --chown=65532:65532 /out/dbsecrets /dbsecrets
 COPY --from=build --chown=65532:65532 /out/tmp /tmp
 USER 65532:65532
 EXPOSE 8080 7300

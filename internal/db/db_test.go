@@ -112,7 +112,7 @@ func TestEveryEncryptedColumnIsRegistered(t *testing.T) {
 }
 
 func TestAuditLogIsAppendOnly(t *testing.T) {
-	pool := dbtest.Migrated(t)
+	pool := dbtest.MigratedAsOwner(t) // TRUNCATE needs the owner: the limited role may not even try
 	if _, err := pool.Exec(ctx, "INSERT INTO audit_log (actor_name, action) VALUES ('t', 'test')"); err != nil {
 		t.Fatal(err)
 	}

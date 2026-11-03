@@ -183,3 +183,21 @@ What differs from the proposal above, and why:
 - **Not yet:** a soak (days); what a worker restart does to a call in progress (it ends: the call went with the stack, as the ADR
   says); CPU and memory of workers with many cells; the default stays 0 until that has run for a while.
 
+
+## Before the default changes: the soak (plan, 2026-11-03, audit CTRL-SEC-03)
+
+The default stays `OPENDECTCELL_CELLS_STACK_WORKERS=0` until this has run; the controller now logs a warning at start when the stacks
+run in the process. The run, on the lab with real boxes and handsets:
+
+| What | How | Passes when |
+|---|---|---|
+| Duration | 72 hours with N = the CPU count workers, both boxes attached, a handset on each, a call every 30 minutes (scripted from a SIP peer) | no controller restart, no worker restart that the injection below did not cause |
+| Crash injection | `SIGSEGV` to one worker every 2 hours, then `SIGSTOP` for 10 s to another | the controller and the other workers go on; a call on a crashed worker ends and the next one works; the worker is back within 70 s |
+| Calls during a restart | a call up while its worker is killed | the call ends cleanly on the SIP side (BYE), no leg or media flow is left (check `/metrics` and the bridge's open flows) |
+| Load | many cells per worker (the simulated cell, `scale_test.go` rigs, 100 cells over 2 workers) beside the two real ones | the worker's CPU and memory are flat; page-to-ring latency within 150 ms of the in-process figure |
+| Architectures | the same crash test on amd64 and arm64, and a check from inside a worker that opening a file, connecting and `execve` fail (seccomp) | EPERM on all three; on an architecture without the filter the start log says the worker runs unconfined |
+
+A worker that hosts several cells still shares one address space between them: a flaw reachable from one cell's mails can read
+another cell's stack memory. Isolation per worker is a limit on *crashes*, not a confidentiality boundary between cells that share
+a worker; the seccomp filter keeps a taken-over worker from reaching files, the network and the database, not from reading its own
+other cells. Only after the soak, and with that sentence in the release notes, does the default move to a worker per hardware thread.

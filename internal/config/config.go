@@ -89,6 +89,10 @@ type Database struct {
 	URL string `yaml:"url"`
 	// MaxConns bounds the connection pool.
 	MaxConns int32 `yaml:"max_conns"`
+	// AdminURL is the connection URL of the role that owns the schema. Only `migrate` (and `serve` without
+	// --no-migrate) uses it: it creates the role in URL, applies the migrations and grants that role the
+	// table rights. Leave it out of the controller's own environment (docs/deployment.md, "Database roles").
+	AdminURL string `yaml:"admin_url"`
 }
 
 // Secrets holds the keys that protect secrets in the database: DECT keys, SIP
@@ -173,6 +177,9 @@ type Cells struct {
 	// ends one worker, not the controller. 0: the stacks run inside the
 	// controller process.
 	StackWorkers int32 `yaml:"stack_workers"`
+	// RequireDECTCore makes `serve` refuse to start when the binary was built without libopendectcell, so a
+	// controller that would drop every cell's mails cannot be mistaken for a working one.
+	RequireDECTCore bool `yaml:"require_dect_core"`
 }
 
 // MediaRange parses MediaPorts; Validate has checked it.
@@ -303,6 +310,7 @@ func vars(c *Config) []envVar {
 		{"HTTP_TRUSTED_PROXIES", false, list(&c.HTTP.TrustedProxies)},
 		{"HTTP_METRICS_TOKEN", true, str(&c.HTTP.MetricsToken)},
 		{"DATABASE_URL", true, str(&c.Database.URL)},
+		{"DATABASE_ADMIN_URL", true, str(&c.Database.AdminURL)},
 		{"DATABASE_MAX_CONNS", false, uintN(&c.Database.MaxConns, 31)},
 		{"MASTER_KEY", true, str(&c.Secrets.MasterKey)},
 		{"MASTER_KEY_OLD", true, str(&c.Secrets.OldMasterKey)},
@@ -327,6 +335,7 @@ func vars(c *Config) []envVar {
 		{"CELLS_PUBLIC_ADDRESS", false, str(&c.Cells.PublicAddress)},
 		{"CELLS_HANDSET_POOL", false, boolean(&c.Cells.HandsetPool)},
 		{"CELLS_STACK_WORKERS", false, uintN(&c.Cells.StackWorkers, 8)},
+		{"CELLS_REQUIRE_DECT_CORE", false, boolean(&c.Cells.RequireDECTCore)},
 		{"CELLS_MEDIA_IP", false, str(&c.Cells.MediaIP)},
 		{"CELLS_MEDIA_PORTS", false, str(&c.Cells.MediaPorts)},
 		{"SIP_UDP_LISTEN", false, str(&c.SIP.UDPListen)},

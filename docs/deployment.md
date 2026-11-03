@@ -25,9 +25,10 @@ default (`LIBOPENDECTCELL=1`; `LIBOPENDECTCELL=0 docker compose build` makes the
 
 | Service | Does |
 |---|---|
-| `init` | One-shot: `init-secrets` creates `master_key`, `db_password` and `database_url` in the `secrets` volume if they are missing. It never overwrites |
-| `db` | PostgreSQL 18; data in the `pgdata` volume |
-| `controller` | Applies migrations, then serves on `127.0.0.1:8080` (web), `:7300` (cells), `:5060` UDP/TCP (SIP), `41000-41099/udp` (SIP RTP) and `41100-41199/udp` (the cells' speech). Non-root, read-only root filesystem, no capabilities |
+| `init` | One-shot: `init-secrets` creates the master key and the database credentials if they are missing. The controller's files (`master_key`, `database_url`, the runtime role) go in the `secrets` volume, the administrative database credentials (`db_password`, `database_admin_url`) in the `dbsecrets` volume. It never overwrites |
+| `db` | PostgreSQL 18; data in the `pgdata` volume; sees only `dbsecrets`. No capabilities beyond those its entrypoint needs |
+| `migrate` | One-shot: creates the runtime role, applies the migrations as the administrative role and grants the runtime role its rights. The only service (besides `db`) that sees the administrative credentials |
+| `controller` | Waits for `migrate`, connects as the runtime role and serves on `127.0.0.1:8080` (web), `:7300` (cells), `:5060` UDP/TCP (SIP), `41000-41099/udp` (SIP RTP) and `41100-41199/udp` (the cells' speech). Non-root, read-only root filesystem, no capabilities |
 
 **Back up the master key now**, separately from the database. Without it,
 every UAK and SIP password in a database backup is unrecoverable
@@ -36,6 +37,25 @@ every UAK and SIP password in a database backup is unrecoverable
 ```sh
 docker compose cp controller:/secrets/master_key ./master_key.backup
 ```
+
+## Database roles
+
+The controller connects to PostgreSQL as **`opendectcell_app`**, a role that can read and write the tables and nothing else: it is
+not a superuser, cannot change the schema, create roles or databases, and cannot reach other databases. A flaw in the
+controller that lets someone run their own SQL therefore cannot, for example, read files of the database host or drop tables.
+The role that PostgreSQL was initialised with (`opendectcell`) owns the schema; only `migrate` uses it. The controller container
+does not mount its credentials.
+
+- **New installs** get this layout from `init-secrets` (the `init` service).
+- **Existing installs** keep working: `init` finds the old `database_url` (which names the bootstrap role), leaves it, copies the
+  old `db_password` to the new place, and the log of `serve` warns *"the controller is connected to PostgreSQL as a superuser"*.
+  To switch, once: `docker compose run --rm init init-secrets --dir /secrets --admin-dir /dbsecrets --limited-role`, then
+  `docker compose up -d` (`init` has made the runtime URL; `migrate` creates the role and grants it what it needs; the
+  controller restarts as that role).
+- **Own setup** (no compose): set `OPENDECTCELL_DATABASE_URL` to the runtime role and `OPENDECTCELL_DATABASE_ADMIN_URL` to the owner of
+  the schema **only for `opendectcell-controller migrate up`**; `serve --no-migrate` needs only the runtime URL. `migrate up` creates the
+  runtime role from the user and password in `OPENDECTCELL_DATABASE_URL` if it is missing, brings its password and rights in line, and
+  never gives it more than the table rights above. The role that owns the schema must be allowed to create roles.
 
 ## Production notes
 
@@ -53,6 +73,21 @@ docker compose cp controller:/secrets/master_key ./master_key.backup
   `network_mode: host` the SIP one defaults right and the cells' one is the host
   of `OPENDECTCELL_CELLS_PUBLIC_ADDRESS`. Without a valid cells address calls have
   no audio (the log says so at start).
+
+- **Network exposure.** Docker publishes these ports on the host. Only what the use needs should be reachable:
+
+  | Port | Who must reach it | Set the address with | Firewall rule |
+  |---|---|---|---|
+  | 8080/tcp (web) | the reverse proxy | fixed to 127.0.0.1 | none: it is not published beyond the host |
+  | 7300/tcp (cells) | the cells (their boxes) | `OPENDECTCELL_CELL_BIND` | allow the cells' addresses; the port takes enrolment (a one-time token, rate limited) and mutual-TLS sessions |
+  | 5060/udp+tcp (SIP) | your SIP provider or telephone system | `OPENDECTCELL_SIP_BIND` | allow the provider's addresses only; a registered account takes calls only from its registrar, and a PBX without registration only from its addresses, but an open SIP port is still attack surface |
+  | 41000-41099/udp (RTP) | the SIP peers | `OPENDECTCELL_MEDIA_BIND` | allow the same addresses as SIP |
+  | 41100-41199/udp (cells' speech) | the cells | `OPENDECTCELL_MEDIA_BIND` | allow the cells' addresses |
+
+  A SIP port that the whole internet can reach gets scanned within hours; with a provider that registers you
+  (outbound), the provider's replies come back through your own connection and need no open port on a NAT router.
+  One residual: a request to an account's secret contact token (part of the Contact address the controller gave the
+  provider) is accepted from any address, so do not publish contact addresses.
 
 - Put a TLS-terminating reverse proxy in front of port 8080, set
   `OPENDECTCELL_HTTP_BASE_URL=https://…` and `OPENDECTCELL_HTTP_TRUSTED_PROXIES` to the

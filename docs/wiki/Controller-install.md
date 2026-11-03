@@ -17,9 +17,10 @@ core: cells connect, but all their messages are dropped. It is for development o
 
 | Service | What it does |
 |---|---|
-| `init` | Runs once and creates the secrets (`master_key`, `db_password`, `database_url`) in the `secrets` volume if they are missing. It never overwrites. |
+| `init` | Runs once and creates the secrets if they are missing: `master_key` and the controller's `database_url` in the `secrets` volume, the database's own administrative password in the `dbsecrets` volume. It never overwrites. |
+| `migrate` | Runs once before the controller: sets up the database role the controller uses (it can read and write the tables, nothing more) and applies the schema changes. |
 | `db` | PostgreSQL 18; data in the `pgdata` volume. |
-| `controller` | Applies database migrations, then serves. Runs as a non-root user with a read-only filesystem and no capabilities. |
+| `controller` | Waits for `migrate`, then serves, connected to the database with its limited role. Runs as a non-root user with a read-only filesystem and no capabilities. |
 
 ## 2. The first administrator
 

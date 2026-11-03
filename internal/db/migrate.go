@@ -154,8 +154,16 @@ func (m *Migrator) withLock(ctx context.Context, fn func(*pgx.Conn) error) error
 			conn.Close(bg)
 		}
 	}()
-	if _, err := conn.Exec(ctx, createMigrationTable); err != nil {
+	// CREATE TABLE IF NOT EXISTS needs the right to create in the schema even when the table is there, which the
+	// controller's runtime role has not (`migrate status` and `serve --no-migrate` run as it).
+	var have *string
+	if err := conn.QueryRow(ctx, "SELECT to_regclass('schema_migration')::text").Scan(&have); err != nil {
 		return err
+	}
+	if have == nil {
+		if _, err := conn.Exec(ctx, createMigrationTable); err != nil {
+			return err
+		}
 	}
 	return fn(conn)
 }
