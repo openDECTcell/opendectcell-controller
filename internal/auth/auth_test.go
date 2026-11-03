@@ -388,3 +388,45 @@ func TestCleanupDropsExpiredMFAChallenges(t *testing.T) {
 		t.Fatalf("expired challenges left: %d %v", n, err)
 	}
 }
+
+// Parallel wrong passwords cannot slip past the limit: the attempt is counted
+// before it is checked, so exactly RateLimit of them are answered as wrong and
+// the rest as limited.
+func TestRateLimitHoldsUnderParallelAttempts(t *testing.T) {
+	s, _ := newStore(t)
+	if _, err := s.CreateLocalUser(ctx, auth.NewLocalUser{Username: "dave", Password: "long enough pw", Role: auth.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	const n = 24
+	res := make(chan error, n)
+	for range n {
+		go func() {
+			_, err := s.LoginLocal(ctx, "dave", "wrong password!", "198.51.100.9")
+			res <- err
+		}()
+	}
+	var bad, limited int
+	for range n {
+		switch err := <-res; {
+		case errors.Is(err, auth.ErrBadLogin):
+			bad++
+		case errors.Is(err, auth.ErrRateLimited):
+			limited++
+		default:
+			t.Fatalf("unexpected: %v", err)
+		}
+	}
+	if bad != s.RateLimit || limited != n-s.RateLimit {
+		t.Fatalf("%d wrong, %d limited; want %d and %d", bad, limited, s.RateLimit, n-s.RateLimit)
+	}
+	// A right password does not use a place up.
+	s2, _ := newStore(t)
+	if _, err := s2.CreateLocalUser(ctx, auth.NewLocalUser{Username: "erin", Password: "long enough pw", Role: auth.RoleUser}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 * s2.RateLimit {
+		if _, err := s2.LoginLocal(ctx, "erin", "long enough pw", "198.51.100.10"); err != nil {
+			t.Fatalf("a correct login counted against the limit: %v", err)
+		}
+	}
+}

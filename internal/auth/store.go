@@ -12,6 +12,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/mail"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -106,8 +108,61 @@ type Store struct {
 	// Keyring protects two-factor secrets; without it two-factor login is off.
 	Keyring *secret.Keyring
 
+	// HashConcurrency bounds the password hashes (Argon2id uses tens of MiB
+	// each) that run at once; others wait, for at most hashWait. Zero is
+	// min(4, CPUs).
+	HashConcurrency int
+
 	dummyOnce sync.Once
 	dummyHash string
+	semOnce   sync.Once
+	sem       chan struct{}
+}
+
+// hashWait is how long a request waits for a place to hash a password before
+// it is turned away like a rate-limited one.
+const hashWait = 10 * time.Second
+
+// hashSlot takes one of the places for an Argon2id run. The returned function
+// gives it back.
+func (s *Store) hashSlot(ctx context.Context) (func(), error) {
+	s.semOnce.Do(func() {
+		n := s.HashConcurrency
+		if n <= 0 {
+			n = min(4, runtime.NumCPU())
+		}
+		s.sem = make(chan struct{}, n)
+	})
+	t := time.NewTimer(hashWait)
+	defer t.Stop()
+	select {
+	case s.sem <- struct{}{}:
+		return func() { <-s.sem }, nil
+	case <-t.C:
+		return nil, ErrRateLimited
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// hash and verify are HashPassword and VerifyPassword behind the limit on
+// concurrent runs.
+func (s *Store) hash(ctx context.Context, password string) (string, error) {
+	done, err := s.hashSlot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer done()
+	return HashPassword(s.Argon, password)
+}
+
+func (s *Store) verify(ctx context.Context, encoded, password string) (bool, error) {
+	done, err := s.hashSlot(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer done()
+	return VerifyPassword(encoded, password)
 }
 
 func (s *Store) now() time.Time {
@@ -172,7 +227,7 @@ func (s *Store) CreateLocalUser(ctx context.Context, n NewLocalUser) (*User, err
 	if err := CheckNewPassword(n.Password); err != nil {
 		return nil, err
 	}
-	hash, err := HashPassword(s.Argon, n.Password)
+	hash, err := s.hash(ctx, n.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -231,12 +286,9 @@ func ValidEmail(email string) error {
 func (s *Store) RegisterSelf(ctx context.Context, n SelfRegistration, addr string) (*User, error) {
 	keys := []string{"register:" + addr}
 	if addr != "" {
-		if lim, err := s.limited(ctx, keys); err != nil {
-			return nil, err
-		} else if lim {
+		if _, err := s.reserve(ctx, keys); errors.Is(err, ErrRateLimited) {
 			return nil, ErrRegisterRate
-		}
-		if err := s.recordFailure(ctx, keys); err != nil {
+		} else if err != nil {
 			return nil, err
 		}
 	}
@@ -249,7 +301,7 @@ func (s *Store) RegisterSelf(ctx context.Context, n SelfRegistration, addr strin
 	if err := CheckNewPassword(n.Password); err != nil {
 		return nil, err
 	}
-	hash, err := HashPassword(s.Argon, n.Password)
+	hash, err := s.hash(ctx, n.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +335,7 @@ func (s *Store) SetPassword(ctx context.Context, userID uuid.UUID, password stri
 	if err := CheckNewPassword(password); err != nil {
 		return err
 	}
-	hash, err := HashPassword(s.Argon, password)
+	hash, err := s.hash(ctx, password)
 	if err != nil {
 		return err
 	}
@@ -322,17 +374,43 @@ func rateKeys(username, addr string) []string {
 	return keys
 }
 
-func (s *Store) limited(ctx context.Context, keys []string) (bool, error) {
-	var n int
-	err := s.Pool.QueryRow(ctx, `SELECT coalesce(max(c), 0) FROM (
-		SELECT count(*) AS c FROM login_failure WHERE key = ANY($1) AND at > $2 GROUP BY key) x`,
-		keys, s.now().Add(-s.window())).Scan(&n)
-	return n >= s.RateLimit, err
-}
-
-func (s *Store) recordFailure(ctx context.Context, keys []string) error {
-	_, err := s.Pool.Exec(ctx, "INSERT INTO login_failure (key, at) SELECT unnest($1::text[]), $2", keys, s.now())
-	return err
+// reserve counts an attempt against the rate limit before the check runs, under
+// a lock per key, so a burst of parallel attempts cannot all pass the same
+// count. The reserved attempt stays as the failure; call give when the
+// attempt succeeded (or ended for a reason that is not the client's fault) to
+// take it back.
+func (s *Store) reserve(ctx context.Context, keys []string) (give func(), err error) {
+	keys = slices.Sorted(slices.Values(keys)) // one lock order, no deadlock
+	var ids []int64
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		ids = nil
+		for _, k := range keys {
+			if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext('login_failure'), hashtext($1))", k); err != nil {
+				return err
+			}
+		}
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT coalesce(max(c), 0) FROM (
+			SELECT count(*) AS c FROM login_failure WHERE key = ANY($1) AND at > $2 GROUP BY key) x`,
+			keys, s.now().Add(-s.window())).Scan(&n); err != nil {
+			return err
+		}
+		if n >= s.RateLimit {
+			return ErrRateLimited
+		}
+		rows, err := tx.Query(ctx, "INSERT INTO login_failure (key, at) SELECT unnest($1::text[]), $2 RETURNING id", keys, s.now())
+		if err != nil {
+			return err
+		}
+		ids, err = pgx.CollectRows(rows, pgx.RowTo[int64])
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		_, _ = s.Pool.Exec(context.WithoutCancel(ctx), "DELETE FROM login_failure WHERE id = ANY($1)", ids)
+	}, nil
 }
 
 // LoginLocal checks a username and password. It is rate-limited per username
@@ -351,18 +429,19 @@ func (s *Store) LoginLocal(ctx context.Context, username, password, addr string)
 // without recording the login, so a second factor can still follow. It
 // returns the user's id.
 func (s *Store) CheckPassword1(ctx context.Context, username, password, addr string) (uuid.UUID, error) {
-	keys := rateKeys(username, addr)
-	if lim, err := s.limited(ctx, keys); err != nil {
-		return uuid.Nil, err
-	} else if lim {
+	// The attempt is counted before the password is checked (reserve), so
+	// parallel attempts cannot all slip under the limit; a wrong password
+	// leaves it counted, a right one or an internal error takes it back.
+	give, err := s.reserve(ctx, rateKeys(username, addr))
+	if errors.Is(err, ErrRateLimited) {
 		// Best effort: the outcome of a login must not depend on the audit write.
 		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_ratelimited", ObjectType: "user", Details: map[string]any{"username": username}})
 		return uuid.Nil, ErrRateLimited
 	}
+	if err != nil {
+		return uuid.Nil, err
+	}
 	fail := func() (uuid.UUID, error) {
-		if err := s.recordFailure(ctx, keys); err != nil {
-			return uuid.Nil, err
-		}
 		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.login_failed", ObjectType: "user", Details: map[string]any{"username": username}})
 		return uuid.Nil, ErrBadLogin
 	}
@@ -372,25 +451,31 @@ func (s *Store) CheckPassword1(ctx context.Context, username, password, addr str
 	var id uuid.UUID
 	var hash *string
 	var disabled bool
-	err := s.Pool.QueryRow(ctx, "SELECT id, password_hash, disabled FROM app_user WHERE lower(username) = lower($1) AND auth_source = 'local'", username).
+	err = s.Pool.QueryRow(ctx, "SELECT id, password_hash, disabled FROM app_user WHERE lower(username) = lower($1) AND auth_source = 'local'", username).
 		Scan(&id, &hash, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) || hash == nil {
 		// Same work as a real check, so timing doesn't reveal which names exist.
-		_, _ = VerifyPassword(s.dummy(), password)
+		if _, err := s.verify(ctx, s.dummy(), password); err != nil {
+			give()
+			return uuid.Nil, err
+		}
 		return fail()
 	}
 	if err != nil {
+		give()
 		return uuid.Nil, err
 	}
-	ok, err := VerifyPassword(*hash, password)
+	ok, err := s.verify(ctx, *hash, password)
 	if err != nil {
+		give()
 		return uuid.Nil, err
 	}
 	if !ok || disabled {
 		return fail()
 	}
+	give()
 	if NeedsRehash(*hash, s.Argon) {
-		if h, err := HashPassword(s.Argon, password); err == nil {
+		if h, err := s.hash(ctx, password); err == nil {
 			// Best effort: the old hash keeps working if this fails.
 			_, _ = s.Pool.Exec(ctx, "UPDATE app_user SET password_hash = $2 WHERE id = $1", id, h)
 		}
@@ -410,21 +495,18 @@ func (s *Store) CheckPassword(ctx context.Context, userID uuid.UUID, password, a
 	if err != nil {
 		return err
 	}
-	keys := rateKeys(name, addr)
-	if lim, err := s.limited(ctx, keys); err != nil {
+	give, err := s.reserve(ctx, rateKeys(name, addr))
+	if err != nil {
 		return err
-	} else if lim {
-		return ErrRateLimited
 	}
 	if len(password) <= MaxPasswordLen {
-		if ok, err := VerifyPassword(*hash, password); err != nil {
+		if ok, err := s.verify(ctx, *hash, password); err != nil {
+			give()
 			return err
 		} else if ok {
+			give()
 			return nil
 		}
-	}
-	if err := s.recordFailure(ctx, keys); err != nil {
-		return err
 	}
 	_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.password_check_failed", ObjectType: "user", ObjectID: userID.String()})
 	return ErrBadLogin

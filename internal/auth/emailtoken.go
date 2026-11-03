@@ -94,12 +94,9 @@ func (s *Store) VerifyEmail(ctx context.Context, tok string) (*User, error) {
 func (s *Store) RequestReset(ctx context.Context, email, addr string) (*User, error) {
 	keys := []string{"reset:" + addr}
 	if addr != "" {
-		if lim, err := s.limited(ctx, keys); err != nil {
-			return nil, err
-		} else if lim {
+		if _, err := s.reserve(ctx, keys); errors.Is(err, ErrRateLimited) {
 			return nil, ErrResetRate
-		}
-		if err := s.recordFailure(ctx, keys); err != nil {
+		} else if err != nil {
 			return nil, err
 		}
 	}
@@ -145,12 +142,9 @@ func (s *Store) ResetPassword(ctx context.Context, tok, password string) error {
 func (s *Store) RequestVerification(ctx context.Context, email, addr string) (*User, error) {
 	keys := []string{"verify:" + addr}
 	if addr != "" {
-		if lim, err := s.limited(ctx, keys); err != nil {
-			return nil, err
-		} else if lim {
+		if _, err := s.reserve(ctx, keys); errors.Is(err, ErrRateLimited) {
 			return nil, ErrResetRate
-		}
-		if err := s.recordFailure(ctx, keys); err != nil {
+		} else if err != nil {
 			return nil, err
 		}
 	}

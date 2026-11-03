@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,6 +66,7 @@ type Server struct {
 	BaseURL        *url.URL
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix
+	proxyWarn      sync.Once
 	Log            *slog.Logger
 	Version        string
 	Cells          *cell.Store // nil: no cell pages
@@ -288,6 +290,13 @@ func (s *Server) clientAddr(r *http.Request) netip.Addr {
 	}
 	peer = peer.Unmap()
 	if !s.trusted(peer) {
+		// A proxy in front of us that is not listed makes every client look like the
+		// proxy, so they would share one login rate limit: say so, once.
+		if len(s.TrustedProxies) == 0 && r.Header.Get("X-Forwarded-For") != "" {
+			s.proxyWarn.Do(func() {
+				s.Log.Warn("a request carries X-Forwarded-For but http.trusted_proxies is empty: behind a reverse proxy every client shares the proxy's address and one login rate limit; list the proxy")
+			})
+		}
 		return peer
 	}
 	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")

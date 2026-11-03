@@ -202,12 +202,11 @@ func (s *Store) VerifySecondFactor(ctx context.Context, id uuid.UUID, code, addr
 	if addr != "" {
 		keys = append(keys, "addr:"+addr)
 	}
-	if lim, err := s.limited(ctx, keys); err != nil {
+	give, err := s.reserve(ctx, keys) // counted first: parallel guesses cannot all pass
+	if err != nil {
 		return err
-	} else if lim {
-		return ErrRateLimited
 	}
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		key, confirmed, last, err := s.openSecret(ctx, tx, id)
 		if err != nil {
 			return err
@@ -229,10 +228,9 @@ func (s *Store) VerifySecondFactor(ctx context.Context, id uuid.UUID, code, addr
 		return audit.Record(ctx, tx, audit.Entry{Action: "user.recovery_code_used", ObjectType: "user", ObjectID: id.String()})
 	})
 	if errors.Is(err, ErrBadCode) {
-		if rerr := s.recordFailure(ctx, keys); rerr != nil {
-			return rerr
-		}
 		_ = audit.Record(ctx, s.Pool, audit.Entry{Action: "user.totp_failed", ObjectType: "user", ObjectID: id.String()})
+	} else {
+		give() // right code, or a failure of ours
 	}
 	return err
 }
