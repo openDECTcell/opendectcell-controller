@@ -334,7 +334,7 @@ func (s *Store) CellRecords(ctx context.Context, cell uuid.UUID, limit int) ([]H
 		}
 		// Home-set handsets without a slot on this cell get the lowest free one.
 		rows, err := tx.Query(ctx, `SELECT hc.handset_id FROM handset_home_cell hc JOIN handset h ON h.id = hc.handset_id
-			WHERE hc.cell_id = $1 AND NOT h.pooled AND NOT EXISTS
+			WHERE hc.cell_id = $1 AND NOT h.pooled AND handset_may_use_cell(h.owner_user_id, hc.cell_id) AND NOT EXISTS
 				(SELECT 1 FROM cell_slot cs WHERE cs.cell_id = $1 AND cs.handset_id = hc.handset_id)
 			ORDER BY h.registered_at, h.id`, cell)
 		if err != nil {
@@ -427,6 +427,15 @@ func (s *Store) place(ctx context.Context, cell uuid.UUID, heard bool, find func
 		if err != nil {
 			return err
 		}
+		// The owner decides whose base stations may hold the handset's key
+		// (docs/adr/0007-organizations-and-trust.md): a cell they do not trust gets no record.
+		var allowed bool
+		if err := tx.QueryRow(ctx, "SELECT handset_may_use_cell(owner_user_id, $2) FROM handset WHERE id = $1", id, cell).Scan(&allowed); err != nil {
+			return err
+		}
+		if !allowed {
+			return nil
+		}
 		var here bool
 		if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM cell_slot WHERE cell_id = $1 AND handset_id = $2)", cell, id).Scan(&here); err != nil {
 			return err
@@ -474,7 +483,7 @@ func (s *Store) CellOrder(ctx context.Context, id, anchor uuid.UUID, cells []uui
 		LEFT JOIN (SELECT to_cell_id, max(at) AS at FROM handset_move
 			WHERE handset_id = $1 AND at > now() - interval '7 days' GROUP BY to_cell_id) h ON h.to_cell_id = c.id
 		LEFT JOIN cell a ON a.id = $3
-		WHERE c.id = ANY($2)
+		WHERE c.id = ANY($2) AND handset_may_use_cell((SELECT owner_user_id FROM handset WHERE id = $1), c.id)
 		ORDER BY (h.at IS NULL), h.at DESC,
 			(c.latitude IS NULL OR a.latitude IS NULL),
 			(c.latitude - a.latitude)^2 + (cos(radians((c.latitude + a.latitude) / 2)) * (c.longitude - a.longitude))^2,
@@ -944,4 +953,39 @@ func (s *Store) Detached(ctx context.Context, id uuid.UUID, at time.Time) error 
 func (s *Store) PageFailed(ctx context.Context, id uuid.UUID, at time.Time) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE handset SET page_failed_at = $2 WHERE id = $1 AND (page_failed_at IS NULL OR page_failed_at < $2)`, id, at)
 	return err
+}
+
+// Dropped is a record that left a cell's table because the owner does not trust the cell's
+// operator any more.
+type Dropped struct {
+	Cell, Handset uuid.UUID
+	Slot          int16 // a chip slot (up to maxSlot) keeps the key in the chip until it is overwritten
+}
+
+// DropUntrusted removes every record from a cell whose operator its handset's owner does not
+// trust (handset_may_use_cell), and takes the cell out of the home set of such handsets so that a
+// restart does not place them again. It returns what it removed, for the cells' stacks to follow.
+func (s *Store) DropUntrusted(ctx context.Context) ([]Dropped, error) {
+	var out []Dropped
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		out = nil
+		if _, err := tx.Exec(ctx, `DELETE FROM handset_home_cell hc USING handset h
+			WHERE h.id = hc.handset_id AND NOT handset_may_use_cell(h.owner_user_id, hc.cell_id)`); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `UPDATE cell_slot cs SET handset_id = NULL, state = 'empty', written_at = now()
+			FROM handset h
+			WHERE h.id = cs.handset_id AND NOT handset_may_use_cell(h.owner_user_id, cs.cell_id)
+			RETURNING cs.cell_id, h.id, cs.slot`)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Dropped, error) {
+			var d Dropped
+			err := r.Scan(&d.Cell, &d.Handset, &d.Slot)
+			return d, err
+		})
+		return err
+	})
+	return out, err
 }

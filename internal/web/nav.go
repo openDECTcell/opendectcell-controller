@@ -47,6 +47,7 @@ var menu = []navEntry{
 	{group: "Phones", navItem: navItem{Label: "Contacts", Href: "/contacts", Icon: "address-book"}},
 	{group: "Base stations", navItem: navItem{Label: "My base stations", Href: "/stations", Icon: "antenna-bars-5"}},
 	{group: "Base stations", navItem: navItem{Label: "Enroll a base station", Href: "/enroll", Icon: "plus"}, needCell: true},
+	{group: "Base stations", navItem: navItem{Label: "Organizations and trust", Href: "/organizations", Icon: "users"}},
 	{group: "Base stations", navItem: navItem{Label: "Public map", Href: "/map", Icon: "map-2"}},
 	{group: "Insight", navItem: navItem{Label: "Statistics", Href: "/statistics", Icon: "chart-bar"}},
 	{group: "Insight", navItem: navItem{Label: "Logging", Href: "/logging", Icon: "list-details"}},

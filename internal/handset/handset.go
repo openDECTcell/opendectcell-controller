@@ -405,3 +405,28 @@ func (s *Store) SetLine(ctx context.Context, u *auth.User, id uuid.UUID, line in
 			Details: map[string]any{"line": line, "account": account.String()}})
 	})
 }
+
+// PresenceCounts is how many handsets the given owners have, and how many of them are online now.
+func (s *Store) PresenceCounts(ctx context.Context, owners []uuid.UUID) (total, online int, err error) {
+	rows, err := s.Pool.Query(ctx, "SELECT last_seen_at, detached_at, page_failed_at FROM handset WHERE owner_user_id = ANY($1)", owners)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+	var iv time.Duration
+	if s.Interval != nil {
+		iv = s.Interval(ctx)
+	}
+	now := time.Now()
+	for rows.Next() {
+		var seen, det, failed *time.Time
+		if err := rows.Scan(&seen, &det, &failed); err != nil {
+			return 0, 0, err
+		}
+		total++
+		if PresenceAt(now, seen, det, failed, iv) == Online {
+			online++
+		}
+	}
+	return total, online, rows.Err()
+}

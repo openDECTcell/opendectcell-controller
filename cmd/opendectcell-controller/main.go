@@ -58,6 +58,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
+	"github.com/openDECTcell/opendectcell-controller/internal/org"
 	"github.com/openDECTcell/opendectcell-controller/internal/retention"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
@@ -274,6 +275,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	link := &cell.Server{Store: cells, Log: log.With("component", "cells"), Hosts: []string{base.Hostname()}}
 	var windows *regwin.Registry
 	var dectCore *dectcore.Core
+	// Organizations and the trust setting (ADR 0007); the DECT core, once it exists, is told
+	// whenever what a handset may use has changed.
+	orgs := &org.Store{Pool: pool}
 	// The contacts: the web pages' store, and the phonebook of the handsets; a change of either
 	// gives the handsets a new Contact List (set below, once the DECT core exists).
 	contactStore := &contacts.Store{Pool: pool}
@@ -301,6 +305,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		dect := &dectcore.Core{Roaming: roamingFrom(instance), Link: link, Records: &dectcore.Store{Pool: pool, Keyring: kr, NoPool: !cfg.Cells.HandsetPool},
 			Reg: windows, Identity: cells, Log: log.With("component", "dect")}
 		dectCore = dect
+		orgs.Enforcer = dect
 		if n := int(cfg.Cells.StackWorkers); n > 0 {
 			sup = &worker.Supervisor{N: n, Log: log.With("component", "dect-workers")}
 			sup.Start(sctx)
@@ -336,6 +341,20 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		}
 		dctx, stop := context.WithCancel(ctx)
 		dect.Start(dctx)
+		// A safety net next to the calls the pages make: a deleted account or cell also changes whom
+		// a handset's owner trusts.
+		go func() {
+			t := time.NewTicker(5 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					dect.EnforceTrust()
+				case <-dctx.Done():
+					return
+				}
+			}
+		}()
 		defer dect.Wait() // after stop: the stacks close, their records are written
 		defer stop()
 		link.Mails = dect
@@ -362,7 +381,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
-		Cells: cells, CellLink: link,
+		Cells: cells, CellLink: link, Orgs: orgs,
 		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: contactStore,
 		Registrations: windows,
 		HandsetChanged: func(id uuid.UUID) {

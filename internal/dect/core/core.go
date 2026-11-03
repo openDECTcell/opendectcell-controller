@@ -117,6 +117,9 @@ type Core struct {
 	start time.Time
 	cells map[uuid.UUID]*cellRun
 	wg    sync.WaitGroup
+
+	// EnforceTrust runs one at a time (mu guards both).
+	trustRunning, trustAgain bool
 }
 
 // Registrations is what the core needs of the registration windows
@@ -455,4 +458,68 @@ func bringUp(stub string, radioOn, resumed bool) []stack.Mail {
 		stack.Mail{Src: 0x22, Dst: 0x02, Prim: 0x015B, Param: []byte{0x01}}, // radio and beacon on
 		stack.Mail{Src: 0x22, Dst: 0x02, Prim: 0x022C, Param: []byte{0x01}}, // registration closed
 	)
+}
+
+// trustStore is what a Records may also do: remove records from cells their owners do not trust.
+type trustStore interface {
+	DropUntrusted(ctx context.Context) ([]Dropped, error)
+}
+
+// EnforceTrust makes the cells' tables follow the owners' trust settings
+// (docs/adr/0007-organizations-and-trust.md): a handset's record leaves every cell whose
+// operator its owner does not trust. It returns at once; the work runs in the background, one
+// run at a time (a call made while one runs makes it run once more). A record in a chip slot
+// stays in the chip until the slot is overwritten or the chip reloaded.
+func (c *Core) EnforceTrust() {
+	c.mu.Lock()
+	if c.ctx == nil || c.ctx.Err() != nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.trustRunning {
+		c.trustAgain = true
+		c.mu.Unlock()
+		return
+	}
+	c.trustRunning = true
+	ctx := c.ctx
+	c.wg.Add(1)
+	c.mu.Unlock()
+	go func() {
+		defer c.wg.Done()
+		for {
+			c.enforceTrustOnce(ctx)
+			c.mu.Lock()
+			if !c.trustAgain || ctx.Err() != nil {
+				c.trustRunning = false
+				c.mu.Unlock()
+				return
+			}
+			c.trustAgain = false
+			c.mu.Unlock()
+		}
+	}()
+}
+
+func (c *Core) enforceTrustOnce(ctx context.Context) {
+	ts, ok := c.Records.(trustStore)
+	if !ok {
+		return
+	}
+	qctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	dropped, err := ts.DropUntrusted(qctx)
+	cancel()
+	if err != nil {
+		c.Log.Error("trust settings could not be applied to the cells' tables", "err", err)
+		return
+	}
+	for _, d := range dropped {
+		if d.Slot <= maxSlot {
+			c.Log.Warn("a handset's key stays in a chip slot until the slot is overwritten", "cell", d.Cell, "handset", d.Handset, "slot", d.Slot)
+		}
+		c.post(d.Cell, event{kind: evEvict, hid: d.Handset})
+	}
+	if len(dropped) > 0 {
+		c.Log.Info("records removed from cells their owners do not trust", "records", len(dropped))
+	}
 }

@@ -594,3 +594,61 @@ func TestStoreDetachedAndPageFailed(t *testing.T) {
 		t.Errorf("detached %v, page failed %v, last seen %v, want all %v", det, failed, seen, t2)
 	}
 }
+
+// A handset's owner decides whose base stations may hold its record
+// (docs/adr/0007-organizations-and-trust.md): nothing is placed on a cell they do not
+// trust, the call order leaves it out, and what was placed there is taken away.
+func TestStoreTrustKeepsRecordsOffUntrustedCells(t *testing.T) {
+	s, ctx := newStore(t)
+	owner, other := s.newUser(t, ctx, "owner"), s.newUser(t, ctx, "other")
+	own, foreign := s.newCell(t, ctx, "own"), s.newCell(t, ctx, "foreign")
+	for c, u := range map[uuid.UUID]uuid.UUID{own: owner, foreign: other} {
+		if _, err := s.Pool.Exec(ctx, "UPDATE cell SET enrolled_by = $2 WHERE id = $1", c, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hid, err := s.save(ctx, own, uuid.Nil, owner, rec(1, 0x21))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// By default the shared network: the foreign cell takes it.
+	if _, ok, err := s.PlaceHandset(ctx, foreign, hid); err != nil || !ok {
+		t.Fatalf("place on a foreign cell under 'all': %v %v", ok, err)
+	}
+	if order, _ := s.CellOrder(ctx, hid, uuid.Nil, []uuid.UUID{own, foreign}, 10); len(order) != 2 {
+		t.Fatalf("order under 'all': %v", order)
+	}
+
+	if _, err := s.Pool.Exec(ctx, "UPDATE app_user SET trust_scope = 'own' WHERE id = $1", owner); err != nil {
+		t.Fatal(err)
+	}
+	// The record that is there now goes ...
+	dropped, err := s.DropUntrusted(ctx)
+	if err != nil || len(dropped) != 1 || dropped[0].Cell != foreign || dropped[0].Handset != hid {
+		t.Fatalf("dropped %+v %v", dropped, err)
+	}
+	var n int
+	_ = s.Pool.QueryRow(ctx, "SELECT count(*) FROM cell_slot WHERE cell_id = $1 AND handset_id IS NOT NULL", foreign).Scan(&n)
+	if n != 0 {
+		t.Fatalf("the foreign cell still holds %d records", n)
+	}
+	// ... nothing is placed there again, by id or by the identity the cell heard ...
+	if _, ok, err := s.PlaceHandset(ctx, foreign, hid); err != nil || ok {
+		t.Fatalf("placed on an untrusted cell: %v %v", ok, err)
+	}
+	var ipui []byte
+	_ = s.Pool.QueryRow(ctx, "SELECT ipui FROM handset WHERE id = $1", hid).Scan(&ipui)
+	if _, ok, err := s.PlaceByIPUI(ctx, foreign, ipui); err != nil || ok {
+		t.Fatalf("an untrusted cell identified the handset: %v %v", ok, err)
+	}
+	// ... the cells to ring on leave it out, and the own cell still works.
+	if order, _ := s.CellOrder(ctx, hid, uuid.Nil, []uuid.UUID{own, foreign}, 10); len(order) != 1 || order[0] != own {
+		t.Fatalf("order under 'own': %v", order)
+	}
+	if _, ok, err := s.PlaceHandset(ctx, own, hid); err != nil || !ok {
+		t.Fatalf("own cell refused: %v %v", ok, err)
+	}
+	if d, err := s.DropUntrusted(ctx); err != nil || len(d) != 0 {
+		t.Fatalf("a second clean-up found more: %+v %v", d, err)
+	}
+}

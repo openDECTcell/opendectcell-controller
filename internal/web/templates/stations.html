@@ -1,5 +1,7 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "stations.html"}}{{template "head" .}}
+{{template "trust_notice" .}}
+<p class="text-secondary">Handsets of other users can be put on your base stations if their owners trust you: you hold their keys, and you are expected not to read or use them. They choose whom to trust under <a href="/organizations">Organizations and trust</a>.</p>
 {{if .User.CanAddCells}}<p><a class="btn btn-primary" href="/enroll">{{icon "plus"}} Enroll a base station</a></p>{{end}}
 <div class="row row-cards">
 {{range .Data}}

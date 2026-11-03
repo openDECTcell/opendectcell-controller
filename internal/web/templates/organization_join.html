@@ -1,0 +1,34 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "organization_join.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row"><div class="col-lg-6">
+{{if .Org}}
+  <form method="post" action="/organizations/join">
+    <input type="hidden" name="token" value="{{.Token}}">
+    <input type="hidden" name="confirm" value="1">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "user-plus"}} Join “{{.Org.Name}}”</h3></div>
+      <div class="card-body">
+        <p>You were invited to this organization. Its members will see your name and how many base stations you run. Joining gives nobody access to your handsets, accounts or base stations, and you decide separately whether you trust the organization's members' base stations.</p>
+        <label class="form-label" for="alias">What do you want to call it?</label>
+        <input class="form-control" id="alias" name="alias" maxlength="64" value="{{.Org.Name}}">
+        <div class="form-hint">The owner called it “{{.Org.Name}}”. Only you see the name you choose.</div>
+      </div>
+      <div class="card-footer text-end"><a class="btn" href="/organizations">Cancel</a> <button type="submit" class="btn btn-primary">Join</button></div>
+    </div>
+  </form>
+{{else}}
+  <form method="get" action="/organizations/join">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "user-plus"}} Join an organization</h3></div>
+      <div class="card-body">
+        <label class="form-label" for="token">Invitation token</label>
+        <input class="form-control" id="token" name="token" autocomplete="off" required>
+      </div>
+      <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Continue</button></div>
+    </div>
+  </form>
+{{end}}
+</div></div>
+{{end}}
+{{template "foot" .}}{{end}}

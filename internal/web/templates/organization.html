@@ -1,0 +1,120 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "organization.html"}}{{template "head" .}}
+{{with .Data}}{{$o := .O}}
+{{if .Token}}
+<div class="alert alert-info" role="status">
+  <h4 class="alert-title">Invitation</h4>
+  <p class="mb-2">Give this to the person you want to invite. <strong>It is shown only now</strong>, works once and expires on {{fmtTime .Expires}}.</p>
+  <div class="mb-2"><label class="form-label mb-1">Link</label><input class="form-control" readonly value="{{.JoinURL}}" onclick="this.select()"></div>
+  <div><label class="form-label mb-1">Token</label><input class="form-control" readonly value="{{.Token}}" onclick="this.select()"></div>
+</div>
+{{end}}
+<div class="row row-cards mb-3">
+  <div class="col-sm-6">
+    <div class="card"><div class="card-body">
+      <div class="subheader">Base stations</div>
+      <div class="h1 mb-0">{{$o.Cells.Total}}</div>
+      <div class="text-secondary small">{{$o.Cells.Online}} online · {{$o.Cells.Offline}} offline</div>
+    </div></div>
+  </div>
+  <div class="col-sm-6">
+    <div class="card"><div class="card-body">
+      <div class="subheader">Handsets</div>
+      <div class="h1 mb-0">{{$o.Handsets.Total}}</div>
+      <div class="text-secondary small">{{$o.Handsets.Online}} online · {{$o.Handsets.Offline}} offline</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "users"}} Members</h3></div>
+      <div class="table-responsive"><table class="table card-table table-vcenter">
+        <thead><tr><th>Name</th><th></th><th class="text-end">Base stations</th>{{if or $o.CanRemove $o.CanAppoint}}<th></th>{{end}}</tr></thead>
+        <tbody>
+        {{range $o.People}}
+          <tr>
+            <td>{{.Name}}</td>
+            <td>{{if .Owner}}<span class="badge bg-primary-lt">owner</span>{{else if eq .Role "admin"}}<span class="badge bg-azure-lt">admin</span>{{else}}<span class="badge bg-secondary-lt">member</span>{{end}}</td>
+            <td class="text-end">{{.Cells}}</td>
+            {{if or $o.CanRemove $o.CanAppoint}}
+            <td class="text-end text-nowrap">
+              {{if and (not .Owner) $o.CanAppoint}}
+              <form class="d-inline" method="post" action="/organizations/{{$o.ID}}/members/{{.UserID}}/role">
+                {{if eq .Role "admin"}}<input type="hidden" name="role" value="member"><button class="btn btn-sm" type="submit">Make member</button>
+                {{else}}<input type="hidden" name="role" value="admin"><button class="btn btn-sm" type="submit">Make admin</button>{{end}}
+              </form>{{end}}
+              {{if and (not .Owner) $o.CanRemove (or (ne .Role "admin") $o.CanAppoint)}}
+              <form class="d-inline" method="post" action="/organizations/{{$o.ID}}/members/{{.UserID}}/remove">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+              </form>{{end}}
+            </td>
+            {{end}}
+          </tr>
+        {{end}}
+        </tbody>
+      </table></div>
+      <div class="card-footer text-secondary small">Members see each other's names and how many base stations each runs, and nothing else. Being in an organization gives nobody access to your handsets, accounts or base stations; it only lets members choose to trust one another's base stations (<a href="/organizations">Organizations and trust</a>).</div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Your name for it</h3></div>
+      <form method="post" action="/organizations/{{$o.ID}}/alias">
+        <div class="card-body">
+          <input class="form-control" name="alias" maxlength="64" value="{{$o.Display}}" aria-label="Your name for this organization">
+          <div class="form-hint">Only you see it. The owner named it “{{$o.Name}}”.</div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+
+    {{if $o.CanInvite}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "user-plus"}} Invite someone</h3></div>
+      <form method="post" action="/organizations/{{$o.ID}}/invite">
+        <div class="card-body"><p class="mb-0">An invitation works once and is valid for 7 days. {{if $o.OpenInvites}}{{$o.OpenInvites}} {{if eq $o.OpenInvites 1}}is{{else}}are{{end}} open now.{{end}}</p></div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Create an invitation</button></div>
+      </form>
+    </div>
+    {{end}}
+
+    {{if $o.CanAppoint}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Rename the organization</h3></div>
+      <form method="post" action="/organizations/{{$o.ID}}/rename">
+        <div class="card-body"><input class="form-control" name="name" maxlength="64" value="{{$o.Name}}" aria-label="Organization name"></div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Rename</button></div>
+      </form>
+    </div>
+    {{end}}
+
+    {{if and $o.Role (not $o.Owner)}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "logout"}} Leave</h3></div>
+      <form method="post" action="/organizations/{{$o.ID}}/leave">
+        <div class="card-body"><p class="mb-0">You stop seeing the organization and no longer trust it, if you did.</p></div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-outline-danger">Leave the organization</button></div>
+      </form>
+    </div>
+    {{end}}
+
+    {{if $o.CanDelete}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "trash"}} Delete</h3></div>
+      <form method="post" action="/organizations/{{$o.ID}}/delete">
+        <div class="card-body">
+          <p>This ends the organization for everybody. Everyone who trusted it stops trusting its members' base stations.</p>
+          <label class="form-label" for="confirm">Type “{{$o.Name}}” to confirm</label>
+          <input class="form-control" id="confirm" name="confirm" autocomplete="off">
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-danger">Delete</button></div>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

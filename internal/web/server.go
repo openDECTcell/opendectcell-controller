@@ -36,6 +36,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
+	"github.com/openDECTcell/opendectcell-controller/internal/org"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
@@ -83,6 +84,7 @@ type Server struct {
 	Settings          *settings.Store // nil: the default instance name, no settings pages
 	Stats             *stats.Store    // nil: no statistics pages
 	Handsets          *handset.Store  // nil: no handset pages
+	Orgs              *org.Store      // nil: no organization pages
 	LogCtl            *logctl.Controller
 	Mailer            Mailer // nil: no mail
 	SMTPHost          string
@@ -202,6 +204,7 @@ func (s *Server) routes() {
 	s.publicMapRoutes()
 	s.stubRoutes()
 	s.stationRoutes()
+	s.orgRoutes()
 	s.statsRoutes()
 	s.loggingRoutes()
 	s.adminRoutes()

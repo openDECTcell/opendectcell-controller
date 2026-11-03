@@ -1,0 +1,87 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "organizations.html"}}{{template "head" .}}
+{{with .Data}}
+{{template "trust_notice" .}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <form method="post" action="/organizations/trust">
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">{{icon "shield-lock"}} Whose base stations may my handsets use?</h3></div>
+        <div class="card-body">
+          <label class="form-check mb-3"><input class="form-check-input" type="radio" name="scope" value="all" {{if eq .Trust.Scope "all"}}checked{{end}}>
+            <span class="form-check-label"><strong>Every base station of this controller.</strong> Your handsets work wherever there is coverage, also on base stations of people you do not know.</span></label>
+          <label class="form-check mb-3"><input class="form-check-input" type="radio" name="scope" value="own" {{if eq .Trust.Scope "own"}}checked{{end}}>
+            <span class="form-check-label"><strong>Only my own base stations.</strong> Your handsets are never put on anybody else's. Without a base station of your own they will not work.</span></label>
+          <label class="form-check mb-3"><input class="form-check-input" type="radio" name="scope" value="orgs" {{if eq .Trust.Scope "orgs"}}checked{{end}}>
+            <span class="form-check-label"><strong>My own and those of the organizations I trust.</strong> Tick the organizations below; every member's base stations count, now and later.</span></label>
+          <div class="ms-4 mb-3">
+            {{range .Orgs}}
+              <label class="form-check mb-1"><input class="form-check-input" type="checkbox" name="org" value="{{.ID}}" {{if .Trusted}}checked{{end}}>
+                <span class="form-check-label">{{.Display}} <span class="text-secondary">· {{.Members}} member{{if ne .Members 1}}s{{end}}</span></span></label>
+            {{else}}
+              <p class="text-secondary mb-0">You are in no organization yet: create one or join one below.</p>
+            {{end}}
+          </div>
+          <p class="text-secondary small mb-0">Saving takes your handsets off base stations that are not allowed. A key that is in a base station's chip stays there until the chip loads another handset or restarts; register the handset again if you think a key was read.</p>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
+      </div>
+    </form>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "users"}} My organizations</h3></div>
+      {{if .Orgs}}
+      <div class="list-group list-group-flush">
+        {{range .Orgs}}
+        <a class="list-group-item list-group-item-action d-flex align-items-center" href="/organizations/{{.ID}}">
+          <div><div>{{.Display}}</div>{{if ne .Display .Name}}<div class="text-secondary small">{{.Name}}</div>{{end}}</div>
+          <div class="ms-auto text-end">
+            {{if .Owner}}<span class="badge bg-primary-lt">owner</span>{{else if eq .Role "admin"}}<span class="badge bg-azure-lt">admin</span>{{else}}<span class="badge bg-secondary-lt">member</span>{{end}}
+            {{if .Trusted}}<span class="badge bg-success-lt">trusted</span>{{end}}
+            <div class="text-secondary small">{{.Members}} member{{if ne .Members 1}}s{{end}}</div>
+          </div>
+        </a>
+        {{end}}
+      </div>
+      {{else}}<div class="card-body"><p class="text-secondary mb-0">None yet.</p></div>{{end}}
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "user-plus"}} Join an organization</h3></div>
+      <form method="get" action="/organizations/join">
+        <div class="card-body">
+          <label class="form-label" for="token">Invitation token</label>
+          <input class="form-control" id="token" name="token" autocomplete="off" required>
+          <div class="form-hint">An administrator of the organization gives it to you. It works once.</div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Continue</button></div>
+      </form>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "users"}} Create an organization</h3></div>
+      <form method="post" action="/organizations">
+        <div class="card-body">
+          <label class="form-label" for="name">Name</label>
+          <input class="form-control" id="name" name="name" maxlength="64" placeholder="Makerspace" required>
+          <div class="form-hint">You become its owner and administrator and can invite others. An organization only lets its members trust each other's base stations; it gives nobody access to anybody's handsets, accounts or base stations.</div>
+        </div>
+        <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Create</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+{{if .All}}
+<div class="card mt-3">
+  <div class="card-header"><h3 class="card-title">All organizations (controller administrators)</h3></div>
+  <div class="table-responsive"><table class="table card-table table-vcenter">
+    <thead><tr><th>Name</th><th>Members</th><th>Owner</th><th></th></tr></thead>
+    <tbody>{{range .All}}<tr><td>{{.Name}}</td><td>{{.Members}}</td><td>{{if .OwnerID}}<span class="text-secondary">present</span>{{else}}<span class="badge bg-warning-lt">none</span>{{end}}</td>
+      <td class="text-end"><a class="btn btn-sm" href="/organizations/{{.ID}}">Open</a></td></tr>{{end}}</tbody>
+  </table></div>
+</div>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

@@ -23,10 +23,11 @@ This wiki explains how to use what the project builds, from nothing to a handset
 7. [Register handsets](Handsets.md): the registration window, device profiles, names, lines, removing a handset.
 8. [SIP lines](SIP-lines.md): connecting handsets to a provider or a telephone system; codecs, encryption, NAT.
 9. [Roaming and many cells](Roaming-and-many-cells.md): how handsets move, what the settings do, the limits.
-10. [Operating a controller](Operating.md): backups, upgrades, monitoring, logs, secrets, data retention.
-11. [Troubleshooting](Troubleshooting.md)
-12. [Limits and what is not there yet](Limits.md)
-13. [Glossary](Glossary.md)
+10. [Organizations and trust](Organizations-and-trust.md): what a base station's operator can read, and whose base stations your handsets may use.
+11. [Operating a controller](Operating.md): backups, upgrades, monitoring, logs, secrets, data retention.
+12. [Troubleshooting](Troubleshooting.md)
+13. [Limits and what is not there yet](Limits.md)
+14. [Glossary](Glossary.md)
 
 ## Where the technical documents are
 

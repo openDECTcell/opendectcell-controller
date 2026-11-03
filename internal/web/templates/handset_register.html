@@ -2,6 +2,8 @@
 {{define "handset_register.html"}}{{template "head" .}}
 {{with .Data}}
 {{if not .Available}}<div class="alert alert-warning">Registration is not available: this controller runs without the DECT core.</div>{{end}}
+{{template "trust_notice" .}}
+<p class="text-secondary">The handset you register is put on the base stations you allow under <a href="/organizations">Organizations and trust</a>.</p>
 <div class="card" id="reg" data-available="{{.Available}}">
   <div class="card-body">
     <ol class="steps steps-counter mb-4" id="reg-steps">

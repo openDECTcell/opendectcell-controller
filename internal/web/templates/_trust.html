@@ -1,0 +1,18 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{/* The disclosure about what the operator of a base station can read (docs/adr/0007-organizations-and-trust.md).
+     Shown where a user chooses whom to trust, where a handset is registered and on the base stations page. */}}
+{{define "trust_notice"}}
+<div class="alert alert-warning mb-3" role="note">
+  <div class="d-flex">
+    <div class="me-2">{{icon "alert-triangle"}}</div>
+    <div>
+      <h4 class="alert-title">Whoever runs a base station can read your handset's key</h4>
+      <p class="mb-2">A DECT base station can serve a handset only if it holds the handset's secret key. The person who has administrator access to
+        that box can read the key, listen to the calls that pass through it, and see the numbers dialled and who calls. <strong>This is how DECT is
+        built. This software cannot change it</strong>, and the encryption between the box and this controller does not help, because the box itself is the other end.</p>
+      <p class="mb-0">A key that has been read stays useful until the handset is registered again; removing a base station from the controller does not take it back.
+        So let your handsets use only base stations whose operators you trust.</p>
+    </div>
+  </div>
+</div>
+{{end}}
