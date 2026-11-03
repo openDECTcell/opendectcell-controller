@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The TLS front of the test ground's web interface. Caddy gets and renews the certificate from Let's Encrypt by itself (the
+# challenge runs over IPv6: the name has no A record), redirects http to https and passes the requests to the controller on
+# 127.0.0.1:8080, which sees the visitor's address in X-Forwarded-For (it trusts this proxy, see docker-compose.pi.yml).
+{
+	# ACME_CA in .env switches to the staging authority while trying things: its certificates are not trusted, its limits are generous
+	acme_ca {$ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+	# HTTP/3 would need UDP 443 open as well; it adds nothing here
+	servers {
+		protocols h1 h2
+	}
+	# no management API
+	admin off
+}
+
+{$OPENDECTCELL_HOST:opendectcell.example.org} {
+	encode zstd gzip
+	header -Server
+	reverse_proxy 127.0.0.1:8080
+}

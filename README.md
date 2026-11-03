@@ -59,6 +59,7 @@ audio: [Install the controller](docs/wiki/Controller-install.md).
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Components, data model, cell protocol, security |
 | [docs/configuration.md](docs/configuration.md), [docs/deployment.md](docs/deployment.md) | Every setting and command |
+| [docs/test-ground.md](docs/test-ground.md) | The permanent test system (a Raspberry Pi with a public, TLS-protected address): what runs there, which ports to open, how to operate it |
 | [docs/roaming.md](docs/roaming.md) | How handsets move between cells and how calls find them |
 | [docs/cell-protocol.md](docs/cell-protocol.md) | Cell↔controller wire protocol: framing, enrollment, mTLS, heartbeat, mail tunnel, subscription slots, media |
 | [docs/libopendectcell-integration.md](docs/libopendectcell-integration.md) | How the controller embeds `libopendectcell` through cgo: sessions, memory, timers, build |

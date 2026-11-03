@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Unit]
+Description=Update the AAAA record of the opendectcell test ground (ipv64.net)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/opendectcell-ddns
+# it needs the network and its own state directory, nothing else
+ProtectSystem=strict
+ReadWritePaths=/var/lib/opendectcell-ddns
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
