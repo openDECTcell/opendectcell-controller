@@ -6,6 +6,11 @@ name: CI
 # clean-machine run, e.g. before a release.
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "A release run: fail instead of warning when the DECT library cannot be built and tested"
+        type: boolean
+        default: false
 
 # a newer push to the same branch makes the older run pointless
 concurrency:
@@ -23,8 +28,8 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Install golangci-lint
@@ -46,7 +51,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
         env:
           POSTGRES_PASSWORD: ci
         ports: ["5432:5432"]
@@ -57,32 +62,14 @@ jobs:
       OPENDECTCELL_TEST_DATABASE_URL: postgres://postgres:ci@localhost:5432/postgres?sslmode=disable
       CGO_ENABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - name: Check out the opendectcell submodule (private; needs OPENDECTCELL_READ_SSH_KEY)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check out the opendectcell submodule
         id: sub
-        env:
-          KEY: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
-        run: |
-          if [ -z "$KEY" ]; then
-            echo "::warning::OPENDECTCELL_READ_SSH_KEY is not set: the libopendectcell cgo package (internal/dect/cdect) is NOT built or tested. See docs/libopendectcell-integration.md §11, L7."
-            echo "have=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Read-only deploy key on openDECTcell/opendectcell. A deploy key is scoped to
-          # one repository, so this grants CI read on openDECTcell and nothing else.
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/opendectcell_ci && chmod 600 ~/.ssh/opendectcell_ci
-          # github.com's host key, pinned rather than trusted on first use.
-          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
-            >> ~/.ssh/known_hosts
-          git config --global core.sshCommand 'ssh -i ~/.ssh/opendectcell_ci -o IdentitiesOnly=yes'
-          # .gitmodules uses a relative URL (../opendectcell.git), which git resolves
-          # against this repo's remote -- HTTPS under actions/checkout. Rewrite
-          # just that one resolved URL to SSH, so no other fetch is affected.
-          git config --global url."git@github.com:openDECTcell/opendectcell.git".insteadOf "https://github.com/openDECTcell/opendectcell.git"
-          git submodule update --init --depth 1
-          echo "have=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@v5
+        uses: ./.github/actions/opendectcell-submodule
+        with:
+          key: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
+          required: ${{ inputs.release }}
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Licence headers
@@ -109,8 +96,8 @@ jobs:
     # SIP interop against Asterisk (AGENTS.md §7; test/asterisk/).
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Install and configure Asterisk
@@ -144,8 +131,8 @@ jobs:
     # configuration provides users 1000-1019 and generates a password.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Start FreeSWITCH 1.10.12
@@ -178,11 +165,27 @@ jobs:
           docker exec fs sh -c 'tail -n 3000 /var/log/freeswitch/freeswitch.log' || true
 
   image:
+    # The image that would be released: the same Dockerfile and compose file, with the DECT core
+    # (LIBOPENDECTCELL=1) whenever the private submodule can be checked out. Without it the image has no
+    # core, and the job says so instead of passing quietly; a release run (inputs.release) fails then.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Check out the opendectcell submodule
+        id: sub
+        uses: ./.github/actions/opendectcell-submodule
+        with:
+          key: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
+          required: ${{ inputs.release }}
       - name: Build the image
-        run: docker build --build-arg VERSION=${GITHUB_SHA::7} -t opendectcell-controller:ci .
+        run: |
+          if [ "${{ steps.sub.outputs.have }}" = "true" ]; then export LIBOPENDECTCELL=1; else export LIBOPENDECTCELL=0; fi
+          echo "LIBOPENDECTCELL=$LIBOPENDECTCELL" >> "$GITHUB_ENV"
+          docker compose build --build-arg VERSION=${GITHUB_SHA::7}
+      - name: The image has the DECT core
+        if: steps.sub.outputs.have == 'true'
+        run: |
+          docker compose run --rm --no-deps --entrypoint /usr/local/bin/opendectcell-controller controller version | tee /dev/stderr | grep -q 'dect-core: yes'
       - name: Compose bring-up smoke test
         run: |
           docker compose up -d
