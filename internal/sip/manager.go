@@ -285,8 +285,8 @@ func (m *Manager) SetAccounts(accts []Account) {
 		}
 		l.start()
 	}
-	for _, l := range old {
-		go l.stop(true)
+	for id, l := range old {
+		go func() { l.stop(true); m.tlsv.forget(id.String()) }()
 	}
 }
 
@@ -431,14 +431,14 @@ func (m *Manager) removeCall(c *Call) {
 }
 
 func (m *Manager) onAck(req *sip.Request, tx sip.ServerTransaction) {
-	if c := m.callByID(req); c != nil {
+	if c := m.callByID(req); c != nil && c.inDialog(req) {
 		c.readAck(req, tx)
 	}
 }
 
 func (m *Manager) onBye(req *sip.Request, tx sip.ServerTransaction) {
 	c := m.callByID(req)
-	if c == nil {
+	if c == nil || !c.inDialog(req) {
 		m.respond(tx, req, 481, "Call/Transaction Does Not Exist")
 		return
 	}
@@ -447,7 +447,7 @@ func (m *Manager) onBye(req *sip.Request, tx sip.ServerTransaction) {
 
 func (m *Manager) onInfo(req *sip.Request, tx sip.ServerTransaction) {
 	c := m.callByID(req)
-	if c == nil {
+	if c == nil || !c.inDialog(req) {
 		m.respond(tx, req, 481, "Call/Transaction Does Not Exist")
 		return
 	}
@@ -459,7 +459,7 @@ func (m *Manager) onInvite(req *sip.Request, tx sip.ServerTransaction) {
 		if _, ok := to.Params.Get("tag"); ok {
 			// In-dialog: a re-INVITE (hold, resume, media change).
 			c := m.callByID(req)
-			if c == nil {
+			if c == nil || !c.inDialog(req) {
 				m.respond(tx, req, 481, "Call/Transaction Does Not Exist")
 				return
 			}

@@ -536,3 +536,85 @@ func TestTLSRegistrationVerifiesTheDomain(t *testing.T) {
 	m3.SetAccounts([]sip.Account{lax})
 	waitFor(t, "unverified TLS registration", func() bool { st, _ := m3.Status(lax.ID); return st.State == sip.RegRegistered })
 }
+
+// A request that knows only the Call-ID of an established call (it travels in
+// clear text) is not the far end's: wrong tags or a foreign From or To tag get
+// 481, and the call goes on.
+func TestInDialogRequestsNeedBothTags(t *testing.T) {
+	p := newPBX(t)
+	p.set(func() { p.users["325"] = "secret-325" })
+	ep := &endpoint{calls: make(chan *sip.Call, 4)}
+	ep.action = func(c *sip.Call) { c.Answer() }
+	m := newManager(t, ep, nil)
+	a := account(p, "325")
+	m.SetAccounts([]sip.Account{a})
+	waitFor(t, "registration", func() bool { st, _ := m.Status(a.ID); return st.State == sip.RegRegistered })
+
+	_, _, offer, _ := pbxOffer(t, p, sdp.EncOff, "PCMA")
+	sess, err := p.call(t, context.Background(), "325", offer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.WaitAnswer(context.Background(), sipgo.AnswerOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	sess.Ack(context.Background())
+	c := <-ep.calls
+	nextEvent(t, c, sip.EvAnswered)
+
+	callID := sess.InviteRequest.CallID().Value()
+	fromTag, _ := sess.InviteRequest.From().Params.Get("tag")
+	toTag, _ := sess.InviteResponse.To().Params.Get("tag")
+	forge := func(method esip.RequestMethod, from, to string) int {
+		t.Helper()
+		req := esip.NewRequest(method, sess.InviteResponse.Contact().Address)
+		cid := esip.CallIDHeader(callID)
+		req.AppendHeader(&cid)
+		f := &esip.FromHeader{Address: esip.Uri{Scheme: "sip", User: "+4930123456", Host: "pbx.test"}, Params: esip.NewParams()}
+		f.Params.Add("tag", from)
+		req.AppendHeader(f)
+		to2 := &esip.ToHeader{Address: esip.Uri{Scheme: "sip", User: "325", Host: "pbx.test"}, Params: esip.NewParams()}
+		to2.Params.Add("tag", to)
+		req.AppendHeader(to2)
+		req.AppendHeader(&esip.CSeqHeader{SeqNo: 500, MethodName: method})
+		switch method {
+		case esip.INFO:
+			req.SetBody([]byte("Signal=5\r\nDuration=160\r\n"))
+			req.AppendHeader(esip.NewHeader("Content-Type", "application/dtmf-relay"))
+		}
+		tx, err := p.client.TransactionRequest(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Terminate()
+		select {
+		case res := <-tx.Responses():
+			return res.StatusCode
+		case <-time.After(3 * time.Second):
+			t.Fatal("no answer to the forged request")
+		}
+		return 0
+	}
+	for _, c := range []struct{ name, from, to string }{
+		{"wrong From tag", "forged", toTag},
+		{"wrong To tag", fromTag, "forged"},
+		{"both wrong", "forged", "forged-too"},
+		{"tags swapped", toTag, fromTag},
+	} {
+		for _, method := range []esip.RequestMethod{esip.INFO, esip.BYE, esip.INVITE} {
+			if got := forge(method, c.from, c.to); got != 481 {
+				t.Errorf("%s: %s got %d, want 481", c.name, method, got)
+			}
+		}
+	}
+	select {
+	case e := <-c.Events():
+		t.Fatalf("a forged request changed the call: %+v", e)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// The real far end still can.
+	if err := sess.Bye(context.Background()); err != nil {
+		t.Fatalf("BYE: %v", err)
+	}
+	nextEvent(t, c, sip.EvEnded)
+}

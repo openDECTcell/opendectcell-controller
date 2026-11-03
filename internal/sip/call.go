@@ -554,6 +554,35 @@ func (c *Call) Reject(code int) {
 	c.emit(Event{Kind: EvEnded, Code: code, Reason: reason})
 }
 
+// inDialog says whether req belongs to this call's dialog: its Call-ID (the
+// caller looked the call up by it), both tags in the right roles and, for a
+// request that has a sequence number to order (everything but ACK), a CSeq that
+// does not go back. A request that only knows the Call-ID is not the far end's
+// (RFC 3261 §12.2.2); the Call-ID travels in clear text and is easy to learn.
+func (c *Call) inDialog(req *sip.Request) bool {
+	c.mu.Lock()
+	cs, ss := c.client, c.server
+	c.mu.Unlock()
+	switch {
+	case ss != nil:
+		// we are the UAS: the To tag is ours, the From tag the caller's
+		id, err := sip.DialogIDFromRequestUAS(req)
+		return err == nil && id == ss.ID && c.cseqOK(req, &ss.Dialog)
+	case cs != nil:
+		// we are the UAC: the From tag is the callee's, the To tag ours
+		id, err := sip.DialogIDFromRequestUAC(req)
+		return err == nil && id == cs.ID && c.cseqOK(req, &cs.Dialog)
+	}
+	return false
+}
+
+func (c *Call) cseqOK(req *sip.Request, d *sipgo.Dialog) bool {
+	if req.Method == sip.ACK {
+		return true // an ACK carries the INVITE's number
+	}
+	return d.ReadRequest(req, nil) == nil
+}
+
 func (c *Call) readAck(req *sip.Request, tx sip.ServerTransaction) {
 	c.mu.Lock()
 	s := c.server

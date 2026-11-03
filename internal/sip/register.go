@@ -415,10 +415,10 @@ func (l *line) baseHeaders(req *sip.Request, t resolve.Target, method sip.Reques
 	req.SetTransport(sipTransport(t.Transport))
 	req.SetDestination(tlsDestination(t))
 	if t.Transport == resolve.TLS {
-		// RFC 5922: the certificate must name the SIP domain; the SRV
-		// target name is accepted too, as most providers' certificates
-		// carry both.
-		l.m.tlsv.expectFor(t.Host, l.acct.TLSVerify, l.acct.Domain, t.Host)
+		// RFC 5922: the certificate must name the SIP domain, or the server the
+		// account was configured with. A name that only an SRV record gave
+		// (t.Host differs from both) is not trusted: DNS is not authenticated.
+		l.m.tlsv.expectFor(l.acct.ID.String(), t.Host, l.acct.TLSVerify, l.acct.Domain, hostOf(l.acct.OutboundProxy), hostOf(l.acct.Registrar))
 	}
 }
 
@@ -579,4 +579,20 @@ func grantedExpiry(res *sip.Response, ours *sip.ContactHeader, asked int) time.D
 		}
 	}
 	return time.Duration(asked) * time.Second
+}
+
+// hostOf is the name in a host[:port] setting, or "" for nothing or an IP
+// address (an address names no certificate identity).
+func hostOf(hp string) string {
+	if hp == "" {
+		return ""
+	}
+	h, _, err := resolve.ParseHostPort(hp)
+	if err != nil || h == "" {
+		return ""
+	}
+	if _, err := netip.ParseAddr(h); err == nil {
+		return ""
+	}
+	return h
 }
