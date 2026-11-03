@@ -657,7 +657,7 @@ write-only cache:
   read-back ... MATCHES"). Because the address is per build, the read-back
   is the cell's job, not the controller's: §13.1 P2 proposes a STATUS tag
   for the audit result. Until then *unknown* is resolved by rewriting.
-- **Admission is the host's on 07.56** (openDECTcell `docs/multicell-experiments.md`,
+- **Admission is the host's on 07.56** (openDECTcell `docs/journals/multicell-experiments.md`,
   M1 and M2', 2026-10-25): on chip firmware 07.56 a handset whose key the
   chip does not hold attaches, locates, is paged and rings; the slot table
   does not decide who may open a link, the host's identity gates do. On
@@ -831,7 +831,7 @@ the controller's to drive. The controller must accept a `0x0242` that
 arrives before its own bind completes.
 
 **What works on the cell side since 2026-10-25** (openDECTcell
-`docs/two-calls.md`, `docs/call-g7.md`), for the controller to copy:
+`docs/two-calls.md`, `docs/journals/call-g7.md`), for the controller to copy:
 
 - Channel k (1, 2, 3) binds `0x0251 {h, 02, k}`, then `0x0230` with the
   flags nibble as a **bit** (k = 1, 2, 3 → 0x1, 0x2, 0x4) and mask

@@ -19,7 +19,7 @@ FRITZ!OS image of your own box with a tool in the repository: [Prepare a box](Bo
 **The 7412 and its PCM module.** The 7412's voice bus needs `kmod-lantiq-ssc-pcm`, which comes from its own
 repository and is not part of the release. Without it, handsets register but calls have no audio. Until the
 release includes it you build it with the OpenWrt SDK (`lantiq/xrx200`); see
-[bench-7412.md](https://github.com/openDECTcell/opendectcell/blob/main/docs/bench-7412.md) in the openDECTcell repository.
+[bench-7412.md](https://github.com/openDECTcell/opendectcell/blob/main/docs/journals/bench-7412.md) in the openDECTcell repository.
 
 **Serial console.** On these boxes the DECT chip shares the serial port with the router's console. openDECTcell
 switches the console off so the chip can use it. This matters only if you have soldered on a serial cable.

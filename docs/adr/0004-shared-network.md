@@ -31,7 +31,7 @@ controller if the chip lets it in:
 
 | STUB build | Admits a handset whose key it does not hold? | Source |
 |---|---|---|
-| 07.56 | **yes**: attaches, locates, is paged, rings | openDECTcell `docs/multicell-experiments.md` M1, M2' |
+| 07.56 | **yes**: attaches, locates, is paged, rings | openDECTcell `docs/journals/multicell-experiments.md` M1, M2' |
 | 08.25 | **no** in `vF427` (clearing a slot stopped a foreign handset); to be re-tested | openDECTcell `docs/more-than-six.md`, T-B on 2026-11-01 |
 | 06.88 (7412) | not tested | T-B on 2026-11-01 |
 

@@ -123,7 +123,7 @@ export and account deletion, German, accessibility audit, map tile proxy.
 - **Upgrades.** The keep list holds firmware, profiles and handset stores but not
   `/etc/opendectcell/cell/` (key, certificate, CA, enrolment) *(I)*; `opendectcell-cell` has no conffiles; UCI
   migration is ad-hoc shell scripts with no config version; a hand-edited `/etc` file meets the
-  `*.apk-new` problem (`bench-later.md`).
+  `*.apk-new` problem (`docs/journals/bench-later.md`).
 - **Resilience.** The 7412 stop hang (4 in about 190 stops, network dead, hardware watchdog does not
   fire) is open; no `prerm` or `postinst`; logs are RAM-only, so evidence of a hang is lost unless a
   syslog sink was added by hand.

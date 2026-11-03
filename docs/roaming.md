@@ -2,7 +2,7 @@
 
 Investigation of 2026-11-01 (the openDECTcell agent), requested by the maintainer: can the controller
 move an idle handset from one cell to another when the signal gets better at the other cell?
-Read from our own notes first (`../opendectcell/docs/multicell-identities.md`, `multicell-experiments.md`,
+Read from our own notes first (`../opendectcell/docs/multicell-identities.md`, `docs/journals/multicell-experiments.md`,
 `diagnostics.md`, `notes-for-the-controller.md` API 18-27, `more-than-six.md`, `cell-protocol.md`
 §6.4 and §7.4, ADR 0004) and from EN 300 175-3 and GAP on disk. Nothing in this document was measured
 on air by this investigation; every fact names where it comes from.
@@ -50,9 +50,9 @@ roam between boxes"). The controller can already make up a class B identity (Net
 
 | Lever | What it does | Verdict |
 |---|---|---|
-| **Do nothing; let the handset choose** | The PP re-locks to the strongest RFP of its PARI by itself, no network traffic | **The method.** Needs section 2 and good cell placement. Behaviour differs per model (the A540 did not re-locate after a six-minute outage, the AS690H did; `multicell-experiments.md` M4), so measure with the handsets we support |
+| **Do nothing; let the handset choose** | The PP re-locks to the strongest RFP of its PARI by itself, no network traffic | **The method.** Needs section 2 and good cell placement. Behaviour differs per model (the A540 did not re-locate after a six-minute outage, the AS690H did; `docs/journals/multicell-experiments.md` M4), so measure with the handsets we support |
 | **Probe a handset's level on its cell** | Page it without ringing, or send `{MM-INFO-SUGGEST}` "locate suggest" (GAP 8.29): the handset opens a link and the chip's `0xF625` gives its level on *that* cell | Gives one number for one cell. Useful as a diagnostics and placement tool ("this handset is weak in the kitchen"), not a steering signal. Costs battery and a link per probe; not built |
-| **Park a cell for a few seconds** | All its idle handsets lose it after T207 = 5 s and re-lock to the strongest other cell; after un-parking they stay where they are unless the old cell is stronger | Blunt: cannot be aimed at one handset, cannot be done with calls up, and a Gigaset that finds nothing backs off for minutes after a long gap (162 s after 17 minutes, `multicell-experiments.md`). Fit for fail-over and maintenance only. The cell protocol's `orphan_s` already parks a cell that lost the controller |
+| **Park a cell for a few seconds** | All its idle handsets lose it after T207 = 5 s and re-lock to the strongest other cell; after un-parking they stay where they are unless the old cell is stronger | Blunt: cannot be aimed at one handset, cannot be done with calls up, and a Gigaset that finds nothing backs off for minutes after a long gap (162 s after 17 minutes, `docs/journals/multicell-experiments.md`). Fit for fail-over and maintenance only. The cell protocol's `orphan_s` already parks a cell that lost the controller |
 | **Reduce a cell's transmit power** | A weaker beacon makes handsets near the edge prefer the neighbour | Whether the STUB lets the host set the power is **not known** (a question for the clean-room Q&A); the diagnostics list "radio power" as a field to read, not to set. Cell placement by hand does the same |
 | **Reject or terminate to push a handset away** (`{LOCATE-REJECT}`, access rights termination) | Would make a handset give up the cell | Wrong tool: it damages the registration, not the lock; GAP does not offer FT-initiated access-rights changes (`multicell-identities.md` §5). Not recommended |
 | **Move a call** (connection handover) | The only DECT mechanism that moves a handset between cells on purpose | PT-initiated (EN 300 175-4 §10.5), FT support optional, needs synchronised cells and a DLC and key that move between chips. Not possible now, as the maintainer says (`multicell-identities.md` §8.3-8.4) |
