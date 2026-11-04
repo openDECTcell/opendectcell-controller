@@ -211,7 +211,7 @@ func TestTokenAuthorisation(t *testing.T) {
 	}
 }
 
-// The owner revokes their own base station from "My base stations"; nobody
+// The owner revokes their own base station from "Base stations"; nobody
 // else's. A plain Revoke stays admin-only.
 func TestRevokeOwned(t *testing.T) {
 	e := newEnv(t)

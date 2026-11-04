@@ -730,7 +730,7 @@ func (s *Store) Revoke(ctx context.Context, u *auth.User, id uuid.UUID) error {
 }
 
 // RevokeOwned is Revoke for the user who enrolled the cell (admins: any
-// cell), from "My base stations". Anybody else gets ErrNotFound.
+// cell), from "Base stations". Anybody else gets ErrNotFound.
 func (s *Store) RevokeOwned(ctx context.Context, u *auth.User, id uuid.UUID) error {
 	if _, err := s.GetOwned(ctx, u, id); err != nil {
 		return err

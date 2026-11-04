@@ -1146,7 +1146,8 @@ func TestRegistrationWindow(t *testing.T) {
 	waitFor(t, "open", func() bool {
 		ok := false
 		g.stack(0).get(func(f *fakeStack) {
-			ok = f.regOpen && slices.Equal(f.regPINs, []string{pin}) && f.regSecs > 55 && f.regSecs <= 60
+			// 60 s, rounded up from a tick whose clock reading may precede the opening by a few milliseconds: 61
+			ok = f.regOpen && slices.Equal(f.regPINs, []string{pin}) && f.regSecs > 55 && f.regSecs <= 61
 		})
 		return ok
 	})

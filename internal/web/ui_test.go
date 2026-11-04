@@ -406,7 +406,7 @@ func TestStationProfile(t *testing.T) {
 	if resp, _ := e.get(t, u, "/stations/"+other.String()); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("someone else's station: %d", resp.StatusCode)
 	}
-	// "My base stations" is the same for an administrator: the ones they enrolled. Every cell is on the Cells page.
+	// the Base stations page is the same for an administrator: the ones they enrolled. Every cell is on the Cells page.
 	a := e.adminBrowser(t)
 	if _, alist := e.get(t, a, "/stations"); strings.Contains(alist, "Attic") || strings.Contains(alist, "Cellar") {
 		t.Errorf("an administrator's own list shows other people's stations: %s", alist)

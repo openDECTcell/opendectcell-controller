@@ -35,7 +35,7 @@ func (s *Server) stationList(w http.ResponseWriter, r *http.Request, u *auth.Use
 	for i, c := range cells {
 		rows[i] = cellRow{c, s.liveStatus(c.ID)}
 	}
-	s.render(w, http.StatusOK, "stations.html", page{Title: "My base stations", User: u, Data: rows, Notice: r.FormValue("done")})
+	s.render(w, http.StatusOK, "stations.html", page{Title: "Base stations", User: u, Data: rows, Notice: r.FormValue("done")})
 }
 
 type stationData struct {

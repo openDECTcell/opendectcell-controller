@@ -35,7 +35,7 @@ version, the DECT **identity (RFPI)** and when it was last seen. Open a cell for
 the calls, the handsets it holds, the audio capabilities.
 
 On the cell's own page an administrator can **approve**, **disable** and **enable** it (a disabled cell is
-kept but its radio is off). The owner's settings are on **My base stations**: the name, the location and
+kept but its radio is off). The owner's settings are on **Base stations**: the name, the location and
 **Revoke**, which permanently removes the cell's right to connect (you must type its name to confirm; a
 revoked box has to enrol again with a new token).
 
@@ -68,7 +68,7 @@ Administrators see every base station in **Administration > All base stations** 
 operates it. The operator can tick **Disclose to administrators** on the base station's page; the base station then
 also appears under their account in **Administration > Users**. Only the operator can change that.
 
-**Base stations > My base stations** shows the cells a user enrolled. An owner can choose what may be shown
+**Base stations** in the menu shows the cells a user enrolled. An owner can choose what may be shown
 on the **public map**: the cell's name, its position (exact, approximate or only the region), its
 specifications and its statistics. **Public map** shows the stations that are shared. An administrator
 decides under **Administration > Settings** whether the map is public (also without signing in) and where

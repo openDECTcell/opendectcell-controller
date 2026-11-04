@@ -36,7 +36,7 @@ so the whole structure is reviewable before every page exists.
 | Group | Entries (✓ built, · stub) |
 |---|---|
 | Phones | Overview ✓ · Handsets ✓ (list, register by PIN, name, lines, ring policy) · Phone lines ✓ · Calls · · Contacts ✓ |
-| Base stations | My base stations ✓ (profile, map position, sharing) · Enroll ✓ · Public map ✓ (public only when an admin allows it) |
+| Base stations | Base stations ✓ (profile, map position, sharing) · Enroll ✓ · Public map ✓ (public only when an admin allows it) |
 | Insight | Statistics ✓ (own equipment) · Logging ✓ (read-only, e-mail opt-in) |
 | Administration (admins) | Dashboard ✓ · Cells ✓ · Users ✓ · All calls ✓ · Statistics ✓ · Logging ✓ (control) · Audit log ✓ · Settings ✓ (name and logo, registration, map, retention, mail status) · System ✓ · Backup ✓ (explains) |
 | Account | Account ✓ (password, two-factor login, e-mail notifications) |
