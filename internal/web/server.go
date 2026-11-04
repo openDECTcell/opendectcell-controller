@@ -118,6 +118,7 @@ func (s *Server) Handler() (http.Handler, error) {
 			return t
 		},
 		"signalWord":   handset.SignalWord,
+		"endReason":    endReasonText,
 		"profileLabel": func(id string) string { return profiles.Default.Label(id) },
 		"hexb":         func(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) },
 		"tpui":         func(t int) string { return fmt.Sprintf("%05X", t) },
@@ -213,6 +214,7 @@ func (s *Server) routes() {
 	s.handsetRoutes()
 	s.publicMapRoutes()
 	s.stubRoutes()
+	s.userCallRoutes()
 	s.stationRoutes()
 	s.orgRoutes()
 	s.statsRoutes()

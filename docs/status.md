@@ -38,6 +38,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Calls in and out through SIP accounts, G.722, ciphering | ✅ | |
 | Calls between handsets of one account | 🟡 | |
 | Phonebook, call lists, message-waiting lamp | 🟡 | Built; not all seen on hardware |
+| Calls page: your history with filters, a page per call (codecs, encryption, quality per leg), CSV export, missed calls marked as read | 🟡 | Tests and headless Chrome; the numbers are the user's own and shown in full |
 | Transfer, conference, early media | ❌ | |
 
 ## Operation

@@ -43,7 +43,12 @@ type Call struct {
 	SIPTLS       *bool
 	SRTP         *bool
 	Quality      *media.Quality // nil until the call has ended with media
+	// MissedReadAt is when an unanswered incoming call was marked as seen (by a handset's call list or on the web).
+	MissedReadAt *time.Time
 }
+
+// Missed is an incoming call nobody answered.
+func (c Call) Missed() bool { return c.Direction == "in" && c.AnsweredAt == nil && c.EndedAt != nil }
 
 // Duration is the answered time, zero for an unanswered or ongoing call.
 func (c Call) Duration() time.Duration {
@@ -137,11 +142,34 @@ func (s *Store) exec(ctx context.Context, sql string, args ...any) error {
 
 // Filter selects calls, newest first.
 type Filter struct {
-	Owner   *uuid.UUID // nil: everyone's (admins)
-	Handset *uuid.UUID
-	Since   time.Time
-	Before  int64 // id cursor; 0 for the newest
-	Limit   int   // default 50, at most 500
+	Owner     *uuid.UUID // nil: everyone's (admins)
+	Handset   *uuid.UUID
+	Account   *uuid.UUID // the VoIP line
+	Direction string     // "in", "out" or "" for both
+	Missed    bool       // only incoming calls nobody answered
+	Since     time.Time
+	Before    int64 // id cursor; 0 for the newest
+	Limit     int   // default 50, at most 500
+}
+
+const callCols = `id, handset_id, owner_user_id, line, sip_account_id, direction, remote_party, started_at,
+	answered_at, ended_at, end_reason, cell_ids, sip_codec, cell_codec, sip_tls, srtp, quality, missed_read_at`
+
+func scanCall(r pgx.Row) (Call, error) {
+	var c Call
+	var line *int16
+	var q []byte
+	err := r.Scan(&c.ID, &c.HandsetID, &c.OwnerID, &line, &c.SIPAccountID, &c.Direction, &c.RemoteParty, &c.StartedAt,
+		&c.AnsweredAt, &c.EndedAt, &c.EndReason, &c.CellIDs, &c.SIPCodec, &c.CellCodec, &c.SIPTLS, &c.SRTP, &q, &c.MissedReadAt)
+	if line != nil {
+		l := int(*line)
+		c.Line = &l
+	}
+	if err == nil && len(q) > 2 { // "{}" is no quality
+		c.Quality = new(media.Quality)
+		err = json.Unmarshal(q, c.Quality)
+	}
+	return c, err
 }
 
 // List returns calls matching f.
@@ -149,29 +177,39 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Call, error) {
 	if f.Limit <= 0 || f.Limit > 500 {
 		f.Limit = 50
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT id, handset_id, owner_user_id, line, sip_account_id, direction, remote_party, started_at,
-			answered_at, ended_at, end_reason, cell_ids, sip_codec, cell_codec, sip_tls, srtp, quality
+	rows, err := s.Pool.Query(ctx, `SELECT `+callCols+`
 		FROM call_log
 		WHERE ($1::uuid IS NULL OR owner_user_id = $1) AND ($2::uuid IS NULL OR handset_id = $2)
 			AND started_at >= $3 AND ($4 = 0 OR id < $4)
-		ORDER BY id DESC LIMIT $5`, f.Owner, f.Handset, f.Since, f.Before, f.Limit)
+			AND ($6::uuid IS NULL OR sip_account_id = $6) AND ($7 = '' OR direction = $7)
+			AND (NOT $8 OR (direction = 'in' AND answered_at IS NULL AND ended_at IS NOT NULL))
+		ORDER BY id DESC LIMIT $5`, f.Owner, f.Handset, f.Since, f.Before, f.Limit, f.Account, f.Direction, f.Missed)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Call, error) {
-		var c Call
-		var line *int16
-		var q []byte
-		err := r.Scan(&c.ID, &c.HandsetID, &c.OwnerID, &line, &c.SIPAccountID, &c.Direction, &c.RemoteParty, &c.StartedAt,
-			&c.AnsweredAt, &c.EndedAt, &c.EndReason, &c.CellIDs, &c.SIPCodec, &c.CellCodec, &c.SIPTLS, &c.SRTP, &q)
-		if line != nil {
-			l := int(*line)
-			c.Line = &l
-		}
-		if err == nil && len(q) > 2 { // "{}" is no quality
-			c.Quality = new(media.Quality)
-			err = json.Unmarshal(q, c.Quality)
-		}
-		return c, err
-	})
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Call, error) { return scanCall(r) })
+}
+
+// Get returns one call. The caller checks that the user may see it (its owner).
+func (s *Store) Get(ctx context.Context, id int64) (Call, error) {
+	c, err := scanCall(s.Pool.QueryRow(ctx, "SELECT "+callCols+" FROM call_log WHERE id = $1", id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Call{}, ErrNotFound
+	}
+	return c, err
+}
+
+// UnreadMissed counts a user's missed calls nobody has marked as seen.
+func (s *Store) UnreadMissed(ctx context.Context, owner uuid.UUID) (int, error) {
+	var n int
+	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM call_log WHERE owner_user_id = $1 AND direction = 'in'
+		AND answered_at IS NULL AND ended_at IS NOT NULL AND missed_read_at IS NULL`, owner).Scan(&n)
+	return n, err
+}
+
+// MarkMissedRead marks all of a user's missed calls as seen, the way a handset's call list does one by one.
+func (s *Store) MarkMissedRead(ctx context.Context, owner uuid.UUID) (int64, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE call_log SET missed_read_at = now() WHERE owner_user_id = $1 AND direction = 'in'
+		AND answered_at IS NULL AND ended_at IS NOT NULL AND missed_read_at IS NULL`, owner)
+	return tag.RowsAffected(), err
 }

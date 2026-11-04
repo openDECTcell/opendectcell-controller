@@ -67,16 +67,6 @@ func TestNavigationAndNoExternalRequests(t *testing.T) {
 	}
 }
 
-func TestStubPages(t *testing.T) {
-	e := newEnv(t)
-	u, a := e.userBrowser(t), e.adminBrowser(t)
-
-	if resp, body := e.get(t, u, "/calls"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "Not built yet") {
-		t.Errorf("/calls: %d", resp.StatusCode)
-	}
-	_ = a
-}
-
 func TestSelfRegistration(t *testing.T) {
 	e := newEnv(t)
 	c := e.browser()

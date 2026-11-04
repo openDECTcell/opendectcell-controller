@@ -1,0 +1,50 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "call.html"}}{{template "head" .}}
+{{with .Data}}
+<p><a href="/calls">← All calls</a></p>
+<div class="row row-cards">
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{if eq .Direction "in"}}Incoming{{else}}Outgoing{{end}} call <span class="badge {{.ResultClass}} ms-2">{{.Result}}</span></h3></div>
+      <div class="card-body"><dl class="kv mb-0">
+        <dt>Number</dt><dd>{{with .RemoteParty}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</dd>
+        <dt>Started</dt><dd>{{fmtTime .StartedAt}}</dd>
+        <dt>Answered</dt><dd>{{with .AnsweredAt}}{{fmtTime .}}{{else}}<span class="text-secondary">no</span>{{end}}</dd>
+        <dt>Ended</dt><dd>{{with .EndedAt}}{{fmtTime .}}{{else}}<span class="text-secondary">not yet</span>{{end}}{{with .EndReason}} · {{endReason .}}{{end}}</dd>
+        <dt>Duration</dt><dd>{{if .AnsweredAt}}{{dur .Duration}}{{else}}—{{end}}</dd>
+        <dt>Handset</dt><dd>{{if .HandsetID}}{{with .HandsetName}}<a href="/handsets/{{$.Data.HandsetID}}">{{.}}</a>{{else}}<span class="text-secondary">removed</span>{{end}}{{else}}<span class="text-secondary">none</span>{{end}}</dd>
+        <dt>VoIP line</dt><dd>{{if .SIPAccountID}}{{with .LineName}}<a href="/sip-accounts/{{$.Data.SIPAccountID}}">{{.}}</a>{{else}}<span class="text-secondary">removed</span>{{end}}{{if .Line}} · Line {{.Line}} of the handset{{end}}{{else}}—{{end}}</dd>
+        {{if .Cells}}<dt>Base station</dt><dd>{{join .Cells ", "}}</dd>{{end}}
+      </dl></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">How it was carried</h3></div>
+      <div class="card-body"><dl class="kv mb-0">
+        <dt>Codec to the provider</dt><dd>{{with .SIPCodec}}{{.}}{{else}}—{{end}}</dd>
+        <dt>Codec on the radio</dt><dd>{{with .CellCodec}}{{.}}{{else}}—{{end}}</dd>
+        <dt>Encrypted (SRTP)</dt><dd>{{if deref .SRTP}}<span class="text-success">{{icon "check"}} yes</span>{{else if .SRTP}}<span class="text-danger">{{icon "x"}} no</span>{{else}}—{{end}}</dd>
+        <dt>Signalling over TLS</dt><dd>{{if deref .SIPTLS}}<span class="text-success">{{icon "check"}} yes</span>{{else if .SIPTLS}}<span class="text-danger">{{icon "x"}} no</span>{{else}}—{{end}}</dd>
+        {{with .Quality}}<dt>Media path</dt><dd>{{.Plan}}</dd>{{end}}
+      </dl></div>
+    </div>
+    {{with .Quality}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Quality <span class="badge {{$.Data.MOSClass}} ms-2">MOS {{f1 .MOS}}</span></h3></div>
+      <div class="card-body">
+        <p class="text-secondary small">MOS is an estimate for the worse direction on the narrowband scale of ITU-T G.107, 1.0 to 4.5: 4 and above is good, 3.5 to 4 acceptable, lower is poor.</p>
+        <dl class="kv mb-0">
+          <dt>Provider side (SIP)</dt><dd>loss {{f1 .SIP.LossPct}} %{{with .SIP.PeerLossPct}} (the other side saw {{f1 .}} %){{end}}, jitter {{f1 .SIP.JitterMs}} ms{{with .SIP.RTTMs}}, round trip {{f1 .}} ms{{end}}</dd>
+          <dt>Radio side (DECT)</dt><dd>loss {{f1 .Cell.LossPct}} %, jitter {{f1 .Cell.JitterMs}} ms</dd>
+          <dt>What you heard</dt><dd>{{f1 .Down.ConcealedPct}} % of the speech was made up to fill gaps{{if .Down.Late}}, {{.Down.Late}} packets came too late{{end}}</dd>
+          <dt>What the other side heard</dt><dd>{{f1 .Up.ConcealedPct}} % made up{{if .Up.Late}}, {{.Up.Late}} packets too late{{end}}</dd>
+          {{with .WorseLeg}}<dt>The weaker part</dt><dd><strong>{{if eq . "sip"}}the connection to your provider or PBX{{else}}the radio link between the base station and the handset{{end}}</strong></dd>{{end}}
+        </dl>
+      </div>
+    </div>
+    {{else}}<p class="text-secondary">No media was measured for this call{{if not .AnsweredAt}}: nobody answered{{end}}.</p>{{end}}
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

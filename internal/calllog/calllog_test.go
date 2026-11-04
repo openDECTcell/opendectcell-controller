@@ -76,3 +76,86 @@ func TestCallLifecycle(t *testing.T) {
 		t.Errorf("unknown call: %v", err)
 	}
 }
+
+// The filters of the user's Calls page: direction, missed, line, handset, owner; one call by id; the read marks.
+func TestFiltersAndReadMarks(t *testing.T) {
+	pool := dbtest.Migrated(t)
+	s := &calllog.Store{Pool: pool}
+	var anna, ben, hs, acct uuid.UUID
+	pool.QueryRow(ctx, "INSERT INTO app_user (username, display_name, role, auth_source) VALUES ('anna', 'Anna', 'user', 'local') RETURNING id").Scan(&anna)
+	pool.QueryRow(ctx, "INSERT INTO app_user (username, display_name, role, auth_source) VALUES ('ben', 'Ben', 'user', 'local') RETURNING id").Scan(&ben)
+	pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc) VALUES ($1, '\\x01', 1, '\\x') RETURNING id", anna).Scan(&hs)
+	pool.QueryRow(ctx, "INSERT INTO sip_account (owner_user_id, label, username, domain) VALUES ($1, 'Home', '1', 'sip.example.org') RETURNING id", anna).Scan(&acct)
+	t0 := time.Now().Add(-48 * time.Hour)
+	mk := func(owner uuid.UUID, dir string, answered bool, at time.Duration, handset, account *uuid.UUID) int64 {
+		id, err := s.Start(ctx, calllog.Call{OwnerID: &owner, HandsetID: handset, SIPAccountID: account, Direction: dir, RemoteParty: "+49301", StartedAt: t0.Add(at)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if answered {
+			s.Answered(ctx, id, t0.Add(at+time.Second))
+		}
+		if err := s.Ended(ctx, id, calllog.End{At: t0.Add(at + time.Minute), Reason: "normal"}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	out1 := mk(anna, "out", true, 0, &hs, &acct)
+	in1 := mk(anna, "in", true, time.Hour, &hs, &acct)
+	miss1 := mk(anna, "in", false, 2*time.Hour, nil, &acct)
+	miss2 := mk(anna, "in", false, 3*time.Hour, nil, nil)
+	_ = mk(ben, "in", false, 4*time.Hour, nil, nil)
+	ids := func(f calllog.Filter) []int64 {
+		f.Owner = &anna
+		cs, err := s.List(ctx, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []int64
+		for _, c := range cs {
+			out = append(out, c.ID)
+		}
+		return out
+	}
+	eq := func(name string, got []int64, want ...int64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Errorf("%s: %v, want %v", name, got, want)
+			return
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("%s: %v, want %v", name, got, want)
+				return
+			}
+		}
+	}
+	eq("all of anna's, newest first", ids(calllog.Filter{}), miss2, miss1, in1, out1)
+	eq("outgoing", ids(calllog.Filter{Direction: "out"}), out1)
+	eq("incoming", ids(calllog.Filter{Direction: "in"}), miss2, miss1, in1)
+	eq("missed", ids(calllog.Filter{Missed: true}), miss2, miss1)
+	eq("one line", ids(calllog.Filter{Account: &acct}), miss1, in1, out1)
+	eq("one handset", ids(calllog.Filter{Handset: &hs}), in1, out1)
+	eq("missed on one line", ids(calllog.Filter{Missed: true, Account: &acct}), miss1)
+	eq("since", ids(calllog.Filter{Since: t0.Add(90 * time.Minute)}), miss2, miss1)
+
+	c, err := s.Get(ctx, miss1)
+	if err != nil || !c.Missed() || c.SIPAccountID == nil {
+		t.Errorf("Get: %+v %v", c, err)
+	}
+	if _, err := s.Get(ctx, 1<<40); !errors.Is(err, calllog.ErrNotFound) {
+		t.Errorf("Get of nothing: %v", err)
+	}
+	if n, _ := s.UnreadMissed(ctx, anna); n != 2 {
+		t.Errorf("%d unread missed calls, want 2", n)
+	}
+	if n, err := s.MarkMissedRead(ctx, anna); err != nil || n != 2 {
+		t.Errorf("marked %d, %v", n, err)
+	}
+	if n, _ := s.UnreadMissed(ctx, anna); n != 0 {
+		t.Errorf("%d unread after marking", n)
+	}
+	if n, _ := s.UnreadMissed(ctx, ben); n != 1 {
+		t.Errorf("ben's unread missed call was marked by anna: %d", n)
+	}
+}

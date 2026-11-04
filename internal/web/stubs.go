@@ -17,12 +17,8 @@ type stub struct {
 	Roadmap           string
 }
 
-var stubs = []stub{
-	{Path: "/calls", Title: "Calls",
-		Lead:    "Your call history with duration, line and quality.",
-		Plans:   []string{"Your calls only, with the line and the handset used", "Filters by handset, direction and day; export as CSV", "Per call: codec, encryption and media quality, so a bad call can be explained"},
-		Roadmap: "C6"},
-}
+// The menu has no unbuilt entries now (the Calls page was the last); add one here to show it as a stub again.
+var stubs = []stub{}
 
 func (s *Server) stubRoutes() {
 	for _, st := range stubs {

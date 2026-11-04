@@ -9,7 +9,7 @@ the request) would expect. Built items are in ADR 0006; this is what is left.
 | # | Item | Why | Notes |
 |---|---|---|---|
 | B1 | Handsets page (list, register through a PIN window, name, lines) | The core user task; the API exists | C6 — **built 2026-11-01 (removal of a handset is not: it must deregister on every cell)** |
-| B2 | Calls page for users, CSV export | Own history | uses `calllog` |
+| B2 | Calls page for users, CSV export | Own history | uses `calllog` — **built 2026-11-04** (filters, a page per call with the quality on both legs, CSV, mark missed calls as read) |
 | B3 | Public map and a read-only JSON feed | Sharing switches exist; nothing consumes them | `cell.Public()`; add statistics counts only where `share_stats` — **built 2026-11-01** |
 | B4 | Two-factor login: TOTP, then WebAuthn; recovery codes | Standard for an admin console | admins first — **TOTP and recovery codes built 2026-11-01; WebAuthn and enforcing it for admins are not** |
 | B5 | Personal API tokens (C7 in the roadmap) | Scripts, the map feed | hashed, scoped, shown once |

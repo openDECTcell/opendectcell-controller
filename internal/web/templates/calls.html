@@ -1,0 +1,68 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "calls.html"}}{{template "head" .}}
+{{with .Data}}
+<form method="get" action="/calls" class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-2"><label class="form-label" for="dir">Calls</label>
+        <select class="form-select" id="dir" name="dir">
+          <option value="">All</option>
+          <option value="out" {{if eq .Query.Dir "out"}}selected{{end}}>Outgoing</option>
+          <option value="in" {{if eq .Query.Dir "in"}}selected{{end}}>Incoming</option>
+          <option value="missed" {{if eq .Query.Dir "missed"}}selected{{end}}>Missed</option>
+        </select></div>
+      <div class="col-6 col-md-3"><label class="form-label" for="handset">Handset</label>
+        <select class="form-select" id="handset" name="handset">
+          <option value="">All handsets</option>
+          {{range $id := .HandsetIDs}}<option value="{{$id}}" {{if eq $.Data.Query.Handset (printf "%s" $id)}}selected{{end}}>{{index $.Data.Handsets $id}}</option>{{end}}
+        </select></div>
+      <div class="col-6 col-md-3"><label class="form-label" for="line">VoIP line</label>
+        <select class="form-select" id="line" name="line">
+          <option value="">All lines</option>
+          {{range .Lines}}<option value="{{.ID}}" {{if eq $.Data.Query.Line (printf "%s" .ID)}}selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+      <div class="col-6 col-md-2"><label class="form-label" for="days">Period</label>
+        <select class="form-select" id="days" name="days">
+          {{range .Ranges}}<option value="{{.}}" {{if eq $.Data.Query.Days .}}selected{{end}}>{{if .}}Last {{.}} days{{else}}Everything{{end}}</option>{{end}}
+        </select></div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Show</button>
+        <a class="btn btn-outline-secondary" href="/calls/export.csv?{{.Export}}" title="The same calls as a CSV file">{{icon "download"}} CSV</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{{if .Unread}}
+<div class="alert alert-warning d-flex align-items-center" role="alert">
+  <span>{{.Unread}} missed {{if eq .Unread 1}}call has{{else}}calls have{{end}} not been seen yet.</span>
+  <form method="post" action="/calls/read" class="ms-auto"><button type="submit" class="btn btn-sm btn-outline-secondary">Mark as read</button></form>
+</div>
+{{end}}
+
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
+<thead><tr><th>Started</th><th></th><th>Number</th><th>Handset</th><th>Line</th><th>Result</th><th>Duration</th><th>Quality</th><th></th></tr></thead>
+<tbody>
+{{range .Rows}}
+<tr>
+  <td>{{fmtTime .StartedAt}}</td>
+  <td title="{{if eq .Direction "in"}}incoming{{else}}outgoing{{end}}">{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
+  <td>{{with .RemoteParty}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</td>
+  <td>{{with .HandsetName}}{{.}}{{else}}<span class="text-secondary">{{if .HandsetID}}removed{{else}}none{{end}}</span>{{end}}</td>
+  <td>{{with .LineName}}{{.}}{{else}}<span class="text-secondary">{{if .SIPAccountID}}removed{{else}}—{{end}}</span>{{end}}</td>
+  <td><span class="badge {{.ResultClass}}">{{.Result}}</span>{{if and .Missed (not .MissedReadAt)}} <span class="badge bg-danger text-white">new</span>{{end}}</td>
+  <td>{{if .AnsweredAt}}{{dur .Duration}}{{end}}</td>
+  <td>{{if .Quality}}<span class="badge {{.MOSClass}}">MOS {{f1 .Quality.MOS}}</span>{{end}}</td>
+  <td class="text-end"><a href="/calls/{{.ID}}">Details</a></td>
+</tr>
+{{else}}
+<tr><td colspan="9" class="text-secondary">No calls match.{{if or .Query.Dir .Query.Handset .Query.Line}} Widen the filter to see more.{{end}}</td></tr>
+{{end}}
+</tbody>
+</table></div>
+{{if .More}}<div class="card-footer text-center"><a href="/calls?{{.More}}">Older calls</a></div>{{end}}
+</div>
+<p class="text-secondary small">Numbers are shown in full because the calls are yours. The quality is an estimate (MOS, 1 to 4.5) from what the media
+engine measured on both legs of the call; open a call for the details.</p>
+{{end}}
+{{template "foot" .}}{{end}}
