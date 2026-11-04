@@ -7,7 +7,7 @@
 | FRITZ!Box **7520** | ✅ works, the development box | Chip build 08.25 and 07.56 both seen. Up to **five** calls at once per cell. |
 | FRITZ!Box **7530** | 🟡 same hardware and image as the 7520, not tested on one yet | |
 | FRITZ!Box **7412** | 🟡 works as a cell (registration, calls in and out with audio, roaming with a 7520) | Chip build 06.88: **three** calls at once per cell. Needs `kmod-lantiq-ssc-pcm`, a second kernel module that is **not in the release yet** (see below). One open defect: in about 4 of 190 service stops the box's network went dead; no cause yet. |
-| FRITZ!Box **7362 SL** | ❌ not usable yet | Radio and echo tests passed on a bench; the service and SIP calls are not done. |
+| FRITZ!Box **7362 SL** | 🟡 works as a cell (registration, calls in and out with audio) | Chip build 07.18. Needs `kmod-lantiq-usif-uart` and `kmod-lantiq-tdm-pcm`, two kernel modules that are **not in the release yet**. How many calls at once is not measured; the key read-back is skipped on this build. |
 | Other FRITZ!Boxes | ❌ | Many use the same DECT chip; [hardware-abstraction.md](https://github.com/openDECTcell/opendectcell/blob/main/docs/hardware-abstraction.md) says what a new model needs. |
 
 **OpenWrt version.** Only **25.12.5** is supported: the kernel module has to be built for the exact kernel on
