@@ -41,7 +41,7 @@
       <div class="card mb-3">
         <div class="card-header"><h3 class="card-title">{{icon "shield-lock"}} Administrators</h3></div>
         <div class="card-body">
-          {{if .Operator}}<label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="disclosed" {{if .Cell.Disclosed}}checked{{end}}><span class="form-check-label"><strong>Disclose to administrators</strong> Administrators can see this base station (name, place, model, state and when it last connected) under your account in Administration &rarr; Users, and know you operate it. Off: they still see it in the list of base stations, but not that it is yours.</span></label>
+          {{if .Operator}}<label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="disclosed" {{if .Cell.Disclosed}}checked{{end}}><span class="form-check-label"><strong>Disclose to administrators</strong><br>Administrators can see this base station (name, place, model, state and when it last connected) under your account in Administration &rarr; Users, and know you operate it. Off: they still see it in the list of base stations, but not that it is yours.</span></label>
           {{else}}<p class="mb-0 text-secondary">{{if .Cell.Disclosed}}The operator disclosed this base station to the administrators.{{else}}The operator has not disclosed this base station to the administrators.{{end}} Only the operator can change that.</p>{{end}}
         </div>
       </div>

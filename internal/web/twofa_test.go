@@ -151,6 +151,10 @@ func TestAdminsNeedTwoFactorWhenRequired(t *testing.T) {
 			t.Errorf("%s was shut for the admin too: %d", p, resp.StatusCode)
 		}
 	}
+	// every page tells the admin why the administration pages are missing, instead of the optional offer
+	if _, page := e.get(t, a, "/handsets"); !strings.Contains(page, "administration pages stay hidden") || strings.Contains(page, "Protect your account") {
+		t.Error("an admin without two-factor is not told why the admin pages are hidden")
+	}
 	// the admin API is no way round it
 	if resp, _ := e.get(t, a, "/api/v1/users"); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("/api/v1/users for an admin without two-factor: %d", resp.StatusCode)

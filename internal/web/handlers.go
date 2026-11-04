@@ -26,7 +26,10 @@ type page struct {
 	Warn    string // a warning that is not an error: the page works, but the user should know
 	// PromptTOTP: offer the user two-factor login (filled in by render; never a demand)
 	PromptTOTP bool
-	Data       any
+	// AdminNeeds2FA: an administrator whom the settings require to have two-factor login and who has none; they are a plain
+	// user until it is set up, and the page says so (filled in by render)
+	AdminNeeds2FA bool
+	Data          any
 
 	// filled in by render
 	Brand   brand
@@ -51,7 +54,11 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, p page) 
 	p.Nav = navFor(p.User, p.Path)
 	p.Section = section(p.Nav)
 	if p.User != nil && s.Auth != nil && !strings.HasPrefix(p.Path, "/account/2fa") {
-		p.PromptTOTP = s.Auth.ShouldPromptTOTP(ctx, p.User)
+		if p.User.Admin2FAPending {
+			p.AdminNeeds2FA = true // instead of the offer: this one is not optional, and the admin pages are missing until it is done
+		} else {
+			p.PromptTOTP = s.Auth.ShouldPromptTOTP(ctx, p.User)
+		}
 	}
 	if p.Leaflet {
 		m, _ := s.mapConfig(ctx)

@@ -45,8 +45,8 @@ func (s *Server) twoFAPage(w http.ResponseWriter, r *http.Request, u *auth.User)
 		return
 	}
 	p := page{Title: "Two-factor login", User: u, Data: d, Notice: r.FormValue("done")}
-	if r.FormValue("need") != "" && u.Admin2FAPending {
-		p.Error = "Administrators need two-factor login. Set it up here to reach the admin pages."
+	if u.Admin2FAPending {
+		p.Warn = "Administrators need two-factor login. Set it up here to reach the administration pages."
 	}
 	s.render(w, http.StatusOK, "twofa.html", p)
 }

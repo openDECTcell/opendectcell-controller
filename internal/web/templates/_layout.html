@@ -38,7 +38,7 @@
         <div class="sidebar-user mt-auto">
           <div class="small text-secondary">Signed in as</div>
           <div class="fw-bold">{{.User.Name}}</div>
-          <div class="small text-secondary mb-2">{{.User.Role}}</div>
+          <div class="small text-secondary mb-2">{{if .User.Admin2FAPending}}administrator, limited{{else}}{{.User.Role}}{{end}}</div>
           <div class="d-flex gap-2">
             <button type="button" class="btn btn-sm btn-outline-secondary" data-theme-toggle title="Switch light and dark" aria-label="Switch light and dark">{{icon "sun"}}</button>
             <form method="post" action="/logout" class="m-0"><button type="submit" class="btn btn-sm btn-outline-secondary">{{icon "logout"}} Log out</button></form>
@@ -74,7 +74,8 @@
 {{if .Error}}<div class="alert alert-danger" role="alert">{{.Error}}</div>{{end}}
 {{if .Notice}}<div class="alert alert-success" role="status">{{.Notice}}</div>{{end}}
 {{if .Warn}}<div class="alert alert-warning" role="status">{{icon "alert-triangle"}} {{.Warn}}</div>{{end}}
-{{if .PromptTOTP}}<div class="alert alert-info d-flex flex-wrap gap-2 align-items-center" role="status">{{icon "shield-lock"}} <span class="flex-fill">Protect your account with two-factor login: a code from an app on your phone, asked on new devices.</span>
+{{if .AdminNeeds2FA}}<div class="alert alert-warning d-flex flex-wrap gap-2 align-items-center" role="status">{{icon "shield-lock"}} <span class="flex-fill">You are an administrator, and administrators need two-factor login. The administration pages stay hidden until you set it up.</span>
+  <a class="btn btn-sm btn-primary" href="/account/2fa?need=1">Set it up</a></div>{{else if .PromptTOTP}}<div class="alert alert-info d-flex flex-wrap gap-2 align-items-center" role="status">{{icon "shield-lock"}} <span class="flex-fill">Protect your account with two-factor login: a code from an app on your phone, asked on new devices.</span>
   <a class="btn btn-sm btn-primary" href="/account/2fa">Set it up</a>
   <form method="post" action="/account/2fa/later" class="d-inline"><input type="hidden" name="next" value="{{.Path}}"><button type="submit" class="btn btn-sm btn-link">Not now</button></form></div>{{end}}
 {{end}}
