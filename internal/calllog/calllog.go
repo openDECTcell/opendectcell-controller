@@ -213,3 +213,19 @@ func (s *Store) MarkMissedRead(ctx context.Context, owner uuid.UUID) (int64, err
 		AND answered_at IS NULL AND ended_at IS NOT NULL AND missed_read_at IS NULL`, owner)
 	return tag.RowsAffected(), err
 }
+
+// ActiveWindow is how long a call without an end still counts as going on: a call whose end was never recorded (a
+// crash) must not stay "right now" for ever.
+const ActiveWindow = 6 * time.Hour
+
+// Active returns the calls going on now (ringing or answered, not ended), newest first: one user's, or everybody's
+// for a nil owner.
+func (s *Store) Active(ctx context.Context, owner *uuid.UUID) ([]Call, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+callCols+` FROM call_log
+		WHERE ended_at IS NULL AND started_at > $2 AND ($1::uuid IS NULL OR owner_user_id = $1)
+		ORDER BY id DESC LIMIT 200`, owner, time.Now().Add(-ActiveWindow))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Call, error) { return scanCall(r) })
+}

@@ -51,7 +51,7 @@
   <td>{{with .HandsetName}}{{.}}{{else}}<span class="text-secondary">{{if .HandsetID}}removed{{else}}none{{end}}</span>{{end}}</td>
   <td>{{with .LineName}}{{.}}{{else}}<span class="text-secondary">{{if .SIPAccountID}}removed{{else}}—{{end}}</span>{{end}}</td>
   <td><span class="badge {{.ResultClass}}">{{.Result}}</span>{{if and .Missed (not .MissedReadAt)}} <span class="badge bg-danger text-white">new</span>{{end}}</td>
-  <td>{{if .AnsweredAt}}{{dur .Duration}}{{end}}</td>
+  <td>{{if and .AnsweredAt .EndedAt}}{{dur .Duration}}{{end}}</td>
   <td>{{if .Quality}}<span class="badge {{.MOSClass}}">MOS {{f1 .Quality.MOS}}</span>{{end}}</td>
   <td class="text-end"><a href="/calls/{{.ID}}">Details</a></td>
 </tr>

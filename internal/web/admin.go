@@ -7,8 +7,11 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 )
 
@@ -25,6 +28,9 @@ type dashData struct {
 	Live    *fleetLive
 	Audit   []audit.Row
 	Alerts  []string
+	// ActiveCalls are the calls going on now, everybody's; the load of a base station is on its row.
+	ActiveCalls int
+	StationLoad map[uuid.UUID]int
 }
 
 // adminDashboard is the first page an admin sees: what needs attention, then
@@ -40,7 +46,15 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request, u *auth.
 		s.internalError(w, r, err)
 		return
 	}
-	d := dashData{Summary: sum, Fleet: f}
+	d := dashData{Summary: sum, Fleet: f, StationLoad: map[uuid.UUID]int{}}
+	if active, err := (&calllog.Store{Pool: s.Pool}).Active(r.Context(), nil); err == nil {
+		d.ActiveCalls = len(active)
+		for _, c := range active {
+			for _, id := range c.CellIDs {
+				d.StationLoad[id]++
+			}
+		}
+	}
 	if s.Cells != nil {
 		if d.Live, err = s.liveFleet(r, u); err != nil {
 			s.internalError(w, r, err)

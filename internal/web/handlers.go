@@ -13,7 +13,6 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
-	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 )
 
 // page is what every template receives.
@@ -278,14 +277,6 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	s.startSession(w, r, u, "oidc", next)
 }
 
-type homeData struct {
-	Summary  stats.Summary
-	HasStats bool
-	Stations int
-	Online   int
-	Steps    []homeStep
-}
-
 // homeStep is one line of the getting-started list.
 type homeStep struct {
 	Done  bool
@@ -295,28 +286,7 @@ type homeStep struct {
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	var d homeData
-	if s.Stats != nil {
-		if m, err := s.Stats.Summary(r.Context(), stats.Own(u.ID)); err == nil {
-			d.Summary, d.HasStats = m, true
-		}
-	}
-	if s.Cells != nil {
-		if cells, err := s.Cells.ListOwned(r.Context(), u); err == nil {
-			for _, c := range cells {
-				d.Stations++
-				if s.liveStatus(c.ID).Online {
-					d.Online++
-				}
-			}
-		}
-	}
-	d.Steps = []homeStep{
-		{Done: d.Stations > 0, Text: "A base station is connected", Href: "/stations", Label: "Base stations"},
-		{Done: d.Summary.SIPAccounts > 0, Text: "A VoIP line (SIP account) is set up", Href: "/sip-accounts", Label: "VoIP lines"},
-		{Done: d.Summary.Handsets > 0, Text: "A handset is registered", Href: "/handsets", Label: "Handsets"},
-	}
-	s.render(w, http.StatusOK, "home.html", page{Title: "Overview", User: u, Data: d})
+	s.render(w, http.StatusOK, "home.html", page{Title: "Overview", User: u, Data: s.buildOverview(r.Context(), u)})
 }
 
 func (s *Server) accountPage(w http.ResponseWriter, r *http.Request, u *auth.User) {

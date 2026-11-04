@@ -1,13 +1,8 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "home.html"}}{{template "head" .}}
 {{with .Data}}
-<div class="row row-cards mb-3">
-  <div class="col-6 col-lg-3"><a class="card card-link" href="/stations"><div class="card-body"><div class="subheader">Base stations</div><div class="h1 mb-0">{{.Stations}}</div><div class="text-secondary small">{{.Online}} online</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card card-link" href="/handsets"><div class="card-body"><div class="subheader">Handsets</div><div class="h1 mb-0">{{.Summary.Handsets}}</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card card-link" href="/sip-accounts"><div class="card-body"><div class="subheader">VoIP lines</div><div class="h1 mb-0">{{.Summary.SIPAccounts}}</div></div></a></div>
-  <div class="col-6 col-lg-3"><a class="card card-link" href="/statistics"><div class="card-body"><div class="subheader">Calls, last 7 days</div><div class="h1 mb-0">{{.Summary.Calls7d}}</div><div class="text-secondary small">{{hours .Summary.TalkSeconds7d}} talk time</div></div></a></div>
-</div>
-<div class="card">
+{{if not .StepsDone}}
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Getting started</h3></div>
   <div class="list-group list-group-flush">
     {{range .Steps}}<div class="list-group-item d-flex align-items-center">
@@ -16,5 +11,103 @@
     </div>{{end}}
   </div>
 </div>
+{{end}}
+
+<div class="row row-cards mb-3">
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/sip-accounts"><div class="card-body"><div class="subheader">VoIP lines</div>
+    <div class="h1 mb-0">{{.LinesUp}} <span class="text-secondary fs-4">of {{len .Lines}}</span></div><div class="text-secondary small">registered</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/handsets"><div class="card-body"><div class="subheader">Handsets</div>
+    <div class="h1 mb-0">{{.HandsetsOnline}} <span class="text-secondary fs-4">of {{len .Handsets}}</span></div><div class="text-secondary small">online</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/stations"><div class="card-body"><div class="subheader">Base stations</div>
+    <div class="h1 mb-0">{{.StationsOnline}} <span class="text-secondary fs-4">of {{len .Stations}}</span></div><div class="text-secondary small">online</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/calls"><div class="card-body"><div class="subheader">Calls, last 7 days</div>
+    <div class="h1 mb-0">{{.Summary.Calls7d}}</div><div class="text-secondary small">{{hours .Summary.TalkSeconds7d}} talking{{if .Unread}} · <strong class="text-danger">{{.Unread}} missed</strong>{{end}}</div></div></a></div>
+</div>
+
+{{if .Active}}
+<div class="card mb-3 border-primary">
+  <div class="card-header"><h3 class="card-title">{{icon "phone-call"}} Calls right now</h3></div>
+  <div class="list-group list-group-flush">
+    {{range .Active}}<div class="list-group-item d-flex">
+      <span class="me-2">{{if eq .Direction "in"}}↙{{else}}↗{{end}}</span>
+      <span>{{with .Number}}{{.}}{{else}}unknown number{{end}}{{with .Handset}} · {{.}}{{end}}{{with .Line}} · {{.}}{{end}}</span>
+      <span class="ms-auto text-secondary">{{if .Answered}}talking{{else}}ringing{{end}} since {{fmtTime .Since}}</span>
+    </div>{{end}}
+  </div>
+</div>
+{{end}}
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Needs attention</h3></div>
+  {{if .Attention}}<div class="list-group list-group-flush">
+    {{range .Attention}}<div class="list-group-item d-flex align-items-center">
+      <span class="badge {{if eq .Level "danger"}}bg-danger-lt{{else if eq .Level "warning"}}bg-warning-lt{{else}}bg-blue-lt{{end}} me-3">{{if eq .Level "danger"}}problem{{else if eq .Level "warning"}}check{{else}}note{{end}}</span>
+      <span>{{.Text}}</span>{{if .Href}}<a class="ms-auto text-nowrap" href="{{.Href}}">{{.Label}}</a>{{end}}
+    </div>{{end}}
+  </div>{{else}}
+  <div class="card-body text-success">{{icon "check"}} Everything looks fine.</div>{{end}}
+</div>
+
+<div class="row row-cards mb-3">
+  <div class="col-lg-7">
+    <div class="card"><div class="card-header"><h3 class="card-title">Handsets</h3><div class="card-actions"><a href="/handsets">All handsets</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Handset</th><th>State</th><th>Signal</th><th>Last seen</th></tr></thead><tbody>
+      {{range .Handsets}}<tr>
+        <td><a href="/handsets/{{.ID}}">{{.Name}}</a></td>
+        <td>{{template "presence" .}}</td>
+        <td>{{with .Signal}}{{.}}{{else}}<span class="text-secondary">—</span>{{end}}</td>
+        <td>{{with .LastSeen}}{{fmtTime .}}{{else}}<span class="text-secondary">never</span>{{end}}{{with .Cell}} <span class="text-secondary small">on {{.}}</span>{{end}}</td>
+      </tr>{{else}}<tr><td colspan="4" class="text-secondary">No handsets yet. <a href="/handsets">Register one.</a></td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card"><div class="card-header"><h3 class="card-title">VoIP lines</h3><div class="card-actions"><a href="/sip-accounts">All lines</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Line</th><th>Registration</th><th>Used by</th></tr></thead><tbody>
+      {{range .Lines}}<tr>
+        <td><a href="/sip-accounts/{{.ID}}">{{.Label}}</a>{{if .Shared}} <span class="text-secondary small">shared</span>{{end}}</td>
+        <td><span class="badge {{.Class}}">{{.State}}</span>{{with .Error}} <span class="text-secondary small">{{.}}</span>{{end}}</td>
+        <td>{{if .Uses}}{{.Uses}} handset{{if ne .Uses 1}}s{{end}}{{else}}<span class="text-secondary">nobody</span>{{end}}</td>
+      </tr>{{else}}<tr><td colspan="3" class="text-secondary">No VoIP lines yet. <a href="/sip-accounts/new">Add one.</a></td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+</div>
+
+<div class="row row-cards mb-3">
+  <div class="col-lg-7">
+    <div class="card"><div class="card-header"><h3 class="card-title">Last calls</h3><div class="card-actions"><a href="/calls">All calls</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><tbody>
+      {{range .Recent}}<tr>
+        <td class="w-1">{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
+        <td><a href="/calls/{{.ID}}">{{with .RemoteParty}}{{.}}{{else}}unknown{{end}}</a>{{with .HandsetName}} <span class="text-secondary small">{{.}}</span>{{end}}</td>
+        <td><span class="badge {{.ResultClass}}">{{.Result}}</span>{{if and .Missed (not .MissedReadAt)}} <span class="badge bg-danger text-white">new</span>{{end}}</td>
+        <td>{{fmtTime .StartedAt}}</td>
+        <td>{{if and .AnsweredAt .EndedAt}}{{dur .Duration}}{{end}}</td>
+      </tr>{{else}}<tr><td class="text-secondary">No calls yet.</td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card"><div class="card-header"><h3 class="card-title">Base stations</h3><div class="card-actions"><a href="/stations">All base stations</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Base station</th><th>Link</th><th>Calls now</th></tr></thead><tbody>
+      {{range .Stations}}<tr>
+        <td><a href="/stations/{{.ID}}">{{.Name}}</a>{{with .Model}} <span class="text-secondary small">{{.}}</span>{{end}}</td>
+        <td>{{if .Online}}<span class="badge bg-success-lt">online</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}</td>
+        <td>{{.Active}}{{if .Capacity}} <span class="text-secondary small">of {{.Capacity}}</span>{{end}}</td>
+      </tr>{{else}}<tr><td colspan="3" class="text-secondary">No base stations yet. <a href="/enroll">Enroll one.</a></td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+</div>
+
+{{with .System}}
+<div class="card">
+  <div class="card-header"><h3 class="card-title">{{icon "server"}} This controller</h3><div class="card-actions"><a href="/admin/system">System</a> · <a href="/admin">Dashboard</a></div></div>
+  <div class="card-body"><dl class="kv mb-0">
+    <dt>Version</dt><dd>{{.Version}}{{with .Up}} · up {{.}}{{end}}</dd>
+    <dt>Database</dt><dd>{{with .DBSize}}{{.}}{{else}}—{{end}}</dd>
+    <dt>Users</dt><dd>{{.Users}}{{if .UsersPending}} · {{.UsersPending}} waiting for approval{{end}}</dd>
+    <dt>Calls</dt><dd>{{.ActiveCalls}} going on now · {{.Calls24h}} in the last 24 hours</dd>
+    <dt>Mail</dt><dd>{{if .MailOn}}<span class="text-success">{{icon "check"}} set up</span>{{else}}<span class="text-secondary">not set up</span>{{end}}</dd>
+  </dl></div>
+</div>
+{{end}}
 {{end}}
 {{template "foot" .}}{{end}}

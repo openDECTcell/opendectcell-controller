@@ -6,15 +6,15 @@
   <div class="col-6 col-lg-3"><a class="card card-link" href="/cells"><div class="card-body"><div class="subheader">Cells</div><div class="h1 mb-0">{{.Fleet.CellsActive}}{{if .Live}} <span class="text-secondary h4">{{.Live.Online}} online</span>{{end}}</div></div></a></div>
   <div class="col-6 col-lg-3"><a class="card card-link" href="/admin/users"><div class="card-body"><div class="subheader">Users</div><div class="h1 mb-0">{{.Fleet.Users}}</div></div></a></div>
   <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Handsets</div><div class="h1 mb-0">{{.Summary.Handsets}}</div><div class="text-secondary small">{{.Fleet.HandsetsSeen24h}} seen in 24 h</div></div></div></div>
-  <div class="col-6 col-lg-3"><a class="card card-link" href="/admin/statistics"><div class="card-body"><div class="subheader">Calls, 24 h</div><div class="h1 mb-0">{{.Summary.Calls24h}}</div><div class="text-secondary small">{{.Summary.Calls7d}} in 7 days</div></div></a></div>
+  <div class="col-6 col-lg-3"><a class="card card-link" href="/admin/statistics"><div class="card-body"><div class="subheader">Calls, 24 h</div><div class="h1 mb-0">{{.Summary.Calls24h}}</div><div class="text-secondary small">{{.Summary.Calls7d}} in 7 days{{if .ActiveCalls}} · <strong>{{.ActiveCalls}} going on now</strong>{{end}}</div></div></a></div>
 </div>
 <div class="row row-cards">
   {{if .Live}}
   <div class="col-lg-7">
     <div class="card"><div class="card-header"><h3 class="card-title">Cells</h3></div>
-    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Cell</th><th>Link</th><th>Software</th><th>Last seen</th></tr></thead><tbody>
-      {{range .Live.Rows}}<tr><td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}</td><td>{{with .SoftwareVersion}}{{.}}{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td></tr>
-      {{else}}<tr><td colspan="4" class="text-secondary">No active cells.</td></tr>{{end}}
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Cell</th><th>Link</th><th>Calls now</th><th>Software</th><th>Last seen</th></tr></thead><tbody>
+      {{range .Live.Rows}}<tr><td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}</td><td>{{index $.Data.StationLoad .ID}}</td><td>{{with .SoftwareVersion}}{{.}}{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td></tr>
+      {{else}}<tr><td colspan="5" class="text-secondary">No active cells.</td></tr>{{end}}
     </tbody></table></div></div>
   </div>{{end}}
   <div class="col-lg-5">
