@@ -34,14 +34,16 @@ ALTER TABLE contact ADD COLUMN remote_href text;
 ALTER TABLE contact ADD COLUMN remote_etag text;
 CREATE UNIQUE INDEX contact_remote_idx ON contact (addressbook_id, remote_href) WHERE addressbook_id IS NOT NULL;
 
--- the digits of a number, and the last seven of them for finding whose number a call came from (ideas D5, step 2)
-ALTER TABLE contact_number ADD COLUMN digits text GENERATED ALWAYS AS (regexp_replace(number, '[^0-9]', '', 'g')) STORED;
-CREATE INDEX contact_number_tail_idx ON contact_number (right(digits, 7));
+-- the last seven digits of a number without the zeros in front of it: what a call's number is looked up by to find
+-- the contact it belongs to (ideas D5, step 2). "+49 30 1234567" and "030 1234567" end in the same seven.
+ALTER TABLE contact_number ADD COLUMN match_tail text GENERATED ALWAYS AS
+    (right(regexp_replace(regexp_replace(number, '[^0-9]', '', 'g'), '^0+', ''), 7)) STORED;
+CREATE INDEX contact_number_tail_idx ON contact_number (match_tail);
 
 -- +down
 
 DROP INDEX contact_number_tail_idx;
-ALTER TABLE contact_number DROP COLUMN digits;
+ALTER TABLE contact_number DROP COLUMN match_tail;
 DROP INDEX contact_remote_idx;
 ALTER TABLE contact DROP COLUMN remote_etag;
 ALTER TABLE contact DROP COLUMN remote_href;

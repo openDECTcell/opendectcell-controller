@@ -91,6 +91,11 @@ The address must be `https://` and must name the address book itself (for Nextcl
 `https://host/remote.php/dav/addressbooks/users/NAME/contacts/`; use an app password). The controller does not connect to addresses
 on its own machine or network unless the operator allows it (`OPENDECTCELL_CARDDAV_ALLOW_PRIVATE`, see the configuration).
 
+**Names of callers.** When a call comes in, the handset shows the **name of the contact** whose number it is, if there is one
+among the contacts that handset reads (yours, the shared ones and the address books ticked for it); it wins over the name the other
+side sent. The Calls page shows the name next to the number, too. A number matches however it is written (`+49 30 1234567`,
+`030 1234567`, `0049 30 1234567`); numbers of fewer than seven digits are never matched.
+
 ## Names and numbers on the display
 
 The caller's number and, if the SIP side provides it, the name are shown on the handset. CAT-iq handsets show

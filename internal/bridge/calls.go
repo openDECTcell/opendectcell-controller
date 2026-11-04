@@ -39,6 +39,10 @@ type (
 		SendDTMF(ctx context.Context, digit rune) error
 		Hold(ctx context.Context, on bool) error
 	}
+	// NameLookup gives the name a handset knows a number under (*contacts.Store); "" for none.
+	NameLookup interface {
+		LookupName(ctx context.Context, handset uuid.UUID, number string) (string, error)
+	}
 	// Caller places SIP calls.
 	Caller interface {
 		Dial(ctx context.Context, account uuid.UUID, number string) (SIPCall, error)
@@ -149,8 +153,11 @@ type Manager struct {
 	MWI      MWISender // nil: message waiting is not shown (mwi.go)
 	// CallLists is told which handsets' call lists a finished call is in (*core.Core); nil: nobody.
 	CallLists CallListNotifier
-	CallLog   CallLog
-	Log       *slog.Logger
+	// Names, if set, gives the name of a caller from the contacts of the handset that rings; it wins over the name
+	// the other side sent.
+	Names   NameLookup
+	CallLog CallLog
+	Log     *slog.Logger
 
 	// MediaIP is the address the cells send their speech to, MediaPorts the
 	// UDP ports the controller listens on for it (inclusive; 0: any port).
@@ -326,7 +333,7 @@ func (m *Manager) incoming(ci callInfo, c SIPCall) {
 	var legIdx []int // the receiver of each offer
 	for i, r := range recv {
 		o, err := m.DECT.Ring(ctx, r.Handset, core.Call{SIP: fmt.Sprintf("%s-%d", ci.ID, i), Line: r.Line,
-			Number: cmp.Or(ci.RemoteShown, ci.Remote), Name: ci.RemoteDisplay, Narrowband: nb})
+			Number: cmp.Or(ci.RemoteShown, ci.Remote), Name: m.callerName(ctx, r.Handset, ci), Narrowband: nb})
 		if err != nil {
 			log.Info("a handset cannot be rung", "handset", r.Handset, "err", err)
 			continue
@@ -579,4 +586,15 @@ func (m *Manager) listenMedia() (*net.UDPConn, uint16, error) {
 		last = err
 	}
 	return nil, 0, fmt.Errorf("no free media port in %d-%d: %w", lo, hi, last)
+}
+
+// callerName is the name to show for a caller on one handset: the contact the handset knows the number under, else
+// the name the other side sent.
+func (m *Manager) callerName(ctx context.Context, handset uuid.UUID, ci callInfo) string {
+	if m.Names != nil && ci.Remote != "" {
+		if n, err := m.Names.LookupName(ctx, handset, ci.Remote); err == nil && n != "" {
+			return n
+		}
+	}
+	return ci.RemoteDisplay
 }

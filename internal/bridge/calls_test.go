@@ -713,3 +713,35 @@ func TestIncomingShowsTheNumberTheLineWants(t *testing.T) {
 		sc.events <- sip.Event{Kind: sip.EvEnded}
 	}
 }
+
+type fakeNames map[string]string
+
+func (f fakeNames) LookupName(_ context.Context, _ uuid.UUID, number string) (string, error) {
+	return f[number], nil
+}
+
+// A contact's name wins over the name the other side sent; without one the sent name stays.
+func TestIncomingNamesTheCallerFromTheContacts(t *testing.T) {
+	for _, c := range []struct {
+		names fakeNames
+		want  string
+	}{{fakeNames{"+49301234": "Anna Schmidt"}, "Anna Schmidt"}, {fakeNames{}, "Reception"}, {nil, "Reception"}} {
+		recv := []Receiver{{Handset: uuid.New(), Line: 1}}
+		r := newRig(t, fakeLines{recv: recv})
+		rt := &fakeRouter{}
+		r.m.DECT = rt
+		if c.names != nil {
+			r.m.Names = c.names
+		}
+		sc := newFakeSIP(t, pcma)
+		go r.m.incoming(callInfo{ID: uuid.New(), AccountID: uuid.New(), Remote: "+49301234", RemoteDisplay: "Reception"}, sc)
+		waitFor(t, "the handset rung", func() bool { rt.mu.Lock(); defer rt.mu.Unlock(); return len(rt.offers) == 1 })
+		rt.mu.Lock()
+		got := rt.calls[recv[0].Handset].Name
+		rt.mu.Unlock()
+		if got != c.want {
+			t.Errorf("names %v: the handset is offered the name %q, want %q", c.names, got, c.want)
+		}
+		sc.events <- sip.Event{Kind: sip.EvEnded}
+	}
+}

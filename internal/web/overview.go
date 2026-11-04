@@ -248,7 +248,7 @@ func (s *Server) buildOverview(ctx context.Context, u *auth.User) overview {
 		lineNames[l.ID] = l.Label
 	}
 	if calls, err := cl.List(ctx, calllog.Filter{Owner: &u.ID, Limit: 5}); err == nil {
-		o.Recent = s.rowsFor(calls, handsetNames, lineNames)
+		o.Recent = s.rowsFor(calls, handsetNames, lineNames, s.contactNames(ctx, u.ID, calls))
 	}
 	for _, c := range active {
 		a := activeCall{Direction: c.Direction, Number: c.RemoteParty, Since: c.StartedAt, Answered: c.AnsweredAt != nil}

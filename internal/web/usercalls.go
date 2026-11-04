@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -120,6 +121,7 @@ type callRow struct {
 	calllog.Call
 	HandsetName string
 	LineName    string
+	Name        string // the contact the number belongs to, "" when there is none
 	Result      string // missed, answered, not answered, ongoing
 	ResultClass string // a badge colour
 	MOSClass    string
@@ -221,10 +223,30 @@ func (s *Server) callNames(r *http.Request, u *auth.User) (handsets map[uuid.UUI
 	return handsets, order, lines, choices, nil
 }
 
-func (s *Server) rowsFor(calls []calllog.Call, handsets, lines map[uuid.UUID]string) []callRow {
+// contactNames gives the names of the user's contacts for the numbers of calls: their own, the shared ones and all
+// their address books. Without a contact store, or on an error, there are none: the page shows numbers.
+func (s *Server) contactNames(ctx context.Context, owner uuid.UUID, calls []calllog.Call) map[string]string {
+	if s.Contacts == nil || len(calls) == 0 {
+		return nil
+	}
+	numbers := make([]string, 0, len(calls))
+	for _, c := range calls {
+		if c.RemoteParty != "" {
+			numbers = append(numbers, c.RemoteParty)
+		}
+	}
+	names, err := s.Contacts.NamesFor(ctx, owner, numbers)
+	if err != nil {
+		s.Log.Warn("contact names for the calls", "err", err)
+		return nil
+	}
+	return names
+}
+
+func (s *Server) rowsFor(calls []calllog.Call, handsets, lines map[uuid.UUID]string, names map[string]string) []callRow {
 	rows := make([]callRow, len(calls))
 	for i, c := range calls {
-		row := callRow{Call: c}
+		row := callRow{Call: c, Name: names[c.RemoteParty]}
 		if c.HandsetID != nil {
 			row.HandsetName = handsets[*c.HandsetID]
 		}
@@ -259,7 +281,7 @@ func (s *Server) callsPage(w http.ResponseWriter, r *http.Request, u *auth.User)
 		s.internalError(w, r, err)
 		return
 	}
-	d := callsView{Rows: s.rowsFor(calls, handsets, lines), Query: q, Handsets: handsets, HandsetIDs: order, Lines: choices,
+	d := callsView{Rows: s.rowsFor(calls, handsets, lines, s.contactNames(r.Context(), u.ID, calls)), Query: q, Handsets: handsets, HandsetIDs: order, Lines: choices,
 		Unread: unread, Ranges: callRanges, Export: q.Values(0)}
 	if len(calls) == f.Limit {
 		d.NextBefore = calls[len(calls)-1].ID
@@ -294,7 +316,7 @@ func (s *Server) callPage(w http.ResponseWriter, r *http.Request, u *auth.User) 
 		s.internalError(w, r, err)
 		return
 	}
-	d := callDetail{callRow: s.rowsFor([]calllog.Call{c}, handsets, lines)[0]}
+	d := callDetail{callRow: s.rowsFor([]calllog.Call{c}, handsets, lines, s.contactNames(r.Context(), u.ID, []calllog.Call{c}))[0]}
 	if s.Cells != nil && len(c.CellIDs) > 0 {
 		names := map[uuid.UUID]string{}
 		if cells, err := s.Cells.ListCells(r.Context(), u); err == nil {
@@ -357,7 +379,7 @@ func (s *Server) callsExport(w http.ResponseWriter, r *http.Request, u *auth.Use
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write([]byte("\xEF\xBB\xBF")) // so a spreadsheet reads umlauts in handset names as UTF-8
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"started", "direction", "number", "handset", "line", "answered", "duration_seconds", "result", "ended_because", "sip_codec", "cell_codec", "encrypted_srtp", "mos"})
+	_ = cw.Write([]string{"started", "direction", "number", "name", "handset", "line", "answered", "duration_seconds", "result", "ended_because", "sip_codec", "cell_codec", "encrypted_srtp", "mos"})
 	n := 0
 	for n < csvMaxRows {
 		calls, err := store.List(r.Context(), f)
@@ -366,12 +388,12 @@ func (s *Server) callsExport(w http.ResponseWriter, r *http.Request, u *auth.Use
 			s.Log.Error("calls export", "err", err)
 			break
 		}
-		for _, row := range s.rowsFor(calls, handsets, lines) {
+		for _, row := range s.rowsFor(calls, handsets, lines, s.contactNames(r.Context(), u.ID, calls)) {
 			mos := ""
 			if row.Quality != nil {
 				mos = strconv.FormatFloat(row.Quality.MOS, 'f', 1, 64)
 			}
-			_ = cw.Write([]string{row.StartedAt.Format(time.RFC3339), row.Direction, csvSafe(row.RemoteParty), csvSafe(row.HandsetName), csvSafe(row.LineName),
+			_ = cw.Write([]string{row.StartedAt.Format(time.RFC3339), row.Direction, csvSafe(row.RemoteParty), csvSafe(row.Name), csvSafe(row.HandsetName), csvSafe(row.LineName),
 				strconv.FormatBool(row.AnsweredAt != nil), strconv.FormatInt(int64(row.Duration().Seconds()), 10), row.Result, deref0(row.EndReason),
 				deref0(row.SIPCodec), deref0(row.CellCodec), strconv.FormatBool(row.SRTP != nil && *row.SRTP), mos})
 			n++

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
+	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/media"
 	"github.com/openDECTcell/opendectcell-controller/internal/media/rtpstats"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
@@ -178,7 +179,7 @@ func TestCallsExport(t *testing.T) {
 		t.Fatalf("export: %d %v", resp.StatusCode, resp.Header)
 	}
 	lines := strings.Split(strings.TrimSpace(strings.TrimPrefix(body, "\xEF\xBB\xBF")), "\n")
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "started,direction,number,handset,line,answered,duration_seconds") {
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "started,direction,number,name,handset,line,answered,duration_seconds") {
 		t.Fatalf("lines: %q", lines)
 	}
 	if strings.Contains(body, "4930111") || strings.Contains(body, "4930999") {
@@ -198,5 +199,34 @@ func TestCSVSafe(t *testing.T) {
 		if got := csvSafe(in); got != want {
 			t.Errorf("csvSafe(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A number that is one of the user's contacts is shown with the contact's name, in whatever way it was written.
+func TestCallsShowTheContactsName(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) { s.Contacts = &contacts.Store{Pool: s.Pool} })
+	fillCalls(t, e)
+	u := e.userBrowser(t)
+	e.post(t, u, "/contacts", url.Values{"last_name": {"Meyer"}, "first_name": {"Eva"}, "number0": {"030 111 0000"}, "kind0": {"work"}})
+	e.post(t, u, "/contacts", url.Values{"last_name": {"Müller"}, "number0": {"+49 30 222 0000"}, "kind0": {"work"}})
+	// the calls come from the same numbers, written the way a provider writes them
+	e.store.Pool.Exec(ctx, "UPDATE call_log SET remote_party = '+49301110000' WHERE remote_party = '+4930111'")
+	e.store.Pool.Exec(ctx, "UPDATE call_log SET remote_party = '03022200 00'::text WHERE remote_party = '+4930222'")
+	e.store.Pool.Exec(ctx, "UPDATE call_log SET remote_party = replace(remote_party, ' ', '')")
+	_, page := e.get(t, u, "/calls")
+	if !strings.Contains(page, "<strong>Eva Meyer</strong>") || !strings.Contains(page, "<strong>Müller</strong>") {
+		t.Errorf("the contacts' names are not on the page: %s", page)
+	}
+	if strings.Contains(page, "<strong>Eva Meyer</strong> <span class=\"text-secondary small\">4930999") {
+		t.Errorf("a name on a call of another user")
+	}
+	_, csv := e.get(t, u, "/calls/export.csv")
+	if !strings.Contains(csv, ",Eva Meyer,") || !strings.Contains(csv, ",Müller,") {
+		t.Errorf("csv has no names: %s", csv)
+	}
+	var id int64
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM call_log WHERE remote_party = '+49301110000'").Scan(&id)
+	if _, one := e.get(t, u, "/calls/"+strconv.FormatInt(id, 10)); !strings.Contains(one, "<dt>Contact</dt><dd>Eva Meyer</dd>") {
+		t.Errorf("the call page has no contact")
 	}
 }

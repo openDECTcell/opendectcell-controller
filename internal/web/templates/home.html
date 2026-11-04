@@ -78,7 +78,7 @@
     <div class="table-responsive"><table class="table table-vcenter card-table"><tbody>
       {{range .Recent}}<tr>
         <td class="w-1">{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
-        <td><a href="/calls/{{.ID}}">{{with .RemoteParty}}{{.}}{{else}}unknown{{end}}</a>{{with .HandsetName}} <span class="text-secondary small">{{.}}</span>{{end}}</td>
+        <td><a href="/calls/{{.ID}}">{{if .Name}}{{.Name}}{{else}}{{with .RemoteParty}}{{.}}{{else}}unknown{{end}}{{end}}</a>{{with .HandsetName}} <span class="text-secondary small">{{.}}</span>{{end}}</td>
         <td><span class="badge {{.ResultClass}}">{{.Result}}</span>{{if and .Missed (not .MissedReadAt)}} <span class="badge bg-danger text-white">new</span>{{end}}</td>
         <td>{{fmtTime .StartedAt}}</td>
         <td>{{if and .AnsweredAt .EndedAt}}{{dur .Duration}}{{end}}</td>

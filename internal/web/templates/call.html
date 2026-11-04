@@ -8,6 +8,7 @@
       <div class="card-header"><h3 class="card-title">{{if eq .Direction "in"}}Incoming{{else}}Outgoing{{end}} call <span class="badge {{.ResultClass}} ms-2">{{.Result}}</span></h3></div>
       <div class="card-body"><dl class="kv mb-0">
         <dt>Number</dt><dd>{{with .RemoteParty}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}</dd>
+        {{if .Name}}<dt>Contact</dt><dd>{{.Name}}</dd>{{end}}
         <dt>Started</dt><dd>{{fmtTime .StartedAt}}</dd>
         <dt>Answered</dt><dd>{{with .AnsweredAt}}{{fmtTime .}}{{else}}<span class="text-secondary">no</span>{{end}}</dd>
         <dt>Ended</dt><dd>{{with .EndedAt}}{{fmtTime .}}{{else}}<span class="text-secondary">not yet</span>{{end}}{{with .EndReason}} · {{endReason .}}{{end}}</dd>

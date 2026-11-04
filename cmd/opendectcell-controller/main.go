@@ -393,7 +393,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	books := &carddav.Store{Pool: pool, Client: &carddav.Client{AllowPrivate: cfg.CardDAV.AllowPrivate}}
 	// The calls between the handsets and SIP (internal/bridge): the SIP side
 	// is set below, once it exists.
-	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log},
+	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log}, Names: contactStore,
 		Log: log.With("component", "calls"), MediaIP: cfg.CellMediaIP()}
 	calls.MediaPorts[0], calls.MediaPorts[1] = cfg.Cells.MediaRange()
 	link.Media = calls
