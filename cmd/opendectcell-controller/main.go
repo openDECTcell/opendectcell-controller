@@ -522,6 +522,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	go srv.RunLogExpiry(ctx)
 	go srv.RunCellAlerts(ctx)
+	go srv.RunMissedCallMails(ctx)
 	go retention.Run(ctx, pool, instance, log)
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,
