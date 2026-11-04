@@ -54,7 +54,10 @@ func TestAdminCalls(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	for _, want := range []string{"1:12", "G722 · cell L16 · SRTP", "peer 2.5 %", "RTT 48.0 ms", "loss 10.0 %", "<strong>cell</strong>", "4930999", "not answered", "ongoing", "no media"} {
+	if strings.Contains(body, "4930999") {
+		t.Error("the admin call page shows a remote number in full")
+	}
+	for _, want := range []string{"1:12", "G722 · cell L16 · SRTP", "peer 2.5 %", "RTT 48.0 ms", "loss 10.0 %", "<strong>cell</strong>", "*****999", "not answered", "ongoing", "no media"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}

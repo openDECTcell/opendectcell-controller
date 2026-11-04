@@ -22,8 +22,8 @@ firmware-upload page.
 | Calls | Transfer, conference, early media; calls **between** handsets (refused); handover of a call between cells |
 | Handset features | Reading a handset's call-list **deletes and read marks** back into the controller (the call lists themselves are built); the date shown by every handset model |
 | Cells | A way to update a cell's software from the controller; rotation of the controller's certificate authority; a hard limit of calls per cell |
-| Controller | A calls page for users (a stub today); WebAuthn security keys; personal API tokens; a list of your sessions; export or deletion of one user's data (GDPR); German or other languages; a manual for administrators beyond this wiki |
-| Operations | A tested restore; scheduled backups; high availability (one controller, one database); more than about ten metrics; per-call and per-cell quality metrics; per-tenant quotas |
+| Controller | A calls page for users (a stub today); WebAuthn security keys; personal API tokens; a list of your sessions; German or other languages; a manual for administrators beyond this wiki |
+| Operations | Scheduled backups (a restore is tested by `tools/restore-test.sh`); high availability (one controller, one database); more than about ten metrics; per-call and per-cell quality metrics; per-tenant quotas |
 | Hardware | The FRITZ!Box 7362 SL; the 7530 untested; the 7412 needs a kernel module that is not in the release yet |
 | Releases | Public releases and a package repository (planned after the controller is done) |
 

@@ -103,7 +103,11 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, auth.SafeReturnPath(r.FormValue("next")), http.StatusSeeOther) //nolint:gosec // G710: SafeReturnPath allows local paths only
 		return
 	}
-	s.render(w, http.StatusOK, "login.html", page{Title: "Log in", Data: s.loginData(r)})
+	p := page{Title: "Log in", Data: s.loginData(r)}
+	if r.FormValue("erased") == "1" {
+		p.Notice = "Your account and data are deleted."
+	}
+	s.render(w, http.StatusOK, "login.html", p)
 }
 
 func (s *Server) loginPost(w http.ResponseWriter, r *http.Request) {

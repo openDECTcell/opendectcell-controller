@@ -46,8 +46,9 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Docker Compose deployment, least-privilege database role, one-shot migration | ✅ | `docs/deployment.md` |
 | Test ground on a Raspberry Pi with Let's Encrypt, DynDNS and a host firewall | ✅ | `docs/test-ground.md` |
 | DECT stacks in worker processes | 🟡 | The soak run (72 h) has not been done (SEC-03) |
-| Backup page, retention, audit log, metrics | 🟡 | A tested restore is not there yet (BUILD-06) |
-| Export and erasure of one user's data | ❌ | PRIV-05, a decision on scope is open |
+| Backup page, retention, audit log, metrics | 🟡 | `tools/restore-test.sh` proves a dump and the master key restore a working controller (BUILD-06); backups are not scheduled |
+| Export and erasure of one user's data | 🟡 | Account page: a JSON download (no secrets) and "Delete my account and data" (handsets, VoIP profiles, base stations revoked, contacts, calls; the audit log keeps the entries but forgets who) |
+| An administrator releases a handset registered under another user's name | 🟡 | Administration > Release a handset; audited (SEC-12) |
 | High availability | ➖ | One controller, one database |
 
 More in [wiki/Limits.md](wiki/Limits.md) (for users), [next-steps-2026-11-02.md](next-steps-2026-11-02.md) and the open

@@ -110,6 +110,15 @@ func TestRuntimeRoleHasTableRightsOnly(t *testing.T) {
 	if err := rt.QueryRow(ctx, "SELECT audit_purge(now() + interval '1 day')").Scan(&purged); err != nil || purged < 1 {
 		t.Errorf("the purge function as the runtime role: %d %v", purged, err)
 	}
+	// updating the log is not allowed either, except through audit_forget_user (erasing a user)
+	rt.Exec(ctx, "INSERT INTO audit_log (actor_user_id, actor_name, action) VALUES ($1, 'gone', 'x')", u.ID)
+	if _, err := rt.Exec(ctx, "UPDATE audit_log SET actor_name = 'changed'"); err == nil || !strings.Contains(err.Error(), "append-only") {
+		t.Errorf("the runtime role updated the audit log: %v", err)
+	}
+	var forgotten int64
+	if err := rt.QueryRow(ctx, "SELECT audit_forget_user($1)", u.ID).Scan(&forgotten); err != nil || forgotten < 1 {
+		t.Errorf("audit_forget_user as the runtime role: %d %v", forgotten, err)
+	}
 	if m, _ := db.NewMigrator(rt); m != nil {
 		if cur, latest, err := m.Status(ctx); err != nil || cur != latest {
 			t.Fatalf("the runtime role cannot read the migration status: %d/%d %v", cur, latest, err)

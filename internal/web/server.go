@@ -104,6 +104,7 @@ func (s *Server) Handler() (http.Handler, error) {
 	t, err := template.New("").Funcs(template.FuncMap{
 		"fmtTime": func(t time.Time) string { return t.Local().Format("2006-01-02 15:04:05") },
 		"ms":      func(d time.Duration) string { return strconv.FormatInt(d.Milliseconds(), 10) + " ms" },
+		"mask":    logctl.MaskNumber,
 		"dur": func(d time.Duration) string {
 			return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 		},
@@ -195,6 +196,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /account/2fa/start", s.requireUser(s.twoFAStart))
 	s.mux.Handle("POST /account/2fa/confirm", s.requireUser(s.twoFAConfirm))
 	s.mux.Handle("POST /account/2fa/disable", s.requireUser(s.twoFADisable))
+	s.accountDataRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 

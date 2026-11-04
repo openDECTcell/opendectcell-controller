@@ -324,8 +324,12 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 
 // Delete removes the handset: its row, lines and history (the call log keeps
 // its entries without it). The cells' records are the DECT core's to drop; this
-// leaves their slots empty in the store.
+// leaves their slots empty in the store. Only its owner may.
 func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
+	return s.remove(ctx, id, "handset.delete", func(owner uuid.UUID) bool { return auth.IsOwner(u, &owner) })
+}
+
+func (s *Store) remove(ctx context.Context, id uuid.UUID, action string, may func(owner uuid.UUID) bool) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		var owner uuid.UUID
 		if err := tx.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1 FOR UPDATE", id).Scan(&owner); err != nil {
@@ -334,7 +338,7 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
 			}
 			return err
 		}
-		if !auth.IsOwner(u, &owner) {
+		if !may(owner) {
 			return ErrNotFound
 		}
 		if _, err := tx.Exec(ctx, "UPDATE cell_slot SET handset_id = NULL, state = 'empty', written_at = now() WHERE handset_id = $1", id); err != nil {
@@ -343,8 +347,93 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id uuid.UUID) error {
 		if _, err := tx.Exec(ctx, "DELETE FROM handset WHERE id = $1", id); err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, audit.Entry{Action: "handset.delete", ObjectType: "handset", ObjectID: id.String()})
+		return audit.Record(ctx, tx, audit.Entry{Action: action, ObjectType: "handset", ObjectID: id.String(),
+			Details: map[string]any{"owner_id": owner.String()}})
 	})
+}
+
+// ErrBadIPEI is returned for text that is not an IPEI as printed on a label.
+var ErrBadIPEI = errors.New("handset: not an IPEI (EEEEE PPPPPPP C: five digits, seven digits, a check character)")
+
+// IPUIFromIPEI is the identity a handset with this IPEI registers with (the inverse of Handset.IPEI). The check
+// character is verified if given.
+func IPUIFromIPEI(text string) ([]byte, error) {
+	var digits []byte
+	var check byte
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == ' ' || c == '-':
+		case c >= '0' && c <= '9' && len(digits) < 12:
+			digits = append(digits, c)
+		case (c >= '0' && c <= '9' || c == '*') && len(digits) == 12 && check == 0:
+			check = c
+		default:
+			return nil, ErrBadIPEI
+		}
+	}
+	if len(digits) != 12 {
+		return nil, ErrBadIPEI
+	}
+	var emc, psn uint64
+	for _, d := range digits[:5] {
+		emc = emc*10 + uint64(d-'0')
+	}
+	for _, d := range digits[5:] {
+		psn = psn*10 + uint64(d-'0')
+	}
+	if emc > 0xffff || psn > 0xfffff {
+		return nil, ErrBadIPEI
+	}
+	if check != 0 {
+		sum := 0
+		for i, d := range digits {
+			sum += int(d-'0') * (i + 1)
+		}
+		want := byte('0' + sum%11)
+		if sum%11 == 10 {
+			want = '*'
+		}
+		if check != want {
+			return nil, ErrBadIPEI
+		}
+	}
+	v := emc<<20 | psn
+	return []byte{0x80, 0x80 | 40, byte(v >> 32 & 0x0f), byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}, nil
+}
+
+// Claim is what an administrator is shown of a handset they are asked to release: whose it is and since when, nothing else.
+type Claim struct {
+	ID           uuid.UUID
+	Owner        string
+	RegisteredAt time.Time
+}
+
+// FindClaim looks up the handset registered under an IPEI, for an administrator who is asked to release it (a handset
+// registered under someone else's name stops its real owner from registering it). ErrNotFound if none is.
+func (s *Store) FindClaim(ctx context.Context, admin *auth.User, ipei string) (*Claim, error) {
+	if auth.RequireAdmin(admin) != nil {
+		return nil, ErrNotFound
+	}
+	ipui, err := IPUIFromIPEI(ipei)
+	if err != nil {
+		return nil, err
+	}
+	var c Claim
+	err = s.Pool.QueryRow(ctx, `SELECT h.id, coalesce(nullif(u.display_name, ''), u.username), h.registered_at
+		FROM handset h JOIN app_user u ON u.id = h.owner_user_id WHERE h.ipui = $1`, ipui).Scan(&c.ID, &c.Owner, &c.RegisteredAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return &c, err
+}
+
+// Release removes a handset on an administrator's word, whoever owns it: its row, lines and history go, and the slots
+// it held are freed. The audit log records who did it and whose handset it was. The caller tells the cells to drop the record.
+func (s *Store) Release(ctx context.Context, admin *auth.User, id uuid.UUID) error {
+	if auth.RequireAdmin(admin) != nil {
+		return ErrNotFound
+	}
+	return s.remove(ctx, id, "handset.released_by_admin", func(uuid.UUID) bool { return true })
 }
 
 // Account is a phone line account a handset line may use.

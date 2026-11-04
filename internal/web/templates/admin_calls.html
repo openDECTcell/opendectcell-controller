@@ -1,6 +1,6 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "admin_calls.html"}}{{template "head" .}}
-<p class="text-secondary">Media quality per leg. <em>SIP</em> is the leg to the PBX or provider: loss and jitter as received here, and as the peer reported them over RTCP. <em>Cell</em> is the leg to the cell, from sequence numbers (no RTCP on the cell link). MOS is an E-model estimate for the worse direction.</p>
+<p class="text-secondary">The remote number is masked: administrators see how a call went, not who phoned whom. Media quality per leg. <em>SIP</em> is the leg to the PBX or provider: loss and jitter as received here, and as the peer reported them over RTCP. <em>Cell</em> is the leg to the cell, from sequence numbers (no RTCP on the cell link). MOS is an E-model estimate for the worse direction.</p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Started</th><th></th><th>Remote</th><th>Duration</th><th>Ended</th><th>Codecs</th><th>MOS</th><th>SIP leg</th><th>Cell leg</th><th>Worse</th></tr></thead>
 <tbody>
@@ -8,7 +8,7 @@
 <tr>
   <td>{{fmtTime .StartedAt}}</td>
   <td>{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
-  <td>{{.RemoteParty}}</td>
+  <td>{{mask .RemoteParty}}</td>
   <td>{{if .AnsweredAt}}{{dur .Duration}}{{else}}<span class="text-secondary">not answered</span>{{end}}</td>
   <td>{{with .EndReason}}{{.}}{{else}}<span class="text-secondary">ongoing</span>{{end}}</td>
   <td>{{with .SIPCodec}}{{.}}{{end}}{{with .CellCodec}} · cell {{.}}{{end}}{{if deref .SRTP}} · SRTP{{end}}</td>

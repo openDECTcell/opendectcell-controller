@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 )
 
 func TestHandsetPages(t *testing.T) {
@@ -208,5 +210,80 @@ func TestHandsetPages(t *testing.T) {
 	if resp, body := e.get(t, u, "/handsets/register"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `id="reg-go"`) ||
 		!strings.Contains(body, `id="reg-name"`) || !strings.Contains(body, "Gigaset A540") || !strings.Contains(body, "Manufacturer") {
 		t.Errorf("register page: %d", resp.StatusCode)
+	}
+}
+
+// An administrator releases a handset registered under another user's name: they see whose it is, confirm with the IPEI,
+// and the handset is gone, the cells are told, and the audit log has it (audit finding SEC-12).
+func TestAdminReleasesAHandsetIdentity(t *testing.T) {
+	var told []uuid.UUID
+	var mu sync.Mutex
+	e := newEnvWith(t, func(s *Server) {
+		s.HandsetDeregister = func(id uuid.UUID, force bool) {
+			mu.Lock()
+			if force {
+				told = append(told, id)
+			}
+			mu.Unlock()
+		}
+	})
+	var uid uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	ipui, err := handset.IPUIFromIPEI("00130 0012345")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hid uuid.UUID
+	if err := e.store.Pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc, display_name) VALUES ($1, $2, 7, '\\x', 'Squatted') RETURNING id", uid, ipui).Scan(&hid); err != nil {
+		t.Fatal(err)
+	}
+	label, _, _ := handset.Handset{IPUI: ipui}.IPEI()
+	a, u := e.adminBrowser(t), e.userBrowser(t)
+
+	if r, _ := e.get(t, u, "/admin/handset-release"); r.StatusCode != http.StatusNotFound {
+		t.Errorf("a user on the release page: %d", r.StatusCode)
+	}
+	if r := e.post(t, u, "/admin/handset-release", url.Values{"ipei": {label}}); r.StatusCode != http.StatusNotFound {
+		t.Errorf("a user looking up a handset: %d", r.StatusCode)
+	}
+	if r := e.post(t, a, "/admin/handset-release", url.Values{"ipei": {"nonsense"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("a bad IPEI: %d", r.StatusCode)
+	}
+	if r := e.post(t, a, "/admin/handset-release", url.Values{"ipei": {"00131 0000001"}}); r.StatusCode != http.StatusNotFound {
+		t.Errorf("no such handset: %d", r.StatusCode)
+	}
+	r := e.post(t, a, "/admin/handset-release", url.Values{"ipei": {label}})
+	body := readBody(r)
+	if r.StatusCode != http.StatusOK || !strings.Contains(body, "Registered to") || !strings.Contains(body, "user") {
+		t.Fatalf("lookup: %d %s", r.StatusCode, body)
+	}
+	if strings.Contains(body, "Squatted") {
+		t.Error("the admin is shown the handset's name")
+	}
+	// the wrong IPEI typed: nothing happens
+	if r := e.post(t, a, "/admin/handset-release/confirm", url.Values{"id": {hid.String()}, "ipei": {"00130 0099999"}}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("confirm with another IPEI: %d", r.StatusCode)
+	}
+	var n int
+	e.store.Pool.QueryRow(ctx, "SELECT count(*) FROM handset WHERE id = $1", hid).Scan(&n)
+	if n != 1 || len(told) != 0 {
+		t.Fatalf("released by a wrong confirmation: %d rows, told %v", n, told)
+	}
+	if r := e.post(t, a, "/admin/handset-release/confirm", url.Values{"id": {hid.String()}, "ipei": {label}}); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("confirm: %d", r.StatusCode)
+	}
+	e.store.Pool.QueryRow(ctx, "SELECT count(*) FROM handset WHERE id = $1", hid).Scan(&n)
+	if n != 0 {
+		t.Error("the handset is still there")
+	}
+	mu.Lock()
+	if len(told) != 1 || told[0] != hid {
+		t.Errorf("cells told: %v", told)
+	}
+	mu.Unlock()
+	var by, owner string
+	e.store.Pool.QueryRow(ctx, "SELECT actor_name, details->>'owner_id' FROM audit_log WHERE action = 'handset.released_by_admin'").Scan(&by, &owner)
+	if by != "admin" || owner != uid.String() {
+		t.Errorf("audit entry: by %q, owner %q", by, owner)
 	}
 }

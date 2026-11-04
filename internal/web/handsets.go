@@ -25,6 +25,60 @@ func (s *Server) handsetRoutes() {
 	s.mux.Handle("POST /handsets/{id}", s.requireUser(s.handsetSave))
 	s.mux.Handle("POST /handsets/{id}/lines/{line}", s.requireUser(s.handsetLine))
 	s.mux.Handle("POST /handsets/{id}/deregister", s.requireUser(s.handsetDeregister))
+	s.mux.Handle("GET /admin/handset-release", s.requireAdmin(s.releasePage))
+	s.mux.Handle("POST /admin/handset-release", s.requireAdmin(s.releaseFind))
+	s.mux.Handle("POST /admin/handset-release/confirm", s.requireAdmin(s.releaseConfirm))
+}
+
+type releaseData struct {
+	IPEI  string
+	Claim *handset.Claim
+}
+
+func (s *Server) releasePage(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: releaseData{}, Notice: r.FormValue("done")})
+}
+
+// releaseFind looks a handset up by its IPEI and shows whose it is, so an administrator can release it.
+func (s *Server) releaseFind(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	ipei := strings.TrimSpace(r.PostFormValue("ipei"))
+	c, err := s.Handsets.FindClaim(r.Context(), u, ipei)
+	d := releaseData{IPEI: ipei, Claim: c}
+	switch {
+	case errors.Is(err, handset.ErrBadIPEI):
+		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d, Error: err.Error() + "."})
+	case errors.Is(err, handset.ErrNotFound):
+		s.render(w, http.StatusNotFound, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d, Error: "No handset is registered under this IPEI."})
+	case err != nil:
+		s.internalError(w, r, err)
+	default:
+		s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d})
+	}
+}
+
+// releaseConfirm removes the handset once the IPEI is typed again: the cells drop its record at once, then its row goes.
+func (s *Server) releaseConfirm(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	id, err := uuid.Parse(r.PostFormValue("id"))
+	if err != nil {
+		s.notFound(w, r, u)
+		return
+	}
+	c, err := s.Handsets.FindClaim(r.Context(), u, r.PostFormValue("ipei"))
+	if err != nil || c.ID != id { // the IPEI typed is the one of this handset, or nothing happens
+		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: releaseData{},
+			Error: "The IPEI typed does not match the handset. Nothing was released."})
+		return
+	}
+	if s.HandsetDeregister != nil {
+		s.HandsetDeregister(id, true)
+	}
+	if err := s.Handsets.Release(r.Context(), u, id); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/handset-release?done=The+handset+is+released.+Its+owner+and+every+base+station+forgot+it.", http.StatusSeeOther)
 }
 
 func (s *Server) handsetList(w http.ResponseWriter, r *http.Request, u *auth.User) {

@@ -676,6 +676,7 @@ paths:
     get:
       tags: [calls]
       operationId: listCalls
+      description: An administrator sees other users' calls with the remote number masked (all but the last three characters); the owner sees their own in full.
       x-authz: owner-or-admin
       parameters:
         - { $ref: "#/components/parameters/Limit" }
@@ -693,11 +694,11 @@ paths:
       tags: [contacts]
       operationId: listContacts
       summary: The caller's personal contacts and the shared ones
-      description: CAT-iq list access, controller side (docs/list-access.md). Admins may pass `owner` to read a user's personal list.
+      description: CAT-iq list access, controller side (docs/list-access.md). A personal list is private to its user; no one, an admin included, reads another's (`owner`, if given, must be the caller's own id).
       x-authz: user
       parameters:
         - { name: scope, in: query, schema: { type: string, enum: [personal, shared] } }
-        - { name: owner, in: query, schema: { type: string, format: uuid }, description: Admins only }
+        - { name: owner, in: query, schema: { type: string, format: uuid }, description: Must be the caller's own id }
       responses:
         "200":
           description: OK

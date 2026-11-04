@@ -1,5 +1,12 @@
 # Operating a controller
 
+## A user's data
+
+**Account > Your data**: a user downloads everything the controller holds about them (JSON, no secrets) and can **delete their account and data**:
+handsets (the base stations forget them), VoIP profiles, the base stations they enrolled (revoked), contacts, call history and sessions go. The audit
+log keeps what happened but forgets who did it. The last administrator cannot delete themselves. Administrators remove other users in **Administration > Users**
+once their handsets and VoIP profiles are gone, and release a handset registered under someone else's name in **Administration > Release a handset**.
+
 ## Backups
 
 Two things make a backup, and **they must be stored apart**:
@@ -10,9 +17,11 @@ Two things make a backup, and **they must be stored apart**:
    `docker compose cp controller:/secrets/master_key ./master_key.backup`.
 
 A database backup without the master key is useless, and the master key next to the backup defeats its
-purpose. **Administration > Backup** explains the same. There is no scheduled or tested restore tool yet: restore
-by loading the dump into a fresh PostgreSQL and putting the master key back in the `secrets` volume. Try a
-restore once before you need it.
+purpose. **Administration > Backup** explains the same. There is no scheduled backup yet. Restore by loading the dump into
+a fresh PostgreSQL, putting the master key back in the `secrets` volume and running `opendectcell-controller migrate up` (it makes
+the runtime database role again). `tools/restore-test.sh [IMAGE]` does exactly that on throwaway containers and checks that the
+user can log in and that every encrypted value opens; run it after changing anything about backups, and try the real restore
+once before you need it.
 
 ## Upgrading
 

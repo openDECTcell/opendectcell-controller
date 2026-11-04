@@ -23,6 +23,11 @@ private: administrators do not see other users' handsets either, unless you tick
 handset's page. They then see it, with its name, model, status and last contact (never its VoIP lines), under your
 account in **Administration > Users**. It is off for every handset and you can switch it off again at any time.
 
+If a handset cannot be registered because it is registered under another user's name (it was registered first, or it changed
+hands), an administrator **releases** it: **Administration > Release a handset**, enter the IPEI from the label, see whose it is,
+type the IPEI again. The handset is removed from its owner and from every base station, and the action is in the audit log.
+Then register it again.
+
 ## After registering: give it a line
 
 Open the handset's page and choose a **VoIP profile** (a SIP account, see [SIP lines](SIP-lines.md)) as

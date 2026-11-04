@@ -1,0 +1,33 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_release.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "device-mobile"}} Release a handset identity</h3></div>
+      <div class="card-body">
+        <p>A handset is private to the user who registered it. If someone registered a handset that is not theirs (or that has changed hands),
+        its real owner cannot register it until it is released. Enter the IPEI printed on the handset's label (under the battery or on the box).</p>
+        <p class="text-secondary">You are shown whose handset it is and since when, nothing else. Releasing is recorded in the audit log with your name and the owner's.
+        The handset is removed from every base station and from its owner's account; they register it again if it is theirs.</p>
+        <form method="post" action="/admin/handset-release" class="d-flex gap-2 align-items-end">
+          <div class="flex-fill"><label class="form-label" for="ipei">IPEI</label>
+            <input class="form-control" id="ipei" name="ipei" value="{{.IPEI}}" placeholder="00000 0000000 0" autocomplete="off" required></div>
+          <button type="submit" class="btn btn-primary">Look up</button>
+        </form>
+        {{with .Claim}}
+        <hr>
+        <p>Registered to <strong>{{.Owner}}</strong> since {{fmtTime .RegisteredAt}}.</p>
+        <form method="post" action="/admin/handset-release/confirm" data-confirm="Release this handset? It is removed from its owner and from every base station.">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <div class="mb-3"><label class="form-label" for="ipei2">Type the IPEI again to confirm</label>
+            <input class="form-control" id="ipei2" name="ipei" autocomplete="off" required></div>
+          <button type="submit" class="btn btn-danger">Release the handset</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

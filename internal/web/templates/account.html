@@ -16,6 +16,8 @@
   <button type="submit" class="btn btn-primary">Save</button>
 </form></div></div>
 {{end}}
+<h3 class="mt-4 mb-2">Your data</h3>
+<p><a class="btn btn-outline-primary" href="/account/export">{{icon "download"}} Download my data</a> <a class="btn btn-outline-danger" href="/account/erase">{{icon "trash"}} Delete my account and data</a></p>
 {{if eq .User.AuthSource "local"}}
 <h3 class="mt-4 mb-2">Two-factor login</h3>
 <p><a class="btn btn-outline-primary" href="/account/2fa">{{icon "shield-lock"}} Manage two-factor login</a></p>

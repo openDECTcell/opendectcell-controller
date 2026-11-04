@@ -1,0 +1,38 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_erase.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "download"}} Your data</h3></div>
+      <div class="card-body">
+        <p>Download everything this controller holds about your account as one JSON file: your profile, handsets, VoIP profiles (without passwords),
+        contacts, calls with the remote numbers, base stations you enrolled, organizations, and the audit entries you made. It holds no secrets (no password hash, handset key or VoIP password).</p>
+        <a class="btn btn-primary" href="/account/export">Download my data</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "trash"}} Delete my account and data</h3></div>
+      <div class="card-body">
+        <p>This removes, for good:</p>
+        <ul>
+          <li>your <strong>{{.Handsets}}</strong> handset{{if ne .Handsets 1}}s{{end}} (the base stations are told to forget {{if eq .Handsets 1}}it{{else}}them{{end}}; delete the base on the handset yourself),</li>
+          <li>your <strong>{{.Profiles}}</strong> VoIP profile{{if ne .Profiles 1}}s{{end}},</li>
+          <li>your <strong>{{.Cells}}</strong> base station{{if ne .Cells 1}}s{{end}} (they are revoked and disconnected),</li>
+          <li>your contacts, your call history, your organization memberships, your sessions and your two-factor settings.</li>
+        </ul>
+        <p class="text-secondary">The audit log keeps what happened but forgets who you were. It cannot be undone.</p>
+        <form method="post" action="/account/erase">
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="pw">Your password</label>
+            <input class="form-control" id="pw" name="password" type="password" autocomplete="current-password" required></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="un">Type your user name to confirm</label>
+            <input class="form-control" id="un" name="username" autocomplete="off" required></div>{{end}}
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="understand"><span class="form-check-label">I understand that this cannot be undone.</span></label>
+          <button type="submit" class="btn btn-danger">Delete my account and data</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}
