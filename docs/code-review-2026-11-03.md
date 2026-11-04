@@ -17,7 +17,7 @@ down where users and operators read it), **open** (needs a change in another rep
 | W3 | An admin sets a user's password, or opens a registration window for another owner, and thereby acts as that user (audited) | **documented** (ADR 0008): an administrator's power to reset a password is the way back into an account; with two-factor on, a reset alone is not enough. Users who mind should turn two-factor on |
 | W4 | "Admins need two-factor" covered only admin routes, not the admin powers on user routes (shared SIP accounts, stations, registration windows, organizations) | **fixed**: an admin without two-factor is a plain user for the whole request until they set it up |
 | W5 | An admin saw the exact position and statistics of an undisclosed base station, and an admin's save overwrote the operator's sharing switches | **fixed**: a non-operator admin sees and edits name, place and model only; position and statistics need disclosure; the sharing switches are the operator's |
-| C1 | An unauthenticated LOCATE-REQUEST from a handset's IPUI makes a cell the handset's "last heard" cell (the stack stamps it before authentication), so the next call is offered to that cell first | **open**: libopendectcell must stamp the contact only after authentication (openDECTcell repository); the controller cannot tell the two apart |
+| C1 | An unauthenticated LOCATE-REQUEST from a handset's IPUI makes a cell the handset's "last heard" cell (the stack stamps it before authentication), so the next call is offered to that cell first | **fixed 2026-11-04** in libopendectcell (API 157, openDECTcell bbc8c5a): a handset counts as heard only once its connection has proved its key; tested in the library, **not yet confirmed on the radio** (a handset that locates must still show online) |
 | C2 = R1 | `rotate-dek` while the controller runs destroys data: the live process keeps the old keyring and anything sealed after the commit uses a deleted key | **fixed**: a running controller holds a database lock and `rotate-dek` refuses while it is held; documented |
 | C3 | Registration ignores the owner's trust scope: a handset registered through a foreign cell has its key written to that cell's chip although the owner trusts only their own | **fixed**: a cell is offered only the PINs of owners who trust it (`regwin.PINsFor`, tested; the call from the DECT core is covered by the build, not by a core test) |
 | C4 | No cap on cells per operator, and every enrolled cell is active at once | **fixed**: at most 20 cells per non-admin operator; the cell is told only that the token is no good, the audit log says why |
@@ -60,8 +60,7 @@ down where users and operators read it), **open** (needs a change in another rep
 
 ## Not fixed, and why
 
-- **C1** needs libopendectcell to stamp "heard" only after authentication. It is the one finding that stays open; the effect is that a cell
-  operator can draw the first ring of a victim's call to their cell (the caller's number and name reach that cell anyway under trust "all").
+- **C1** was fixed on 2026-11-04 in libopendectcell (API 157); what is left is the check on the radio that handsets that locate stay online.
 - **W3** is a property of what an administrator is: a password reset is the way back into an account. Users who want more
   turn two-factor on, which a reset does not bypass.
 - Findings marked **documented** are written into [threat-model.md](threat-model.md), [deployment.md](deployment.md) or the ADRs.

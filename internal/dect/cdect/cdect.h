@@ -21,8 +21,8 @@
  * signature or struct layout changed: re-check libopendectcell-integration.md §1,
  * then raise this number.
  */
-#if OPENDECTCELL_API_VERSION != 156
-#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 156"
+#if OPENDECTCELL_API_VERSION != 157
+#error "libopendectcell API version mismatch: cdect is written for OPENDECTCELL_API_VERSION 157"
 #endif
 
 struct cdect_lc {
