@@ -1294,6 +1294,17 @@ components:
         inter_digit_timeout_ms: { type: integer, minimum: 1000, maximum: 20000 }
         line_prefix: { type: string, pattern: "^[*#0-9]{1,6}$", description: "Outgoing line selection on GAP handsets, e.g. *1#" }
         prack: { type: boolean }
+        numbers:
+          type: object
+          description: "How the line writes numbers (controller only, not in LuCI). Empty changes nothing; emergency numbers and anything of up to four digits or with * or # are never changed."
+          properties:
+            country_code: { type: string, pattern: "^[1-9][0-9]{0,2}$", description: "49" }
+            area_code: { type: string, pattern: "^[0-9]{1,6}$", description: "30, without the national prefix; completes numbers dialled without an area code" }
+            trunk_prefix: { type: string, description: "The national prefix; empty is 0, - is none" }
+            intl_prefix: { type: string, pattern: "^[0-9]{1,4}$", description: "What is dialled for a call abroad; empty is 00" }
+            strip_prefix: { type: string, pattern: "^[0-9]{1,4}$", description: "An outside-line digit dialled by habit, taken off; must differ from the two prefixes" }
+            dial_as: { type: string, enum: ["", e164, international, national], description: "How a dialled number is sent; needs country_code" }
+            show_as: { type: string, enum: ["", e164, national], description: "How an incoming number is shown on the handset; needs country_code" }
         # The VoIP line options, under the names of luci-app-opendectcell. Stored; the SIP side does not use them yet.
         line_name: { type: string, description: "What a CAT-iq handset shows for the line, at most 15 octets" }
         outbound2: { type: string, description: "Second outbound proxy, host[:port]" }

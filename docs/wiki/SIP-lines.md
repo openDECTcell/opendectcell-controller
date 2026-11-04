@@ -28,6 +28,26 @@ available as a line for handsets.
 answer takes the call and the others stop ringing. A handset's own calls go out on Line 1, or on Line 2 if the
 handset picks it (CAT-iq handsets can).
 
+## Numbers: country code, area code and how numbers are written
+
+The **Numbers** tab of a VoIP line tells the controller how to write numbers for that line. It is formatting only: it never
+chooses a line or a destination, and a number it does not understand is sent as it was dialled. Empty, it changes nothing.
+
+| Field | What it is | Example |
+|---|---|---|
+| Country code | digits only, no plus and no 00 | 49 |
+| Area code | without the national prefix; completes a number dialled without an area code | 30 |
+| National prefix | what you dial before an area code at home: empty is 0, `-` is none | 0 |
+| International prefix | what you dial for a call abroad: empty is 00 | 00 |
+| Outside-line digit | digits dialled by habit behind a PBX; they are taken off. Must differ from the two prefixes | 9 |
+| Send numbers as | as dialled, `+493012345`, `00493012345` or national `03012345` | +… |
+| Show incoming numbers as | as they arrive, national (`03012345`) or with a plus sign | national |
+
+With country code 49, area code 30 and "with a plus sign", dialling `030 1234567`, `1234567` (no area code) or `0049 30 1234567`
+all send `+49301234567`. **Never changed:** emergency numbers and anything up to four digits (extensions), codes with `*` or `#`,
+and the harmonised 116 numbers. A shown number is changed on the handset only; the Calls page and the call log keep what the
+provider sent.
+
 ## What works
 
 | | |

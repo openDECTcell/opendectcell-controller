@@ -693,3 +693,23 @@ func TestMediaIDsStayWithin16BitsAndSkipUsed(t *testing.T) {
 		}
 	}
 }
+
+// The handset is offered the number as the line's rules want it shown; the call log keeps what arrived.
+func TestIncomingShowsTheNumberTheLineWants(t *testing.T) {
+	for _, c := range []struct{ shown, want string }{{"0301234", "0301234"}, {"", "+49301234"}} {
+		recv := []Receiver{{Handset: uuid.New(), Line: 1}}
+		r := newRig(t, fakeLines{recv: recv})
+		rt := &fakeRouter{}
+		r.m.DECT = rt
+		sc := newFakeSIP(t, pcma)
+		go r.m.incoming(callInfo{ID: uuid.New(), AccountID: uuid.New(), Remote: "+49301234", RemoteShown: c.shown, RemoteDisplay: "Anna"}, sc)
+		waitFor(t, "the handset rung", func() bool { rt.mu.Lock(); defer rt.mu.Unlock(); return len(rt.offers) == 1 })
+		rt.mu.Lock()
+		got := rt.calls[recv[0].Handset].Number
+		rt.mu.Unlock()
+		if got != c.want {
+			t.Errorf("shown %q: the handset is offered %q, want %q", c.shown, got, c.want)
+		}
+		sc.events <- sip.Event{Kind: sip.EvEnded}
+	}
+}

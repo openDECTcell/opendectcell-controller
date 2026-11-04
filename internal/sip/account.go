@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/numberplan"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/resolve"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/sdp"
 )
@@ -40,6 +41,8 @@ type Account struct {
 	Enabled        bool
 	UserAgent      string // advanced.user_agent
 	MWI            bool   // subscribe to the mailbox (message-summary) and report it
+	// Numbers rewrite what is dialled and what is shown (internal/numberplan); the zero value changes nothing.
+	Numbers numberplan.Rules
 }
 
 // Validate checks what the SIP side relies on.

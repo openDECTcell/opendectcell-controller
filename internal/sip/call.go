@@ -69,6 +69,8 @@ type Call struct {
 	// identity (P-Asserted-Identity, else From, per the account).
 	Remote        string
 	RemoteDisplay string
+	// RemoteShown is Remote as the line's number rules say a handset shows it (the same without rules).
+	RemoteShown string
 
 	m      *Manager
 	l      *line
@@ -160,7 +162,7 @@ func (m *Manager) Dial(ctx context.Context, accountID uuid.UUID, number string) 
 	if l == nil || !l.acct.Enabled {
 		return nil, ErrNoAccount
 	}
-	number = strings.TrimSpace(number)
+	number = l.acct.Numbers.Dial(strings.TrimSpace(number))
 	if number == "" || strings.ContainsAny(number, " \t\r\n<>;@\"") {
 		return nil, errorf("invalid number %q", number)
 	}
@@ -426,6 +428,7 @@ func (l *line) incoming(req *sip.Request, tx sip.ServerTransaction) {
 	c := m.newCall(l, Incoming, req.CallID().Value(), ep, t)
 	c.server = sess
 	c.Remote, c.RemoteDisplay = callerID(req, l.acct.CallerIDSource)
+	c.RemoteShown = l.acct.Numbers.Show(c.Remote)
 	// Answer the offer now, so a 488 goes out before anything rings.
 	ans, neg, err := sdp.Answer(req.Body(), c.local)
 	if err != nil {

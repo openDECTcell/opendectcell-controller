@@ -24,6 +24,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/numberplan"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/resolve"
@@ -117,6 +118,10 @@ type Advanced struct {
 	EncAuto    *bool  `json:"enc_auto,omitempty"` // encryption by autodetection: the column media_encryption "optional"
 	MediaEnc   string `json:"mediaenc,omitempty"` // "srtp-mandf" or "dtls_srtp" only: the rest is the column media_encryption
 	Extra      string `json:"extra,omitempty"`    // further account parameters, baresip syntax
+
+	// Numbers are how this controller writes the numbers of the line: country and area code, prefixes, the form
+	// numbers are sent and shown in (internal/numberplan). Not in LuCI.
+	Numbers numberplan.Rules `json:"numbers,omitzero"`
 }
 
 // DefaultCodecs is what "Try to autodetect" offers, HD first.
@@ -465,6 +470,9 @@ func validate(r *Record) error {
 	if len(r.Advanced.UserAgent) > 128 {
 		v["advanced.user_agent"] = "at most 128 characters"
 	}
+	if err := r.Advanced.Numbers.Validate(); err != nil {
+		v["advanced.numbers"] = err.Error()
+	}
 	validateProfile(v, &r.Advanced)
 	if err := toSIP(r, "").Validate(); err != nil {
 		v["account"] = err.Error()
@@ -758,7 +766,7 @@ func toSIP(r *Record, password string) sip.Account {
 		AuthUsername: r.AuthUsername, Password: password, Registrar: r.Registrar, OutboundProxy: r.OutboundProxy,
 		Transport: resolve.Transport(r.Transport), Register: r.Register, RegisterExpiry: r.RegisterExpiry, Keepalive: r.Keepalive,
 		Encryption: sdp.Encryption(r.MediaEncryption), Codecs: r.Codecs, DTMFMode: r.DTMFMode, CallerIDSource: r.CallerIDSource,
-		TLSVerify: r.TLSVerify, Enabled: r.Enabled, UserAgent: r.Advanced.UserAgent, MWI: r.Advanced.MWI}
+		TLSVerify: r.TLSVerify, Enabled: r.Enabled, UserAgent: r.Advanced.UserAgent, MWI: r.Advanced.MWI, Numbers: r.Advanced.Numbers}
 }
 
 // RuntimeAccounts returns every account for the SIP side, passwords

@@ -258,6 +258,8 @@ func TestVoIPLineFormErrors(t *testing.T) {
 		{"stunserver", "a@b", "net", "host name or address"},
 		{"extra", "answermode=auto", "adv", "key=value"},
 		{"register_expiry", "soon", "acct", "number of seconds"},
+		{"country_code", "+49", "num", "country code is one to three digits"},
+		{"strip_prefix", "0", "num", "must differ from the national and international prefixes"},
 	} {
 		f := profileForm()
 		f.Set(c.key, c.val)
@@ -331,3 +333,48 @@ func TestVoIPLineList(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// The Numbers tab keeps what it is given, shows it again, and puts it into the stored line.
+func TestVoIPLineNumbersTab(t *testing.T) {
+	e, store, user := newSIPEnv(t)
+	f := profileForm()
+	for k, v := range map[string]string{"country_code": "49", "area_code": "30", "trunk_prefix": "", "intl_prefix": "00", "strip_prefix": "9",
+		"dial_as": "e164", "show_as": "national"} {
+		f.Set(k, v)
+	}
+	r := e.post(t, user, "/sip-accounts", f)
+	if r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("create: %d %s", r.StatusCode, readBody(r))
+	}
+	loc := r.Header.Get("Location")
+	id := uuid.MustParse(strings.TrimPrefix(strings.SplitN(loc, "?", 2)[0], "/sip-accounts/"))
+	rec, err := store.Get(ctx, mustUser(t, e, "user"), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := rec.Advanced.Numbers
+	if n.CountryCode != "49" || n.AreaCode != "30" || n.StripPrefix != "9" || n.DialAs != "e164" || n.ShowAs != "national" {
+		t.Errorf("stored %+v", n)
+	}
+	// the SIP side gets them
+	accts, err := store.RuntimeAccounts(ctx)
+	if err != nil || len(accts) != 1 || accts[0].Numbers.Dial("0301234567") != "+49301234567" {
+		t.Errorf("the SIP account does not carry the rules: %+v %v", accts, err)
+	}
+	_, page := e.get(t, user, loc)
+	for _, want := range []string{`name="country_code" value="49"`, `name="area_code" value="30"`, `name="strip_prefix" value="9"`, `<option value="e164" selected>`, `<option value="national" selected>`, ">Numbers<"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the form lacks %q", want)
+		}
+	}
+	// emptied again, the rules are gone
+	g := profileForm()
+	r = e.post(t, user, loc, g)
+	if r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("clear: %d %s", r.StatusCode, readBody(r))
+	}
+	rec, _ = store.Get(ctx, mustUser(t, e, "user"), id)
+	if !rec.Advanced.Numbers.Zero() {
+		t.Errorf("rules after clearing: %+v", rec.Advanced.Numbers)
+	}
+}

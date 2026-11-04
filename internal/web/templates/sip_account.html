@@ -144,6 +144,41 @@
       <div class="form-hint">Encrypts the speech on the internet side. Use TLS as transport too, or the keys travel in the clear.<span class="d-block text-secondary">This controller exchanges SRTP keys in the signalling (SDES). "SRTP required (in the offer)" works like "SRTP required"; DTLS-SRTP is stored, not spoken: the call then asks for SDES-SRTP and fails when the other side has none.</span></div>{{with fieldErr $e "media_encryption"}}<p class="fielderr">{{.}}</p>{{end}}{{with fieldErr $e "advanced.mediaenc"}}<p class="fielderr">{{.}}</p>{{end}}</div>
   </div>
 
+  <div class="sip-pane{{if eq $.Data.Tab "num"}} active{{end}}" id="tab-num">
+    <h4>Numbers</h4>
+    <p class="text-secondary">How numbers are written on this line. It is formatting only: nothing here chooses where a call goes. Leave it empty and numbers go out as dialled and are shown as they arrive. Emergency and other numbers of up to four digits, and codes with * or #, are never changed.</p>
+    <div class="row">
+      <div class="col-6 col-md-3 mb-3"><label class="form-label" for="country_code">Country code</label>
+        <input class="form-control" id="country_code" name="country_code" value="{{.Advanced.Numbers.CountryCode}}" placeholder="49" inputmode="numeric" maxlength="3"></div>
+      <div class="col-6 col-md-3 mb-3"><label class="form-label" for="area_code">Area code</label>
+        <input class="form-control" id="area_code" name="area_code" value="{{.Advanced.Numbers.AreaCode}}" placeholder="30" inputmode="numeric" maxlength="6"></div>
+      <div class="col-6 col-md-3 mb-3"><label class="form-label" for="trunk_prefix">National prefix</label>
+        <input class="form-control" id="trunk_prefix" name="trunk_prefix" value="{{.Advanced.Numbers.TrunkPrefix}}" placeholder="0" maxlength="2"></div>
+      <div class="col-6 col-md-3 mb-3"><label class="form-label" for="intl_prefix">International prefix</label>
+        <input class="form-control" id="intl_prefix" name="intl_prefix" value="{{.Advanced.Numbers.IntlPrefix}}" placeholder="00" inputmode="numeric" maxlength="4"></div>
+    </div>
+    {{with fieldErr $e "advanced.numbers"}}<p class="fielderr">{{.}}</p>{{end}}
+    <div class="form-hint mb-3">The national prefix is what you dial before an area code at home (0 in most countries; type - if there is none). The international prefix is what you dial for a call abroad (00; 011 in North America).</div>
+    <div class="mb-3"><label class="form-label" for="strip_prefix">Outside-line digit</label>
+      <input class="form-control" id="strip_prefix" name="strip_prefix" value="{{.Advanced.Numbers.StripPrefix}}" maxlength="4" inputmode="numeric">
+      <div class="form-hint">Digits that people dial by habit to get an outside line, as behind a PBX (often 9 or 0). They are taken off. It must differ from the national and the international prefix.</div></div>
+    <div class="mb-3"><label class="form-label" for="dial_as">Send numbers as</label>
+      <select class="form-select" id="dial_as" name="dial_as">
+        <option value="" {{if eq .Advanced.Numbers.DialAs ""}}selected{{end}}>as dialled</option>
+        <option value="e164" {{if eq .Advanced.Numbers.DialAs "e164"}}selected{{end}}>with a plus sign and the country code: +493012345</option>
+        <option value="international" {{if eq .Advanced.Numbers.DialAs "international"}}selected{{end}}>with the international prefix: 00493012345</option>
+        <option value="national" {{if eq .Advanced.Numbers.DialAs "national"}}selected{{end}}>national inside the country: 03012345</option>
+      </select>
+      <div class="form-hint">What goes to the provider. Most providers take the plus sign. Without an area code above, a number dialled without one stays as dialled.</div></div>
+    <div class="mb-3"><label class="form-label" for="show_as">Show incoming numbers as</label>
+      <select class="form-select" id="show_as" name="show_as">
+        <option value="" {{if eq .Advanced.Numbers.ShowAs ""}}selected{{end}}>as they arrive</option>
+        <option value="national" {{if eq .Advanced.Numbers.ShowAs "national"}}selected{{end}}>national inside the country: 03012345</option>
+        <option value="e164" {{if eq .Advanced.Numbers.ShowAs "e164"}}selected{{end}}>with a plus sign: +493012345</option>
+      </select>
+      <div class="form-hint">What the handset shows and keeps in its call lists. The Calls page keeps what the provider sent.</div></div>
+  </div>
+
   <div class="sip-pane{{if eq $.Data.Tab "adv"}} active{{end}}" id="tab-adv">
     <h4>Advanced</h4>
     <div class="mb-3"><label class="form-label" for="extra">Further account parameters</label>

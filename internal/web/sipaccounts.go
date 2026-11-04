@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/numberplan"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/resolve"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
@@ -114,7 +115,7 @@ type sipForm struct {
 }
 
 // sipTabs lists the tabs of the form, as the LuCI VoIP profile pop-up names them.
-var sipTabs = []struct{ ID, Title string }{{"acct", "Account"}, {"net", "Server and NAT"}, {"media", "Media"}, {"enc", "Encryption"}, {"adv", "Advanced"}}
+var sipTabs = []struct{ ID, Title string }{{"acct", "Account"}, {"net", "Server and NAT"}, {"media", "Media"}, {"enc", "Encryption"}, {"num", "Numbers"}, {"adv", "Advanced"}}
 
 // sipFieldTab says which tab a field with an error is on.
 func sipFieldTab(field string) string {
@@ -128,6 +129,8 @@ func sipFieldTab(field string) string {
 		return "media"
 	case "media_encryption", "advanced.mediaenc":
 		return "enc"
+	case "advanced.numbers":
+		return "num"
 	case "account", "":
 		return ""
 	}
@@ -225,6 +228,8 @@ func formRecord(r *http.Request, base sipaccount.Advanced) (*sipaccount.Record, 
 	adv.RTPKeep, adv.PTime, adv.Rel100 = str("rtpkeep"), str("ptime"), str("rel100")
 	adv.MWI, adv.Transfer, adv.Extra = on("mwi"), bp(on("transfer")), str("extra")
 	adv.MediaAuto = bp(on("media_auto"))
+	adv.Numbers = numberplan.Rules{CountryCode: str("country_code"), AreaCode: str("area_code"), TrunkPrefix: str("trunk_prefix"),
+		IntlPrefix: str("intl_prefix"), StripPrefix: str("strip_prefix"), DialAs: str("dial_as"), ShowAs: str("show_as")}
 
 	// Codecs: automatic offers them all; else the ticked ones in the order
 	// shown. An older client posts a comma list in "codecs".

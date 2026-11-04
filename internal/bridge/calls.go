@@ -3,6 +3,7 @@
 package bridge
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -277,7 +278,7 @@ func (m *Manager) handsetCall(o Handset) {
 // IncomingCall rings the handsets that have the account as a line. It is the
 // sip.Endpoint, and returns at once.
 func (m *Manager) IncomingCall(c *sip.Call) {
-	go m.incoming(callInfo{ID: c.ID, AccountID: c.AccountID, Remote: c.Remote, RemoteDisplay: c.RemoteDisplay}, c)
+	go m.incoming(callInfo{ID: c.ID, AccountID: c.AccountID, Remote: c.Remote, RemoteDisplay: c.RemoteDisplay, RemoteShown: c.RemoteShown}, c)
 }
 
 // callInfo is what sip.Call has as fields.
@@ -286,6 +287,7 @@ type callInfo struct {
 	AccountID     uuid.UUID
 	Remote        string
 	RemoteDisplay string
+	RemoteShown   string // Remote as the line's number rules want it shown; "" means as it is
 }
 
 // legEv is an offer's event tagged with its leg.
@@ -324,7 +326,7 @@ func (m *Manager) incoming(ci callInfo, c SIPCall) {
 	var legIdx []int // the receiver of each offer
 	for i, r := range recv {
 		o, err := m.DECT.Ring(ctx, r.Handset, core.Call{SIP: fmt.Sprintf("%s-%d", ci.ID, i), Line: r.Line,
-			Number: ci.Remote, Name: ci.RemoteDisplay, Narrowband: nb})
+			Number: cmp.Or(ci.RemoteShown, ci.Remote), Name: ci.RemoteDisplay, Narrowband: nb})
 		if err != nil {
 			log.Info("a handset cannot be rung", "handset", r.Handset, "err", err)
 			continue
