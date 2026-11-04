@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,7 +38,10 @@ type env struct {
 	ctx   context.Context
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvOn(t, func(ln net.Listener) net.Listener { return ln }) }
+
+// newEnvOn is newEnv with the listener the server accepts on wrapped (to make accepting fail).
+func newEnvOn(t *testing.T, wrap func(net.Listener) net.Listener) *env {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	pool := dbtest.Migrated(t)
@@ -59,7 +63,7 @@ func newEnv(t *testing.T) *env {
 		Heartbeat: 50 * time.Millisecond, Dead: 300 * time.Millisecond, Grace: 400 * time.Millisecond,
 		Orphan: 2 * time.Second, EnrollDelay: 10 * time.Millisecond, Recheck: 100 * time.Millisecond}
 	done := make(chan struct{})
-	go func() { srv.Serve(ctx, ln); close(done) }()
+	go func() { srv.Serve(ctx, wrap(ln)); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })
 	users := &auth.Store{Pool: pool, Argon: auth.ArgonParams{MemoryKiB: 64, Time: 1, Threads: 1}, SessionIdle: time.Hour, SessionMaxAge: time.Hour, RateLimit: 5}
 	admin, err := users.CreateLocalUser(ctx, auth.NewLocalUser{Username: "admin", Password: "admin password", Role: auth.RoleAdmin})
@@ -978,5 +982,84 @@ func TestOperatorLimitsAndDisabledOperator(t *testing.T) {
 	e.pool.QueryRow(e.ctx, "SELECT count(*) FROM cell WHERE enrolled_by = $1 AND state = 'active'", e.admin.ID).Scan(&adminCells)
 	if adminCells != 1 {
 		t.Errorf("another operator's cell was touched: %d", adminCells)
+	}
+}
+
+// failingListener fails its first n Accept calls the way a process that is out of file descriptors does.
+type failingListener struct {
+	net.Listener
+	n atomic.Int32
+}
+
+func (l *failingListener) Accept() (net.Conn, error) {
+	if l.n.Add(-1) >= 0 {
+		return nil, errors.New("accept tcp: too many open files")
+	}
+	return l.Listener.Accept()
+}
+
+// A failing Accept is waited out: the server goes on serving, and the cells connected stay connected (finding C7).
+func TestServeSurvivesFailingAccepts(t *testing.T) {
+	e := newEnvOn(t, func(ln net.Listener) net.Listener {
+		fl := &failingListener{Listener: ln}
+		fl.n.Store(3)
+		return fl
+	})
+	c := e.enrolled(t, true)
+	ctx, cancel := context.WithTimeout(e.ctx, 10*time.Second)
+	defer cancel()
+	cn, err := c.Connect(ctx, celltest.Options{})
+	if err != nil {
+		t.Fatalf("no connection after failing accepts: %v", err)
+	}
+	defer cn.Close()
+	expectState(t, cn, wire.StateActive)
+}
+
+// A cell that sends STATS in a loop costs the database one last-seen write per interval, not one per frame (finding C8).
+func TestStatsWritesAreThrottled(t *testing.T) {
+	e := newEnv(t)
+	c := e.enrolled(t, true)
+	cn, err := c.Connect(e.ctx, celltest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cn.Close()
+	expectState(t, cn, wire.StateActive)
+	lastSeen := func() time.Time {
+		var at *time.Time
+		if err := e.pool.QueryRow(e.ctx, "SELECT last_seen_at FROM cell WHERE id = $1", c.ID).Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		if at == nil {
+			return time.Time{}
+		}
+		return *at
+	}
+	// frames of one session are handled in order: an echoed heartbeat says every frame before it is done
+	barrier := func(v uint32) {
+		t.Helper()
+		cn.Send(wire.Frame{Type: wire.Heartbeat, Body: wire.HeartbeatBody(v)})
+		if _, err := cn.Expect(wire.HeartbeatEcho, 2*time.Second); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := lastSeen()
+	cn.Send(wire.Frame{Type: wire.Stats, Body: wire.EncodeStats(map[uint16]uint64{1: 1})})
+	barrier(1)
+	first := lastSeen()
+	if !first.After(before) {
+		t.Fatalf("the first STATS did not stamp the cell: %v then %v", before, first)
+	}
+	time.Sleep(20 * time.Millisecond) // the clock must be able to move
+	for i := 2; i < 40; i++ {
+		cn.Send(wire.Frame{Type: wire.Stats, Body: wire.EncodeStats(map[uint16]uint64{1: uint64(i)})})
+	}
+	barrier(2)
+	if s := e.srv.CellStatus(c.ID); s.Stats["mails_up"] != 39 {
+		t.Fatalf("the STATS frames were not handled: %v", s.Stats)
+	}
+	if again := lastSeen(); !again.Equal(first) {
+		t.Errorf("38 more STATS frames wrote the database again: %v then %v", first, again)
 	}
 }

@@ -973,6 +973,41 @@ func TestStackKnowsTheRFPI(t *testing.T) {
 	})
 }
 
+// mayUseRecords is a Records that knows which owner trusts which cell.
+type mayUseRecords struct {
+	*fakeRecords
+	trusts map[uuid.UUID]bool // owner -> may put a handset on any cell
+}
+
+func (r *mayUseRecords) MayUse(_ context.Context, owner, _ uuid.UUID) bool { return r.trusts[owner] }
+
+// A cell is offered only the PINs of owners who trust it: a handset registered there has its key written into the
+// chip (finding C3).
+func TestRegistrationPINsFollowTrust(t *testing.T) {
+	reg := regwin.New(slog.New(slog.DiscardHandler), nil, nil)
+	anna, ben := uuid.New(), uuid.New()
+	recs := &mayUseRecords{fakeRecords: &fakeRecords{}, trusts: map[uuid.UUID]bool{anna: true}}
+	g := newRig(t, recs.fakeRecords, nil)
+	g.core.Records = recs
+	g.core.Reg = reg
+	_, annaPIN, _ := reg.Open(anna, anna, 8)
+	_, benPIN, _ := reg.Open(ben, ben, 8)
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", HasRFPI: true, RFPI: testRFPI})
+	waitFor(t, "the stack", func() bool { return g.stack(0) != nil })
+	waitFor(t, "registration open", func() bool {
+		ok := false
+		g.stack(0).get(func(f *fakeStack) { ok = f.regOpen })
+		return ok
+	})
+	g.stack(0).get(func(f *fakeStack) {
+		// the list is by index, "" for an unused one
+		live := slices.DeleteFunc(slices.Clone(f.regPINs), func(p string) bool { return p == "" })
+		if !slices.Contains(live, annaPIN) || slices.Contains(live, benPIN) || len(live) != 1 {
+			t.Errorf("the cell was offered %v: want only %s (an owner who trusts it), not %s", f.regPINs, annaPIN, benPIN)
+		}
+	})
+}
+
 // What the chip measures and what a handset says of itself reach the store, for the page.
 func TestSignalAndCapabilityAreStored(t *testing.T) {
 	hid := uuid.New()
