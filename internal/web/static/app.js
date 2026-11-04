@@ -20,8 +20,29 @@
     });
   });
 
-  // form[data-dirty]: the submit button waits for a change, so "Save" and
-  // "Set" cannot be pressed on what is already stored
+  // a chart's day: its text next to the pointer (data-tip on the group)
+  var tip = null;
+  document.querySelectorAll("svg.chart").forEach(function (svg) {
+    var hide = function () { if (tip) { tip.hidden = true; } };
+    svg.addEventListener("mousemove", function (e) {
+      var g = e.target.closest ? e.target.closest("g[data-tip]") : null;
+      if (!g) { hide(); return; }
+      if (!tip) {
+        tip = document.createElement("div");
+        tip.className = "chart-tip";
+        document.body.appendChild(tip);
+      }
+      tip.textContent = g.getAttribute("data-tip");
+      tip.hidden = false;
+      var x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+      tip.style.left = Math.max(8, x) + "px";
+      tip.style.top = (e.clientY + 18) + "px";
+    });
+    svg.addEventListener("mouseleave", hide);
+  });
+
+  // form[data-dirty]: the submit button waits for a change, so "Save"
+  // cannot be pressed on what is already stored
   document.querySelectorAll("form[data-dirty]").forEach(function (f) {
     var snap = function () { return new URLSearchParams(new FormData(f)).toString(); };
     var start = snap();
