@@ -42,6 +42,11 @@ func newEnv(t *testing.T) *env { return newEnvOn(t, func(ln net.Listener) net.Li
 
 // newEnvOn is newEnv with the listener the server accepts on wrapped (to make accepting fail).
 func newEnvOn(t *testing.T, wrap func(net.Listener) net.Listener) *env {
+	return newEnvTuned(t, wrap, nil)
+}
+
+// newEnvTuned is newEnvOn with a last look at the server's settings before it starts.
+func newEnvTuned(t *testing.T, wrap func(net.Listener) net.Listener, tune func(*cell.Server)) *env {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	pool := dbtest.Migrated(t)
@@ -62,6 +67,9 @@ func newEnvOn(t *testing.T, wrap func(net.Listener) net.Listener) *env {
 	srv := &cell.Server{Store: st, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Heartbeat: 50 * time.Millisecond, Dead: 300 * time.Millisecond, Grace: 400 * time.Millisecond,
 		Orphan: 2 * time.Second, EnrollDelay: 10 * time.Millisecond, Recheck: 100 * time.Millisecond}
+	if tune != nil {
+		tune(srv)
+	}
 	done := make(chan struct{})
 	go func() { srv.Serve(ctx, wrap(ln)); close(done) }()
 	t.Cleanup(func() { cancel(); <-done })

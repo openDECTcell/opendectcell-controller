@@ -36,8 +36,10 @@ firmware-upload page.
 - **By default all cells' DECT stacks run inside one controller process.** A crash in the DECT library stops every call
   until it restarts. Worker processes (`OPENDECTCELL_CELLS_STACK_WORKERS`) contain a crash to one worker and its cells; built and
   tried on the lab, off by default until it has had a long soak.
-- **Scale.** Designed and tested at the database and routing level for 100 cells and 500 handsets; not tested with that
-  many real connections. The documented comfortable size today is about 10 cells and 50 handsets.
+- **Scale.** Designed and tested at the database and routing level for 100 cells and 500 handsets. The cell link was
+  tried with 300 simulated cells on one machine (all connected within a second, about 6 goroutines and 70 KiB of memory per
+  cell); no calls, no DECT stacks and no real radios were part of that. The documented comfortable size today is about
+  10 cells and 50 handsets. Cells that restart together behind one address reconnect 16 at a time and retry the rest.
 - **The cell operator can read the handset keys of its cell** by design (the base has to hold them): do not enrol a
   cell you do not trust. See [threat-model.md](../threat-model.md).
 - **A hand-edited file under `/etc` on the box** meets the package manager's `*.apk-new` files on upgrade.
