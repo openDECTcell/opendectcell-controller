@@ -1,0 +1,1 @@
+{"private": true, "description": "browser smoke test of the controller (tools/browser-smoke)", "dependencies": {"puppeteer-core": "23.11.1"}}

@@ -12,9 +12,9 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Local users, Argon2id, sessions, rate limits | ✅ | |
 | Single sign-on (OIDC) with group-to-role mapping | 🟡 | Tests against a test provider; an administrator's session ends after 12 h so a withdrawn role does not linger |
 | Self sign-up with e-mail check and optional approval | 🟡 | Off by default |
-| Two-factor login (TOTP, recovery codes, QR code) | 🟡 | Offered to everyone, required of administrators by a setting; asked on a new device and every three weeks on a known one |
+| Two-factor login (TOTP, recovery codes, QR code) | 🟡 | Offered to everyone, required of administrators by a setting; asked on a new device and every three weeks on a known one. Setup, new-device prompt and known-device login are driven in headless Chrome by `tools/browser-smoke/run.sh`; no authenticator app has scanned the QR code yet |
 | Handsets private to their owner; "Disclose to administrators" per handset and base station | 🟡 | ADR 0008 |
-| Organizations and the trust setting (all / own / own plus organizations) | 🟡 | ADR 0007; the pages have not been clicked through in a browser yet |
+| Organizations and the trust setting (all / own / own plus organizations) | 🟡 | ADR 0007; every page loads without console or CSP errors in headless Chrome (`tools/browser-smoke/run.sh`); the organization forms themselves have not been clicked through |
 | REST API | 🟡 | `docs/api/openapi.yaml`; a test fails when a route is not in the document |
 
 ## Base stations (cells)
