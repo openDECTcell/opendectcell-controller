@@ -19,6 +19,7 @@ func (s *Server) contactPages() {
 	s.mux.Handle("GET /contacts", s.requireUser(s.contactsPage))
 	s.mux.Handle("POST /contacts", s.requireUser(s.contactAdd))
 	s.mux.Handle("POST /contacts/{id}/delete", s.requireUser(s.contactRemove))
+	s.contactExchangeRoutes()
 }
 
 type contactsData struct {
@@ -26,6 +27,7 @@ type contactsData struct {
 	Errors           contacts.ValidationError
 	Form             contacts.Contact
 	SharedChecked    bool
+	Import           *importResult
 }
 
 func (s *Server) renderContacts(w http.ResponseWriter, r *http.Request, u *auth.User, status int, d contactsData, p page) {

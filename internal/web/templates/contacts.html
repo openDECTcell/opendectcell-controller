@@ -6,10 +6,27 @@
 <p class="text-secondary">Your handsets show your contacts and the shared ones (CAT-iq handsets, once cells carry list access).</p>
 {{$admin := .User.IsAdmin}}
 {{with .Data}}
+{{with .Import}}
+<div class="alert alert-{{if .Added}}success{{else}}warning{{end}}" role="status">
+  <strong>{{.Added}} added.</strong>{{if .Duplicates}} {{.Duplicates}} were already in your list.{{end}}{{if .Failed}} {{.Failed}} could not be saved.{{end}}
+  {{if .Skipped}}<ul class="mb-0 mt-2">{{range .Skipped}}<li>{{.}}</li>{{end}}{{if .More}}<li>and {{.More}} more</li>{{end}}</ul>{{end}}
+</div>
+{{end}}
 <h3 class="mt-4 mb-2">Yours</h3>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table"><tbody>{{template "contactrows" .Personal}}{{if not .Personal}}<tr><td class="text-secondary">None yet.</td></tr>{{end}}</tbody></table></div></div>
 <h3 class="mt-4 mb-2">Shared</h3>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table"><tbody>{{template "contactrows" .Shared}}{{if not .Shared}}<tr><td class="text-secondary">None.</td></tr>{{end}}</tbody></table></div></div>
+<h3 class="mt-4 mb-2">Import and export</h3>
+<div class="card mb-3"><div class="card-body">
+  <form method="post" action="/contacts/import" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <div><label class="form-label" for="file">Import a vCard (.vcf) or CSV file</label>
+      <input class="form-control" id="file" name="file" type="file" accept=".vcf,.csv,text/vcard,text/csv" required></div>
+    <button type="submit" class="btn btn-primary">Import</button>
+  </form>
+  <p class="text-secondary small mb-2">Contacts you already have (same name and a number in common) are skipped. CSV files from Outlook and Google, and from this page, are understood; semicolons and commas both work.</p>
+  <a class="btn btn-outline-primary btn-sm" href="/contacts/export.vcf">{{icon "download"}} Your contacts as vCard</a>
+  <a class="btn btn-outline-primary btn-sm" href="/contacts/export.csv">{{icon "download"}} Your contacts as CSV</a>
+</div></div>
 <h3 class="mt-4 mb-2">Add a contact</h3>
 <div class="card mb-3"><div class="card-body"><form method="post" action="/contacts" class="form-grid">
   <label class="form-label">Last name <input class="form-control" name="last_name" value="{{.Form.LastName}}" maxlength="64"></label>
