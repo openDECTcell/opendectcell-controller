@@ -59,7 +59,7 @@ func (s *Server) renderCells(w http.ResponseWriter, r *http.Request, u *auth.Use
 	for i, c := range cells {
 		rows[i] = cellRow{c, s.liveStatus(c.ID)}
 	}
-	p.Title, p.User, p.Data = "Cells", u, cellsPage{Cells: rows}
+	p.Title, p.User, p.Data = "All base stations", u, cellsPage{Cells: rows}
 	s.render(w, status, "cells.html", p)
 }
 

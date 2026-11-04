@@ -352,3 +352,32 @@ func TestRingOneBusyCellIsNotASilentHandset(t *testing.T) {
 		t.Error("a cell that was busy made the handset unresponsive")
 	}
 }
+
+// The far end hangs up first and the cell reports the speech released
+// afterwards (the order seen on the Pi on 2026-11-04). The offer's events are
+// closed by then: the report must not send on them, which crashed the cell's
+// stack and ended its other calls.
+func TestSpeechReleasedAfterTheOfferEnded(t *testing.T) {
+	rr := newRouteRig(t, "b")
+	o, err := rr.core.Ring(context.Background(), rr.h.ID, Call{SIP: "x9", Number: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.waitLines(t, 1, 1)
+	rr.stack(1).env.Event(stack.ToBridge, "answered call=8 hs=7")
+	if ev, _ := nextEvent(t, o); ev.Kind != CallAnswered {
+		t.Fatalf("answer %+v", ev)
+	}
+	rr.core.bridgeLine(rr.b, "audio call=8 handle=1 channel=1 wideband=1")
+	if ev, _ := nextEvent(t, o); ev.Kind != CallMediaUp {
+		t.Fatalf("media up %+v", ev)
+	}
+	o.Cancel()
+	if ev, _ := nextEvent(t, o); ev.Kind != CallReleased {
+		t.Fatalf("release %+v", ev)
+	}
+	// called directly: a panic here fails the test instead of being caught by the stack's guard
+	rr.core.bridgeLine(rr.b, "audio-down handle=1")
+	rr.core.bridgeLine(rr.b, "audio call=8 handle=1 channel=1 wideband=1")
+	rr.core.bridgeLine(rr.b, "audio-down handle=1")
+}

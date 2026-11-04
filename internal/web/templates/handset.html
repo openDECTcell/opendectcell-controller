@@ -26,7 +26,7 @@
               {{range $a := $.Data.Accounts}}<option value="{{$a.ID}}" {{with index $.Data.Line (atoi $n)}}{{if eq .AccountID $a.ID}}selected{{end}}{{end}}>{{$a.Label}}</option>{{end}}
             </select></div>
           {{end}}
-          {{if not .Accounts}}<p class="text-secondary">There is no VoIP profile to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
+          {{if not .Accounts}}<p class="text-secondary">There is no VoIP line to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
           <div class="mb-3"><label class="form-label" for="default_line">Default line for outgoing calls</label>
             <select class="form-select" id="default_line" name="default_line">
               <option value="">none</option>

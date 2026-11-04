@@ -83,7 +83,7 @@ type Record struct {
 
 // Advanced holds the parameters that have no column of their own
 // (docs/api/openapi.yaml, SipAdvanced). The SIP side uses user_agent only;
-// the rest is stored, and the VoIP profile page shows it.
+// the rest is stored, and the VoIP line page shows it.
 //
 // The fields from line_name down carry the option names of the VoIP
 // profiles in luci-app-opendectcell (the maintainers' notes, 2026-11-01), so a profile
@@ -141,7 +141,7 @@ func (r *Record) EncAutoOn() bool {
 	return r.MediaEncryption == "optional" && (r.Advanced.EncAuto == nil || *r.Advanced.EncAuto)
 }
 
-// EncChoice is the media encryption as the VoIP profile page names it:
+// EncChoice is the media encryption as the VoIP line page names it:
 // "" (none), srtp, srtp-mand, srtp-mandf or dtls_srtp. Only the first
 // three have their own column value; the other two ride on "mandatory"
 // (the stack does SDES-SRTP only: DTLS-SRTP is stored, not spoken).
@@ -482,7 +482,7 @@ func unsafeHeaderRune(r rune) bool { return unicode.IsControl(r) || r == '"' || 
 // account is a user agent that registers over the network and holds a goroutine and sockets.
 const MaxAccountsPerUser = 20
 
-// validateProfile checks the options of the VoIP profile page the way the
+// validateProfile checks the options of the VoIP line page the way the
 // LuCI page does.
 func validateProfile(v ValidationError, a *Advanced) {
 	if len(a.LineName) > 15 { // octets, as the handset's name field counts them

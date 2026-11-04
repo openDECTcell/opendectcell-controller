@@ -96,13 +96,13 @@ Or on the command line: `/etc/init.d/opendectcell enroll '<enrollment string>'`.
 
 ## 5. Check the cell
 
-In the controller: **Administration > Cells**. The new cell is *active* at once (nobody has to approve it) and
+In the controller: **Administration > All base stations**. The new cell is *active* at once (nobody has to approve it) and
 its link *up* a moment after the box has started its cell service; the DECT radio is switched on by the controller.
 Details: [Cells](Cells.md).
 
 ## 6. Add a SIP line
 
-**Phones > VoIP profiles > New**: a name, the user name and password and the registrar (the SIP server)
+**Phones > VoIP lines > New**: a name, the user name and password and the registrar (the SIP server)
 your provider or PBX gives you. Save. The profile shows whether it is registered. See [SIP lines](SIP-lines.md).
 
 ## 7. Register a handset

@@ -167,7 +167,7 @@ func (s *Server) userDelete(w http.ResponseWriter, r *http.Request, u *auth.User
 	case errors.Is(err, auth.ErrSelf):
 		s.renderUser(w, r, http.StatusBadRequest, u, userForm{Target: t, Self: true}, page{Error: "You cannot delete yourself."})
 	case errors.Is(err, auth.ErrHasObjects):
-		s.renderUser(w, r, http.StatusConflict, u, userForm{Target: t}, page{Error: "This user still owns handsets or SIP accounts. Reassign or delete them first."})
+		s.renderUser(w, r, http.StatusConflict, u, userForm{Target: t}, page{Error: "This user still owns handsets or VoIP lines. Reassign or delete them first."})
 	case err != nil:
 		s.internalError(w, r, err)
 	default:

@@ -17,9 +17,9 @@
   the handsets, owns the SIP accounts, bridges the audio between DECT and SIP, and serves the web
   interface. **It is not a PBX**: dial plans, voicemail and call routing stay with your PBX or provider.
   Every handset appears there as one or two ordinary SIP user agents.
-- **Line**: a handset has up to two lines. A line is a SIP account (called a *VoIP profile* in the web
-  interface). A call to the account rings the handsets that have it as a line; a call from a handset goes out
-  on its line 1, or line 2 if the handset chooses it.
+- **VoIP line**: a SIP account you set up in the web interface. A handset has up to two lines (**Line 1** and
+  **Line 2**), each holding one VoIP line. A call to a VoIP line rings the handsets that have it as a line; a call
+  from a handset goes out on its default line, or on the other if the handset chooses it.
 
 Without a controller the same box can also run on its own as a base with a built-in SIP client (up to six
 handsets). See [Standalone](Standalone.md). The two modes are not mixed on one box: enrolling a box as a cell
@@ -39,7 +39,7 @@ ends. DECT has handover, but openDECTcell does not implement it.
 
 ## Who may do what
 
-- **Users** register their own handsets, set up their own SIP accounts (VoIP profiles) and see their own calls.
+- **Users** register their own handsets, set up their own SIP accounts (VoIP lines) and see their own calls.
   A user may enrol cells only if an administrator allowed it for them.
 - **Administrators** approve cells and users, change settings, see all calls, the audit log and the backup page.
 - Sign-in is by local account (password, optional second factor with an authenticator app) or by single sign-on

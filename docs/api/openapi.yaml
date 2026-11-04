@@ -1248,7 +1248,7 @@ components:
         domain: { type: string, minLength: 1 }
         auth_username: { type: string, nullable: true }
         password: { type: string, format: password, writeOnly: true }
-        stunpass: { type: string, format: password, writeOnly: true, description: "The TURN password of the VoIP profile (advanced.medianat turn); sealed like password, \"\" removes it" }
+        stunpass: { type: string, format: password, writeOnly: true, description: "The TURN password of the VoIP line (advanced.medianat turn); sealed like password, \"\" removes it" }
         registrar: { type: string, nullable: true, description: "host[:port]; empty = resolve the domain (RFC 3263). The profile page shows it as Registrar, with the domain as SIP domain" }
         outbound_proxy: { type: string, nullable: true }
         transport: { type: string, enum: [udp, tcp, tls] }
@@ -1294,7 +1294,7 @@ components:
         inter_digit_timeout_ms: { type: integer, minimum: 1000, maximum: 20000 }
         line_prefix: { type: string, pattern: "^[*#0-9]{1,6}$", description: "Outgoing line selection on GAP handsets, e.g. *1#" }
         prack: { type: boolean }
-        # The VoIP profile options, under the names of luci-app-opendectcell. Stored; the SIP side does not use them yet.
+        # The VoIP line options, under the names of luci-app-opendectcell. Stored; the SIP side does not use them yet.
         line_name: { type: string, description: "What a CAT-iq handset shows for the line, at most 15 octets" }
         outbound2: { type: string, description: "Second outbound proxy, host[:port]" }
         sipnat: { type: boolean, description: SIP outbound (RFC 5626) }

@@ -117,7 +117,7 @@ func TestSIPAccountPages(t *testing.T) {
 	}
 }
 
-// profileForm is what the VoIP profile page posts with every box and menu
+// profileForm is what the VoIP line page posts with every box and menu
 // set the way a user coming from LuCI would set them.
 func profileForm() url.Values {
 	return url.Values{"label": {"Fritz"}, "line_name": {"Home"}, "display_name": {"Paula"}, "username": {"621"},
@@ -147,7 +147,7 @@ func newSIPEnv(t *testing.T) (*env, *sipaccount.Store, *http.Client) {
 	return e, store, user
 }
 
-func TestVoIPProfileForm(t *testing.T) {
+func TestVoIPLineForm(t *testing.T) {
 	e, store, user := newSIPEnv(t)
 	me := mustUser(t, e, "user")
 
@@ -156,8 +156,8 @@ func TestVoIPProfileForm(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("new: %d", resp.StatusCode)
 	}
-	for _, want := range []string{"New VoIP profile", ">Account<", ">Server and NAT<", ">Media<", ">Encryption<", ">Advanced<",
-		"Profile name", "Name on the handset", "Display name", "User name", "Login name", ">Password<", ">Registrar<", "SIP domain",
+	for _, want := range []string{"New VoIP line", ">Account<", ">Server and NAT<", ">Media<", ">Encryption<", ">Advanced<",
+		"Line name", "Name on the handset", "Display name", "User name", "Login name", ">Password<", ">Registrar<", "SIP domain",
 		"Registration interval", "UDP", "TCP", "TLS (encrypted signalling)", "Outbound proxy", "Second outbound proxy",
 		"SIP outbound (RFC 5626)", "NAT traversal for media", "STUN/TURN server", "TURN user", "TURN password", "Keep media open",
 		"Try to autodetect", "G.722 (HD)", "G.711 A-law", "G.711 µ-law", "Packet time", "Key tones (DTMF)", "RTP events (RFC 4733)",
@@ -249,7 +249,7 @@ func TestVoIPProfileForm(t *testing.T) {
 	}
 }
 
-func TestVoIPProfileFormErrors(t *testing.T) {
+func TestVoIPLineFormErrors(t *testing.T) {
 	e, store, user := newSIPEnv(t)
 	me := mustUser(t, e, "user")
 	for _, c := range []struct{ key, val, tab, msg string }{
@@ -295,7 +295,7 @@ func TestVoIPProfileFormErrors(t *testing.T) {
 	}
 }
 
-func TestVoIPProfileList(t *testing.T) {
+func TestVoIPLineList(t *testing.T) {
 	e, store, user := newSIPEnv(t)
 	me := mustUser(t, e, "user")
 	a, err := store.Create(ctx, me, sipaccount.Input{Label: ptr("Home"), Username: ptr("301"), Domain: ptr("sip.example.org"),
@@ -315,15 +315,15 @@ func TestVoIPProfileList(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("list: %d", resp.StatusCode)
 	}
-	for _, want := range []string{"VoIP profiles", "Profile name", "Registration", "Line of", "301@sip.example.org:5070", "302@pbx.example.org",
+	for _, want := range []string{"VoIP lines", "Line name", "Registration", "Used by", "301@sip.example.org:5070", "302@pbx.example.org",
 		"Kitchen, Line 2", "/handsets/" + h.String(), "free", "registered"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("list lacks %q", want)
 		}
 	}
 	// the menu and the handset page use the same name
-	if !strings.Contains(page, ">VoIP profiles<") {
-		t.Error("the menu does not say VoIP profiles")
+	if !strings.Contains(page, ">VoIP lines<") {
+		t.Error("the menu does not say VoIP lines")
 	}
 	if _, hp := e.get(t, user, "/handsets/"+h.String()); !strings.Contains(hp, "Line 1") || !strings.Contains(hp, "Line 2") {
 		t.Error("the handset page lacks Line 1 and Line 2")

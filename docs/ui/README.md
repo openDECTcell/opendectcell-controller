@@ -7,7 +7,7 @@ screen lists the API operations it needs; a screen that needs something the
 API lacks is a bug in one of them. Server-rendered with htmx
 (`docs/adr/0001-web-frontend.md`); 🔄 marks a fragment that refreshes itself.
 
-Navigation: **Overview · Handsets · VoIP profiles · Calls** for everyone;
+Navigation: **Overview · Handsets · VoIP lines · Calls** for everyone;
 **Cells · Users · Audit log · Settings** added for admins.
 
 ## User
@@ -70,33 +70,33 @@ Features        Date/time [x]   Missed calls [x]   Message waiting [ ] (unsuppor
 ones for admins), `setHomeCells`, `listHandsetFeatures` / `setHandsetFeature`,
 `deleteHandset` (confirm: "The handset stops working on every cell.").
 
-### U4 VoIP profiles
+### U4 VoIP lines
 
 The names and the structure are those of the VoIP Profiles tab of luci-app-opendectcell
 (docs/luci-manual.md §2.3 in the openDECTcell repo), so a profile reads the same on the
 box and on the controller.
 
 ```
-VoIP profiles                                                [ Add a profile ]
+VoIP lines                                                [ Add a VoIP line ]
 ┌──────────────┬──────────────────────────┬───────────────┬──────────────────────┬───────────┐
-│ Profile name │ Account                  │ Registration  │ Line of              │ Transport │
+│ Line name    │ Account                  │ Registration  │ Used by              │ Transport │
 ├──────────────┼──────────────────────────┼───────────────┼──────────────────────┼───────────┤
 │ Home         │ 49301234@sip.example.net │ ● registered  │ Kitchen, Line 1      │ tls · SRTP│
 │ Spare        │ 210@pbx.office.lan       │ ● 403 Forbid. │ free                 │ udp       │
 └──────────────┴──────────────────────────┴───────────────┴──────────────────────┴───────────┘
 ```
 
-`listSipAccounts`, `getSipAccountStatus` per row. "Line of" lists the lines of the
+`listSipAccounts`, `getSipAccountStatus` per row. "Used by" lists the lines of the
 user's own handsets (a handset's lines are private to its owner).
 
-### U5 VoIP profile
+### U5 VoIP line
 
 One form, five tabs (without JavaScript they are five sections one under the other).
 The page opens on the first tab with a marked field.
 
 | Tab | Fields (LuCI title; stored as) |
 |---|---|
-| **Account** | Profile name (`label`), Name on the handset (`advanced.line_name`), Display name, User name (`username`), Login name (`auth_username`), Password, **Registrar** (`registrar`; shows the domain when there is no override), **SIP domain** (`domain`; empty = the registrar's host), Register, Registration interval (`register_expiry`) |
+| **Account** | Line name (`label`), Name on the handset (`advanced.line_name`), Display name, User name (`username`), Login name (`auth_username`), Password, **Registrar** (`registrar`; shows the domain when there is no override), **SIP domain** (`domain`; empty = the registrar's host), Register, Registration interval (`register_expiry`) |
 | **Server and NAT** | Transport UDP/TCP/TLS, Outbound proxy, Second outbound proxy (`outbound2`), SIP outbound (`sipnat`), NAT traversal for media (`medianat`), STUN/TURN server (`stunserver`), TURN user (`stunuser`), TURN password (column `stunpass_enc`, sealed), Keep media open (`rtpkeep`) |
 | **Media** | Try to autodetect (`media_auto`: codecs G722, PCMA, PCMU), Codecs, Packet time (`ptime`), Key tones (DTMF) RTP events / SIP INFO / automatic (`dtmf_mode`, `advanced.dtmf`) plus in-band, Reliable provisional responses (`rel100`), Voicemail notification (`mwi`), Allow call transfer (`transfer`) |
 | **Encryption** | Try to autodetect (`enc_auto`, = `optional`), Media encryption: none, SRTP when offered, SRTP required, SRTP required (in the offer), DTLS-SRTP (`media_encryption`, `advanced.mediaenc`) |

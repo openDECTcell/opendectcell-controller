@@ -1,9 +1,9 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "sip_accounts.html"}}{{template "head" .}}
-<p class="text-secondary">One profile per SIP account. Give a handset its profile as Line 1 or Line 2 on the handset's page; a profile may be a line of several handsets, and a call to it rings them all.</p>
-<p><a class="btn btn-primary" href="/sip-accounts/new">Add a profile</a></p>
+<p class="text-secondary">One VoIP line per SIP account. Give a handset a VoIP line as its Line 1 or Line 2 on the handset's page; a VoIP line may be used by several handsets, and a call to it rings them all.</p>
+<p><a class="btn btn-primary" href="/sip-accounts/new">Add a VoIP line</a></p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
-<thead><tr><th>Profile name</th><th>Account</th><th>Registration</th><th>Line of</th><th>Transport</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
+<thead><tr><th>Line name</th><th>Account</th><th>Registration</th><th>Used by</th><th>Transport</th>{{if .User.IsAdmin}}<th>Owner</th>{{end}}</tr></thead>
 <tbody>
 {{range .Data}}
 <tr>
@@ -15,7 +15,7 @@
   {{if $.User.IsAdmin}}<td>{{.Owner}}</td>{{end}}
 </tr>
 {{else}}
-<tr><td colspan="6" class="text-secondary">No VoIP profiles yet.</td></tr>
+<tr><td colspan="6" class="text-secondary">No VoIP lines yet.</td></tr>
 {{end}}
 </tbody>
 </table></div></div>

@@ -17,7 +17,7 @@ keeping them healthy and taking them out.
    minute; the box then runs in cell mode.
 4. Tick **Enable the cell** and save. The box boots the DECT chip and connects to the controller.
 5. Nothing else: the cell is *active* as soon as it has enrolled. (A cell that enrolled with a token made before
-   tokens approved by themselves is *pending*; an administrator approves it under **Administration > Cells**.)
+   tokens approved by themselves is *pending*; an administrator approves it under **Administration > All base stations**.)
 
 What happens underneath: the cell makes a key and a certificate request and shows the token; the controller
 checks the token, and it issues a certificate (valid 90 days). From then on the
@@ -29,7 +29,7 @@ port 7300 by default). If it cannot, the box log says so; see [Troubleshooting](
 
 ## The cell list
 
-**Administration > Cells** shows, for every cell: its name, location, **state** (*pending*, *active*,
+**Administration > All base stations** shows, for every cell: its name, location, **state** (*pending*, *active*,
 *disabled*, *revoked*), the **link** (up or down), the round-trip time (95th percentile), the software
 version, the DECT **identity (RFPI)** and when it was last seen. Open a cell for its details: the chip build,
 the calls, the handsets it holds, the audio capabilities.
@@ -64,7 +64,7 @@ it next connects.
 
 ## Base stations for users, and the map
 
-Administrators see every base station in **Administration > Cells** (they approve, disable and watch them), but not who
+Administrators see every base station in **Administration > All base stations** (they approve, disable and watch them), but not who
 operates it. The operator can tick **Disclose to administrators** on the base station's page; the base station then
 also appears under their account in **Administration > Users**. Only the operator can change that.
 

@@ -18,8 +18,8 @@
 | **Slot class** | Handsets whose TPUI ends in the same hexadecimal digit. On a 7412 cell only one of them can hold a link at a time. |
 | **Location registration** | A handset telling a cell "I am here". It repeats it every few minutes while idle. |
 | **Working set** | The handsets a cell currently holds in memory. |
-| **Line** | One SIP account on a handset. A handset has up to two. |
-| **VoIP profile** | The web interface's name for a SIP account. |
+| **VoIP line** | A SIP account you set up in the web interface (user name, password, registrar). |
+| **Line 1, Line 2** | The two places on a handset that each hold one VoIP line. A call to a VoIP line rings the handsets that have it as a line; a call from a handset goes out on its default line. |
 | **Device profile** | A handset model's small set of habits, chosen when registering. |
 | **SIP, RTP, SRTP** | The call signalling, the audio stream, and the encrypted audio stream. |
 | **G.722, G.711** | The HD (wideband) and standard (narrowband) voice codecs. |

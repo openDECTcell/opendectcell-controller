@@ -1,6 +1,6 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
 {{define "cells.html"}}{{template "head" .}}
-<p><a class="btn btn-primary" href="/enroll">Enroll a cell</a></p>
+<p><a class="btn btn-primary" href="/enroll">Enroll a base station</a></p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
 <thead><tr><th>Name</th><th>Location</th><th>State</th><th>Link</th><th>RTT p95</th><th>Software</th><th>Identity (RFPI)</th><th>Last seen</th></tr></thead>
 <tbody>
@@ -14,7 +14,7 @@
   <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="8" class="text-secondary">No cells yet. Enroll one.</td></tr>
+<tr><td colspan="8" class="text-secondary">No base stations yet. Enroll one.</td></tr>
 {{end}}
 </tbody>
 </table></div></div>

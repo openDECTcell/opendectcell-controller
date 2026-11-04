@@ -1,8 +1,8 @@
 {{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
-{{/* A VoIP profile: the tabs and field names of the LuCI pop-up (luci-app-opendectcell, VoIP Profiles). Without JavaScript every tab shows, one under the other. */}}
+{{/* A VoIP line: the tabs and field names of the LuCI pop-up (luci-app-opendectcell, VoIP Profiles). Without JavaScript every tab shows, one under the other. */}}
 {{define "sip_account.html"}}{{template "head" .}}
 {{with .Data}}
-<h3 class="mb-3">{{if .New}}New VoIP profile{{else}}VoIP profile {{.Rec.Label}}{{end}}</h3>
+<h3 class="mb-3">{{if .New}}New VoIP line{{else}}VoIP line {{.Rec.Label}}{{end}}</h3>
 {{if not .New}}
 <p>Registration: <strong>{{if .HasState}}{{.Status.State}}{{else}}not running{{end}}</strong>
 {{with .Status.Server}} · {{.}}{{end}}{{with .Status.LastError}} · {{.}}{{end}}</p>
@@ -18,12 +18,12 @@
 
   <div class="sip-pane{{if eq $.Data.Tab "acct"}} active{{end}}" id="tab-acct">
     <h4>Account</h4>
-    <div class="mb-3"><label class="form-label" for="label">Profile name</label>
+    <div class="mb-3"><label class="form-label" for="label">Line name</label>
       <input class="form-control" id="label" name="label" value="{{.Label}}" maxlength="64" required>
-      <div class="form-hint">How the Line menus of the handsets name this profile.</div>{{with fieldErr $e "label"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+      <div class="form-hint">How the Line menus of the handsets name this VoIP line.</div>{{with fieldErr $e "label"}}<p class="fielderr">{{.}}</p>{{end}}</div>
     <div class="mb-3"><label class="form-label" for="line_name">Name on the handset</label>
       <input class="form-control" id="line_name" name="line_name" value="{{.Advanced.LineName}}">
-      <div class="form-hint">What CAT-iq handsets show for this line, at most 15 characters (fewer with umlauts). Empty: the profile name, if it is that short.<span class="d-block text-secondary">Stored; this controller does not use it yet.</span></div>{{with fieldErr $e "advanced.line_name"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+      <div class="form-hint">What CAT-iq handsets show for this line, at most 15 characters (fewer with umlauts). Empty: the line name, if it is that short.<span class="d-block text-secondary">Stored; this controller does not use it yet.</span></div>{{with fieldErr $e "advanced.line_name"}}<p class="fielderr">{{.}}</p>{{end}}</div>
     <div class="mb-3"><label class="form-label" for="display_name">Display name</label>
       <input class="form-control" id="display_name" name="display_name" value="{{.DisplayName}}">
       <div class="form-hint">The name the called party sees.</div></div>
@@ -164,7 +164,7 @@
     <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="tls_verify" {{if .TLSVerify}}checked{{end}}>Check the server's certificate</label>
       <div class="form-hint">For TLS transport. Off accepts any certificate, which defeats the encryption.</div></div>
     <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="enabled" {{if .Enabled}}checked{{end}}>Enabled</label>
-      <div class="form-hint">Off keeps the profile but does not register or ring it.</div></div>
+      <div class="form-hint">Off keeps the VoIP line but does not register or ring it.</div></div>
     {{if $.User.IsAdmin}}
     <div class="mb-3"><label class="form-label" for="owner">Owner</label>
       <select class="form-select" id="owner" name="owner">
@@ -178,7 +178,7 @@
   <button type="submit" class="btn btn-primary">Save</button>
 </form></div></div>
 {{if not .New}}
-<form method="post" action="/sip-accounts/{{.Rec.ID}}/delete" data-confirm="Delete this VoIP profile?"><button type="submit" class="btn btn-link px-0">Delete this profile</button></form>
+<form method="post" action="/sip-accounts/{{.Rec.ID}}/delete" data-confirm="Delete this VoIP line?"><button type="submit" class="btn btn-link px-0">Delete this VoIP line</button></form>
 {{end}}
 {{end}}
 {{template "foot" .}}{{end}}

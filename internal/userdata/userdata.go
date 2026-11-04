@@ -25,7 +25,7 @@ var ErrLastAdmin = errors.New("userdata: this is the only administrator; make an
 const maxRows = 20000
 
 // Export returns the user's data as indented JSON. It holds no secrets: no password hash, no handset key, no SIP password, no
-// two-factor secret. It does hold what the user did and had: handsets, VoIP profiles (without passwords), contacts, their calls with the
+// two-factor secret. It does hold what the user did and had: handsets, VoIP lines (without passwords), contacts, their calls with the
 // remote numbers, the base stations they enrolled, organizations, and the audit entries made by them.
 func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, error) {
 	sections := []struct{ name, query string }{
@@ -82,7 +82,7 @@ func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 // EraseRecords finishes an erasure: the user's call history goes, the places of their base stations are blanked, the audit log forgets
 // who they were, and the account is deleted (sessions, devices, contacts, two-factor and memberships go with it). The user must have no
-// handsets and no VoIP profiles left: remove them first.
+// handsets and no VoIP lines left: remove them first.
 func EraseRecords(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) error {
 	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
 		var role string
@@ -104,7 +104,7 @@ func EraseRecords(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) error
 		if _, err := tx.Exec(ctx, "UPDATE cell SET location = '', latitude = NULL, longitude = NULL, box_model = '' WHERE enrolled_by = $1", user); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, "DELETE FROM app_user WHERE id = $1", user); err != nil { // fails while a handset or VoIP profile remains
+		if _, err := tx.Exec(ctx, "DELETE FROM app_user WHERE id = $1", user); err != nil { // fails while a handset or VoIP line remains
 			return err
 		}
 		if _, err := tx.Exec(ctx, "SELECT audit_forget_user($1)", user); err != nil {

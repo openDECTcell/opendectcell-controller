@@ -4,13 +4,13 @@ The controller connects handsets to **SIP**: a provider, a telephone system (Ast
 with an "IP phone" set up for it) or any registrar. It acts as a SIP **user agent** for every account; it is
 not a registrar or a PBX. Voicemail, dial plans and call routing are done by the system you connect to.
 
-## Adding an account (a VoIP profile)
+## Adding an account (a VoIP line)
 
-**Phones > VoIP profiles > New**. The page has these groups:
+**Phones > VoIP lines > New**. The page has these groups:
 
 | Group | Fields |
 |---|---|
-| **Account** | *Profile name* (how the handsets' Line menus name it), *Name on the handset* (at most 15 characters), *Display name* (what the called party sees), *User name* (the SIP user, often the number), *Login name* (when the provider wants a login other than the user name), *Password*, *Registrar* (the server, `host` or `host:port`), *SIP domain*, *Register* and the *registration interval*. |
+| **Account** | *Line name* (how the handsets' Line menus name it), *Name on the handset* (at most 15 characters), *Display name* (what the called party sees), *User name* (the SIP user, often the number), *Login name* (when the provider wants a login other than the user name), *Password*, *Registrar* (the server, `host` or `host:port`), *SIP domain*, *Register* and the *registration interval*. |
 | **Server and NAT** | *Transport* (UDP, TCP, TLS), *Outbound proxy* and a second one, *SIP outbound (RFC 5626)*, *NAT traversal for media* with a *STUN/TURN server*, *Keep media open*. |
 | **Media** | *Try to autodetect*, or choose the codecs: **G.722 (HD)**, G.711 A-law, G.711 µ-law; *Packet time*; *Key tones (DTMF)* mode; *Reliable provisional responses (100rel)*; *Voicemail notification (MWI)*; *Allow call transfer*. |
 | **Encryption** | *Try to autodetect*, or choose *Media encryption* (SRTP). |

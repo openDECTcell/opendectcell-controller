@@ -33,7 +33,7 @@
     sync();
   });
 
-  // The VoIP profile form: its tabs, and the fields that only matter when
+  // The VoIP line form: its tabs, and the fields that only matter when
   // another is set (data-dep="field:value,value", a box being on or off).
   // Hidden fields are still sent, so what was typed there is kept.
   document.querySelectorAll("form.sip-tabs").forEach(function (f) {

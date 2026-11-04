@@ -63,7 +63,7 @@ func (s *Server) accountErasePage(w http.ResponseWriter, r *http.Request, u *aut
 	s.render(w, http.StatusOK, "account_erase.html", page{Title: "Delete my account and data", User: u, Data: d})
 }
 
-// accountErase deletes the account with everything it owns: handsets (the cells are told to forget them), VoIP profiles, base stations
+// accountErase deletes the account with everything it owns: handsets (the cells are told to forget them), VoIP lines, base stations
 // (revoked), contacts, call history; the audit log forgets who the user was. It needs the password (single sign-on: the user name typed).
 func (s *Server) accountErase(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)

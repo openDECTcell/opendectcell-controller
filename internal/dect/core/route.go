@@ -130,6 +130,7 @@ type route struct {
 	winner *leg
 	rang   bool
 	over   bool
+	closed bool // events is closed: the caller holds rs.mu when it sets or reads this
 }
 
 // noOneAnswered: every cell the handset was paged on gave up the page. A cell that was not asked
@@ -383,6 +384,7 @@ func (rs *routes) finish(c *Core, rt *route, kind CallEventKind, reason string, 
 	}
 	rt.emit(c, CallEvent{Kind: kind, Reason: reason})
 	close(rt.events)
+	rt.closed = true
 	rs.reap(rt)
 }
 
@@ -407,7 +409,13 @@ func (c *Core) releaseLeg(l *leg, reason string) {
 	}
 }
 
+// emit hands an event to the offer's reader. The speech of a call is released
+// after the offer ended (the far end hung up first), and that is not an error:
+// the reader has gone. The caller holds rs.mu.
 func (rt *route) emit(c *Core, ev CallEvent) {
+	if rt.closed {
+		return
+	}
 	select {
 	case rt.events <- ev:
 	default:

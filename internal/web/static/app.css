@@ -41,7 +41,7 @@ code.secret { display: block; padding: .5rem; overflow-wrap: anywhere; user-sele
 
 .reg-pin { font-family: var(--tblr-font-monospace, monospace); letter-spacing: .15em; }
 
-/* The VoIP profile form: tabs when scripting is on, every tab in a row of
+/* The VoIP line form: tabs when scripting is on, every tab in a row of
    sections when it is not (app.js adds tabs-on). */
 .sip-tabs { max-width: 40rem; }
 .sip-tabs .sip-tabnav { display: none; }

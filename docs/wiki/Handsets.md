@@ -30,7 +30,7 @@ Then register it again.
 
 ## After registering: give it a line
 
-Open the handset's page and choose a **VoIP profile** (a SIP account, see [SIP lines](SIP-lines.md)) as
+Open the handset's page and choose a **VoIP line** (a SIP account, see [SIP lines](SIP-lines.md)) as
 **Line 1**; Line 2 is an optional second account that also rings the handset. Without a line the handset
 registers but has nothing to call with. (Refusing external calls to a handset that has no line is still on the
 task list: today the call may ring it anyway.)

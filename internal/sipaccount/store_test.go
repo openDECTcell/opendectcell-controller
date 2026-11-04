@@ -203,7 +203,7 @@ func TestDeleteInUse(t *testing.T) {
 	}
 }
 
-// A VoIP profile's options, under the names luci-app-opendectcell uses, round-trip
+// A VoIP line's options, under the names luci-app-opendectcell uses, round-trip
 // through the advanced column; the TURN password is sealed in a column of its
 // own, never in the JSON.
 func TestProfileOptionsRoundTrip(t *testing.T) {

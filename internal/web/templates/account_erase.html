@@ -6,7 +6,7 @@
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">{{icon "download"}} Your data</h3></div>
       <div class="card-body">
-        <p>Download everything this controller holds about your account as one JSON file: your profile, handsets, VoIP profiles (without passwords),
+        <p>Download everything this controller holds about your account as one JSON file: your profile, handsets, VoIP lines (without passwords),
         contacts, calls with the remote numbers, base stations you enrolled, organizations, and the audit entries you made. It holds no secrets (no password hash, handset key or VoIP password).</p>
         <a class="btn btn-primary" href="/account/export">Download my data</a>
       </div>
@@ -17,7 +17,7 @@
         <p>This removes, for good:</p>
         <ul>
           <li>your <strong>{{.Handsets}}</strong> handset{{if ne .Handsets 1}}s{{end}} (the base stations are told to forget {{if eq .Handsets 1}}it{{else}}them{{end}}; delete the base on the handset yourself),</li>
-          <li>your <strong>{{.Profiles}}</strong> VoIP profile{{if ne .Profiles 1}}s{{end}},</li>
+          <li>your <strong>{{.Profiles}}</strong> VoIP line{{if ne .Profiles 1}}s{{end}},</li>
           <li>your <strong>{{.Cells}}</strong> base station{{if ne .Cells 1}}s{{end}} (they are revoked and disconnected),</li>
           <li>your contacts, your call history, your organization memberships, your sessions and your two-factor settings.</li>
         </ul>

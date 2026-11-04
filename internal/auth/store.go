@@ -709,8 +709,8 @@ type UserUpdate struct {
 // ErrSelf means an admin tried to demote, disable or delete themself.
 var ErrSelf = errors.New("auth: you cannot do that to your own account")
 
-// ErrHasObjects means the user still owns handsets or SIP accounts.
-var ErrHasObjects = errors.New("auth: the user still owns handsets or SIP accounts")
+// ErrHasObjects means the user still owns handsets or VoIP lines.
+var ErrHasObjects = errors.New("auth: the user still owns handsets or VoIP lines")
 
 // UpdateUser changes a user (admins only). Disabling ends the user's
 // sessions. For OIDC users the role is recomputed at their next login.

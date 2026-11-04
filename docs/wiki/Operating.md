@@ -3,9 +3,9 @@
 ## A user's data
 
 **Account > Your data**: a user downloads everything the controller holds about them (JSON, no secrets) and can **delete their account and data**:
-handsets (the base stations forget them), VoIP profiles, the base stations they enrolled (revoked), contacts, call history and sessions go. The audit
+handsets (the base stations forget them), VoIP lines, the base stations they enrolled (revoked), contacts, call history and sessions go. The audit
 log keeps what happened but forgets who did it. The last administrator cannot delete themselves. Administrators remove other users in **Administration > Users**
-once their handsets and VoIP profiles are gone, and release a handset registered under someone else's name in **Administration > Release a handset**.
+once their handsets and VoIP lines are gone, and release a handset registered under someone else's name in **Administration > Release a handset**.
 
 ## Backups
 

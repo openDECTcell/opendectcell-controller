@@ -97,7 +97,7 @@ func (s *Server) sipList(w http.ResponseWriter, r *http.Request, u *auth.User) {
 		}
 		rows[i] = sipRow{Record: rec, Status: st, HasState: ok, Owner: owner, Server: serverOf(rec), Uses: uses[rec.ID]}
 	}
-	s.render(w, http.StatusOK, "sip_accounts.html", page{Title: "VoIP profiles", User: u, Data: rows})
+	s.render(w, http.StatusOK, "sip_accounts.html", page{Title: "VoIP lines", User: u, Data: rows})
 }
 
 type sipForm struct {
@@ -162,7 +162,7 @@ func (s *Server) renderSIPForm(w http.ResponseWriter, r *http.Request, u *auth.U
 		f.Warnings = f.Rec.Warnings()
 	}
 	f.markTabs()
-	title := "New VoIP profile"
+	title := "New VoIP line"
 	if !f.New {
 		title = f.Rec.Label
 	}
@@ -179,7 +179,7 @@ func (s *Server) sipNew(w http.ResponseWriter, r *http.Request, u *auth.User) {
 // codecChoices are the codecs the form offers, in the order they are offered.
 var codecChoices = []string{"G722", "PCMA", "PCMU"}
 
-// formRecord reads the VoIP profile form into the account it asks for. The
+// formRecord reads the VoIP line form into the account it asks for. The
 // form always sends every field, so an unchecked box means false. base is
 // the account's advanced settings as stored: what the form does not carry
 // (session timers, public address ...) is kept. Some fields map onto
@@ -273,7 +273,7 @@ func formRecord(r *http.Request, base sipaccount.Advanced) (*sipaccount.Record, 
 	return rec, verr
 }
 
-// formInput reads the VoIP profile form for the store.
+// formInput reads the VoIP line form for the store.
 func formInput(r *http.Request, u *auth.User, base sipaccount.Advanced) (sipaccount.Input, *sipaccount.Record, error) {
 	rec, verr := formRecord(r, base)
 	in := sipaccount.Input{Label: &rec.Label, DisplayName: &rec.DisplayName, Username: &rec.Username, Domain: &rec.Domain,

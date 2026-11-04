@@ -36,7 +36,7 @@ type releaseData struct {
 }
 
 func (s *Server) releasePage(w http.ResponseWriter, r *http.Request, u *auth.User) {
-	s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: releaseData{}, Notice: r.FormValue("done")})
+	s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset", User: u, Data: releaseData{}, Notice: r.FormValue("done")})
 }
 
 // releaseFind looks a handset up by its IPEI and shows whose it is, so an administrator can release it.
@@ -47,13 +47,13 @@ func (s *Server) releaseFind(w http.ResponseWriter, r *http.Request, u *auth.Use
 	d := releaseData{IPEI: ipei, Claim: c}
 	switch {
 	case errors.Is(err, handset.ErrBadIPEI):
-		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d, Error: err.Error() + "."})
+		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset", User: u, Data: d, Error: err.Error() + "."})
 	case errors.Is(err, handset.ErrNotFound):
-		s.render(w, http.StatusNotFound, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d, Error: "No handset is registered under this IPEI."})
+		s.render(w, http.StatusNotFound, "admin_release.html", page{Title: "Release a handset", User: u, Data: d, Error: "No handset is registered under this IPEI."})
 	case err != nil:
 		s.internalError(w, r, err)
 	default:
-		s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: d})
+		s.render(w, http.StatusOK, "admin_release.html", page{Title: "Release a handset", User: u, Data: d})
 	}
 }
 
@@ -67,7 +67,7 @@ func (s *Server) releaseConfirm(w http.ResponseWriter, r *http.Request, u *auth.
 	}
 	c, err := s.Handsets.FindClaim(r.Context(), u, r.PostFormValue("ipei"))
 	if err != nil || c.ID != id { // the IPEI typed is the one of this handset, or nothing happens
-		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset identity", User: u, Data: releaseData{},
+		s.render(w, http.StatusBadRequest, "admin_release.html", page{Title: "Release a handset", User: u, Data: releaseData{},
 			Error: "The IPEI typed does not match the handset. Nothing was released."})
 		return
 	}

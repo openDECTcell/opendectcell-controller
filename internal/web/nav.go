@@ -42,7 +42,7 @@ type navEntry struct {
 var menu = []navEntry{
 	{group: "Phones", navItem: navItem{Label: "Overview", Href: "/", Icon: "layout-dashboard"}},
 	{group: "Phones", navItem: navItem{Label: "Handsets", Href: "/handsets", Icon: "device-mobile"}},
-	{group: "Phones", navItem: navItem{Label: "VoIP profiles", Href: "/sip-accounts", Icon: "phone"}},
+	{group: "Phones", navItem: navItem{Label: "VoIP lines", Href: "/sip-accounts", Icon: "phone"}},
 	{group: "Phones", navItem: navItem{Label: "Calls", Href: "/calls", Icon: "phone-call", Stub: true}},
 	{group: "Phones", navItem: navItem{Label: "Contacts", Href: "/contacts", Icon: "address-book"}},
 	{group: "Base stations", navItem: navItem{Label: "My base stations", Href: "/stations", Icon: "antenna-bars-5"}},
@@ -52,7 +52,7 @@ var menu = []navEntry{
 	{group: "Insight", navItem: navItem{Label: "Statistics", Href: "/statistics", Icon: "chart-bar"}},
 	{group: "Insight", navItem: navItem{Label: "Logging", Href: "/logging", Icon: "list-details"}},
 	{group: "Administration", navItem: navItem{Label: "Dashboard", Href: "/admin", Icon: "activity-heartbeat"}, admin: true},
-	{group: "Administration", navItem: navItem{Label: "Cells", Href: "/cells", Icon: "building-broadcast-tower"}, admin: true},
+	{group: "Administration", navItem: navItem{Label: "All base stations", Href: "/cells", Icon: "building-broadcast-tower"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Network identity", Href: "/network-identity", Icon: "id"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Users", Href: "/admin/users", Icon: "users"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Release a handset", Href: "/admin/handset-release", Icon: "device-mobile"}, admin: true},
