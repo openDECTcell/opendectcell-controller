@@ -803,13 +803,14 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up CellU
 	return c, err
 }
 
-// ListOwned returns the cells u enrolled (admins: every cell), for the "my
-// base stations" page.
+// ListOwned returns the cells u enrolled, for the "my base stations" page, the
+// overview and the export and erasure of the account. Administrators get the
+// same: the list of every cell is the Cells page (List).
 func (s *Store) ListOwned(ctx context.Context, u *auth.User) ([]*Cell, error) {
 	if u == nil {
 		return nil, auth.ErrForbidden
 	}
-	rows, err := s.Pool.Query(ctx, "SELECT "+cellCols+" FROM cell c WHERE ($1 OR c.enrolled_by = $2) AND c.state <> 'revoked' ORDER BY lower(c.name)", u.IsAdmin(), u.ID)
+	rows, err := s.Pool.Query(ctx, "SELECT "+cellCols+" FROM cell c WHERE c.enrolled_by = $1 AND c.state <> 'revoked' ORDER BY lower(c.name)", u.ID)
 	if err != nil {
 		return nil, err
 	}

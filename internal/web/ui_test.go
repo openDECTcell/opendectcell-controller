@@ -406,6 +406,14 @@ func TestStationProfile(t *testing.T) {
 	if resp, _ := e.get(t, u, "/stations/"+other.String()); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("someone else's station: %d", resp.StatusCode)
 	}
+	// "My base stations" is the same for an administrator: the ones they enrolled. Every cell is on the Cells page.
+	a := e.adminBrowser(t)
+	if _, alist := e.get(t, a, "/stations"); strings.Contains(alist, "Attic") || strings.Contains(alist, "Cellar") {
+		t.Errorf("an administrator's own list shows other people's stations: %s", alist)
+	}
+	if _, all := e.get(t, a, "/cells"); !strings.Contains(all, "Attic") || !strings.Contains(all, "Cellar") {
+		t.Errorf("the Cells page does not list every cell: %s", all)
+	}
 	// A cell that enrolled and never connected says so, and what to look at (a box without the chip firmware or with
 	// the DECT service switched off enrols fine and then never connects); one that has been seen is just offline.
 	if !strings.Contains(list, "never connected") {
