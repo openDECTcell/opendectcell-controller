@@ -11,9 +11,10 @@
             <input class="form-control" id="name" name="name" value="{{.Cell.Name}}" maxlength="64" required></div>
           <div class="mb-3"><label class="form-label" for="location">Place (free text)</label>
             <input class="form-control" id="location" name="location" value="{{.Cell.Location}}" maxlength="128" placeholder="Workshop, first floor"></div>
-          <div class="mb-3"><label class="form-label" for="box_model">Model</label>
-            <input class="form-control" id="box_model" name="box_model" value="{{.Cell.BoxModel}}" maxlength="64" list="models" placeholder="FRITZ!Box 7520">
-            <datalist id="models">{{range .Models}}<option value="{{.}}">{{end}}</datalist></div>
+          <div class="mb-3"><label class="form-label" for="box_model">Hardware</label>
+            <input class="form-control" id="box_model" name="box_model" value="{{.Cell.BoxModel}}" maxlength="64" list="models" placeholder="{{with .Cell.Detected}}{{.}}{{else}}FRITZ!Box 7520{{end}}">
+            <datalist id="models">{{range .Models}}<option value="{{.}}">{{end}}</datalist>
+            <div class="form-hint">{{with .Cell.Detected}}The base station reports <strong>{{.}}</strong>; leave this empty to use that.{{else}}The base station has not reported its model yet. Leave this empty and it shows up by itself once it has.{{end}}</div></div>
         </div>
       </div>
 
@@ -52,7 +53,7 @@
           <p class="text-secondary">What may appear on the public map and in public listings. Each switch is separate; everything is off until you turn it on. No address, handset or phone number is ever shared.</p>
           <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_name" {{if .Cell.ShareName}}checked{{end}}><span class="form-check-label"><strong>Name</strong>: “{{.Cell.Name}}”</span></label>
           <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_position" {{if .Cell.SharePosition}}checked{{end}}><span class="form-check-label"><strong>Position</strong>: the point above, at the precision chosen</span></label>
-          <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_specs" {{if .Cell.ShareSpecs}}checked{{end}}><span class="form-check-label"><strong>Specs</strong>: the model ({{with .Cell.BoxModel}}{{.}}{{else}}not set{{end}})</span></label>
+          <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="share_specs" {{if .Cell.ShareSpecs}}checked{{end}}><span class="form-check-label"><strong>Specs</strong>: the model ({{with .Cell.Model}}{{.}}{{else}}not set{{end}})</span></label>
           <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="share_stats" {{if .Cell.ShareStats}}checked{{end}}><span class="form-check-label"><strong>Statistics</strong>: connected handsets, uptime, number of calls and talk time (numbers only, no call details)</span></label>
         </div>
         <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save</button></div>
@@ -62,12 +63,21 @@
 
   <div class="col-lg-5">
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">{{icon "activity-heartbeat"}} Right now</h3></div>
+      <div class="card-header"><h3 class="card-title">{{icon "activity-heartbeat"}} Technical data</h3></div>
       <div class="card-body">
         <dl class="kv mb-0">
-          <dt>Link</dt><dd>{{if .Live.Online}}<span class="badge bg-success-lt">online</span> since {{fmtTime .Live.Since}}{{else}}{{if .Cell.LastSeenAt}}<span class="badge bg-danger-lt">offline</span> · last seen {{fmtTime .Cell.LastSeenAt}}{{else if eq .Cell.State "active"}}<span class="badge bg-warning-lt">never connected</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}{{end}}</dd>
+          <dt>Link</dt><dd>{{if .Live.Online}}<span class="badge bg-success-lt">online</span> since {{fmtTime .Live.Since}}{{if .Operator}} from {{.Live.RemoteAddr}} · RTT p50 {{ms .Live.RTTp50}}, p95 {{ms .Live.RTTp95}}{{end}}{{else}}{{if .Cell.LastSeenAt}}<span class="badge bg-danger-lt">offline</span> · last seen {{fmtTime .Cell.LastSeenAt}}{{else if eq .Cell.State "active"}}<span class="badge bg-warning-lt">never connected</span>{{else}}{{.Live.Health}}{{end}}{{end}}</dd>
           <dt>State</dt><dd>{{.Cell.State}}</dd>
-          <dt>Software</dt><dd>{{with .Cell.SoftwareVersion}}{{.}}{{else}}—{{end}}</dd>
+          <dt>Hardware</dt><dd>{{with .Cell.Model}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}</dd>
+          <dt>Software</dt><dd>{{with .Cell.SoftwareVersion}}{{.}}{{else}}—{{end}}{{with .Cell.StubVersion}} · STUB {{.}}{{end}}</dd>
+          {{if .Operator}}
+          <dt>Capacity announced</dt><dd>{{with .Cell.CapSubRecords}}{{.}} records{{end}}{{with .Cell.CapAudioNB}} · {{.}} narrowband{{end}}{{with .Cell.CapAudioWB}} · {{.}} wideband{{end}}</dd>
+          <dt>Identity (RFPI)</dt><dd>{{if .Live.HasRFPI}}<code>{{printf "%x" .Live.RFPI}}</code>{{with .Cell.RPN}} · cell number {{.}}{{end}}{{else}}not reported (older software, or offline){{end}}</dd>
+          <dt>Certificate valid until</dt><dd>{{with .Cell.CertExpiresAt}}{{fmtTime .}}{{else}}—{{end}}</dd>
+          <dt>Enrolled</dt><dd>{{with .Cell.EnrolledAt}}{{fmtTime .}}{{else}}—{{end}}</dd>
+          {{if .Live.Online}}<dt>Mail tunnel</dt><dd>{{.Live.MailsUp}} up · {{.Live.MailsDown}} down{{with .Live.MailsReject}} · {{.}} rejected by the cell{{end}}{{with .Live.MailsDrop}} · {{.}} dropped (no DECT core){{end}}</dd>{{end}}
+          {{if .Live.Stats}}<dt>Counters</dt><dd>{{range $k, $v := .Live.Stats}}<span class="kvp">{{$k}}={{$v}}</span> {{end}}</dd>{{end}}
+          {{end}}
           {{if .HasStats}}<dt>Handsets, last 24 h</dt><dd>{{.Stats.HandsetsSeen24h}}</dd>
           <dt>Calls, last 7 days</dt><dd>{{.Stats.Calls7d}}</dd>
           <dt>Talk time, last 7 days</dt><dd>{{.Stats.TalkSeconds7d}} s</dd>{{end}}

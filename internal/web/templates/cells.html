@@ -2,11 +2,11 @@
 {{define "cells.html"}}{{template "head" .}}
 <p><a class="btn btn-primary" href="/enroll">Enroll a base station</a></p>
 <div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table">
-<thead><tr><th>Name</th><th>Location</th><th>State</th><th>Link</th><th>RTT p95</th><th>Software</th><th>Identity (RFPI)</th><th>Last seen</th></tr></thead>
+<thead><tr><th>Name</th><th>Hardware</th><th>Location</th><th>State</th><th>Link</th><th>RTT p95</th><th>Software</th><th>Identity (RFPI)</th><th>Last seen</th></tr></thead>
 <tbody>
 {{range .Data.Cells}}
 <tr>
-  <td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{.Location}}</td><td>{{.State}}</td>
+  <td><a href="/cells/{{.ID}}">{{.Name}}</a></td><td>{{with .Model}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}</td><td>{{.Location}}</td><td>{{.State}}</td>
   <td>{{.Live.Health}}</td>
   <td>{{if .Live.Online}}{{ms .Live.RTTp95}}{{end}}</td>
   <td>{{with .SoftwareVersion}}{{.}}{{end}}</td>
@@ -14,7 +14,7 @@
   <td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td>
 </tr>
 {{else}}
-<tr><td colspan="8" class="text-secondary">No base stations yet. Enroll one.</td></tr>
+<tr><td colspan="9" class="text-secondary">No base stations yet. Enroll one.</td></tr>
 {{end}}
 </tbody>
 </table></div></div>

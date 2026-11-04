@@ -4,6 +4,7 @@ package web
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
@@ -34,7 +35,17 @@ type statsData struct {
 type fleetLive struct {
 	Online, Offline int
 	Rows            []cellRow
+	Hardware        []hardwareRow
 }
+
+// hardwareRow is how many active base stations are of one hardware model, and how many of them are connected.
+type hardwareRow struct {
+	Model         string
+	Total, Online int
+}
+
+// unknownModel is the row for base stations that have not told their model and whose owner did not enter one.
+const unknownModel = "Not reported"
 
 func rangeDays(r *http.Request) int {
 	switch n, _ := strconv.Atoi(r.FormValue("days")); n {
@@ -84,18 +95,44 @@ func (s *Server) liveFleet(r *http.Request, u *auth.User) (*fleetLive, error) {
 		return nil, err
 	}
 	l := &fleetLive{}
+	byModel := map[string]*hardwareRow{}
 	for _, c := range cells {
 		if c.State != "active" {
 			continue
 		}
 		row := cellRow{c, s.liveStatus(c.ID)}
+		model := c.Model()
+		if model == "" {
+			model = unknownModel
+		}
+		h := byModel[model]
+		if h == nil {
+			h = &hardwareRow{Model: model}
+			byModel[model] = h
+		}
+		h.Total++
 		if row.Live.Online {
 			l.Online++
+			h.Online++
 		} else {
 			l.Offline++
 		}
 		l.Rows = append(l.Rows, row)
 	}
+	for _, h := range byModel {
+		l.Hardware = append(l.Hardware, *h)
+	}
+	// the most common first, the ones that did not say last, then by name
+	sort.Slice(l.Hardware, func(i, j int) bool {
+		a, b := l.Hardware[i], l.Hardware[j]
+		if (a.Model == unknownModel) != (b.Model == unknownModel) {
+			return b.Model == unknownModel
+		}
+		if a.Total != b.Total {
+			return a.Total > b.Total
+		}
+		return a.Model < b.Model
+	})
 	return l, nil
 }
 

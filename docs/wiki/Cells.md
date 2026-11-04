@@ -29,7 +29,7 @@ port 7300 by default). If it cannot, the box log says so; see [Troubleshooting](
 
 ## The cell list
 
-**Administration > All base stations** shows, for every cell: its name, location, **state** (*pending*, *active*,
+**Administration > All base stations** shows, for every cell: its name, its **hardware** (the model), location, **state** (*pending*, *active*,
 *disabled*, *revoked*), the **link** (up or down), the round-trip time (95th percentile), the software
 version, the DECT **identity (RFPI)** and when it was last seen. Open a cell for its details: the chip build,
 the calls, the handsets it holds, the audio capabilities.
@@ -43,6 +43,21 @@ There is no call limit to set and no way to allow unencrypted audio. A cell take
 channels allow (the **Capacity announced** line shows them: records are handsets the chip can hold, the
 narrowband and wideband numbers are the same voice channels, not two sets), and a call's audio is always
 SRTP between the cell and the controller.
+
+## Hardware and names
+
+A base station tells the controller which box it is (for example *FRITZ!Box 7520*) each time it connects, so nobody has to type
+it in. The owner can still enter another model on the base station's page; that wins. The model shows in both base station
+lists, on the pages, on the public map (if the owner shares the specs) and in **Statistics** (administrators), which counts
+the active base stations by hardware.
+
+A box that has not been named reports its hostname, usually *OpenWrt*. If the name is still *OpenWrt* (or *OpenWrt-2* and so on)
+when the base station has told its model and the identity its chip broadcasts, the controller names it after both:
+**model plus the last five digits of the identity (RFPI)**, for example *FRITZ!Box 7520 72a00*. This happens once. A name
+the owner typed is never replaced, not even one that looks like the default. The rename is in the audit log.
+
+Owners see the same technical data of their own base stations as administrators do (link, software, capacity, identity,
+certificate, counters), in the list and on the base station's page.
 
 ## Leaving cell mode on the box
 

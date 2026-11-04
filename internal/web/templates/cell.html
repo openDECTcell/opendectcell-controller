@@ -4,6 +4,7 @@
 <h3 class="mb-3">{{.Name}}</h3>
 <dl class="kv">
   <dt>State</dt><dd>{{.State}}</dd>
+  <dt>Hardware</dt><dd>{{with .Model}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}{{if and .BoxModel .Detected (ne .BoxModel .Detected)}} <span class="text-secondary small">the box reports {{.Detected}}</span>{{end}}</dd>
   <dt>Link</dt><dd>{{.Live.Health}}{{if .Live.Online}} · since {{fmtTime .Live.Since}} from {{.Live.RemoteAddr}} · RTT p50 {{ms .Live.RTTp50}}, p95 {{ms .Live.RTTp95}}{{end}}</dd>
   <dt>Software</dt><dd>{{with .SoftwareVersion}}{{.}}{{end}}{{with .StubVersion}} · STUB {{.}}{{end}}</dd>
   <dt>Capacity announced</dt><dd>{{with .CapSubRecords}}{{.}} records{{end}}{{with .CapAudioNB}} · {{.}} narrowband{{end}}{{with .CapAudioWB}} · {{.}} wideband{{end}}</dd>

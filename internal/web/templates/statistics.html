@@ -51,13 +51,12 @@
 {{end}}
 {{if .Live}}
 <div class="card">
-  <div class="card-header"><h3 class="card-title">Cells right now</h3><div class="card-actions">{{.Live.Online}} online · {{.Live.Offline}} offline</div></div>
-  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Cell</th><th>Link</th><th>Round trip (p95)</th><th>Software</th><th>Last seen</th></tr></thead><tbody>
-    {{range .Live.Rows}}<tr><td><a href="/cells/{{.ID}}">{{.Name}}</a></td>
-      <td>{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else}}<span class="badge bg-danger-lt">offline</span>{{end}}</td>
-      <td>{{if .Live.Online}}{{ms .Live.RTTp95}}{{end}}</td><td>{{with .SoftwareVersion}}{{.}}{{end}}</td><td>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</td></tr>
-    {{else}}<tr><td colspan="5" class="text-secondary">No active cells.</td></tr>{{end}}
+  <div class="card-header"><h3 class="card-title">Base stations by hardware</h3><div class="card-actions">{{.Live.Online}} online · {{.Live.Offline}} offline</div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Hardware</th><th class="w-1">Base stations</th><th class="w-1">Online</th></tr></thead><tbody>
+    {{range .Live.Hardware}}<tr><td>{{.Model}}</td><td>{{.Total}}</td><td>{{.Online}}</td></tr>
+    {{else}}<tr><td colspan="3" class="text-secondary">No active base stations.</td></tr>{{end}}
   </tbody></table></div>
+  <div class="card-footer text-secondary small">The model is what each base station reports about itself, unless its owner entered another one. Only active base stations count.</div>
 </div>
 {{end}}
 {{end}}

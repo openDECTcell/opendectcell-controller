@@ -561,3 +561,85 @@ func TestPublicMapFeed(t *testing.T) {
 		t.Errorf("an administrator is not pointed to the tile setting: %s", apage)
 	}
 }
+
+// The administrators' statistics count the active base stations by hardware: what the owner entered, else what
+// the box reported, else "Not reported" (last); disabled ones do not count.
+func TestAdminStatisticsCountHardware(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, c := range []struct{ name, state, box, hw string }{
+		{"a", "active", "", "AVM FRITZ!Box 7520"},
+		{"b", "active", "", "AVM FRITZ!Box 7520"},
+		{"c", "active", "FRITZ!Box 7520 B", "AVM FRITZ!Box 7520"},
+		{"d", "active", "", ""},
+		{"e", "disabled", "", "AVM FRITZ!Box 7412"},
+	} {
+		if _, err := e.store.Pool.Exec(ctx, "INSERT INTO cell (name, state, box_model, hw_model) VALUES ($1, $2, $3, $4)", c.name, c.state, c.box, c.hw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, body := e.get(t, e.adminBrowser(t), "/admin/statistics")
+	for _, row := range []string{"<tr><td>FRITZ!Box 7520</td><td>2</td><td>0</td></tr>", "<tr><td>FRITZ!Box 7520 B</td><td>1</td><td>0</td></tr>", "<tr><td>Not reported</td><td>1</td><td>0</td></tr>"} {
+		if !strings.Contains(body, row) {
+			t.Errorf("no row %s in %s", row, body)
+		}
+	}
+	if strings.Contains(body, "7412") || strings.Contains(body, "Cells right now") {
+		t.Errorf("a disabled base station is counted, or the old table is back: %s", body)
+	}
+	if i, j := strings.Index(body, "FRITZ!Box 7520 B</td>"), strings.Index(body, "Not reported</td>"); i < 0 || j < i {
+		t.Errorf("the base stations that did not say are not last")
+	}
+}
+
+// The owner's pages carry the technical data the administrators' pages do, with the hardware the box reported;
+// an administrator who is not the operator sees the station page without the data that is the operator's.
+func TestStationPagesCarryTheTechnicalData(t *testing.T) {
+	e := newEnvWith(t, func(s *Server) {
+		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Cells, err = cell.Open(ctx, s.Pool, kr, "dect.example.org:7300"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	var uid, id uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	if err := e.store.Pool.QueryRow(ctx, `INSERT INTO cell (name, state, enrolled_by, enrolled_at, software_version, stub_version, cap_sub_records, cap_audio_nb, cap_audio_wb, hw_model, last_seen_at)
+		VALUES ('Attic', 'active', $1, now(), 'openDECTcell 0.3.4', '08.25', 6, 5, 3, 'AVM FRITZ!Box 7520', now()) RETURNING id`, uid).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	u, a := e.userBrowser(t), e.adminBrowser(t)
+	_, list := e.get(t, u, "/stations")
+	for _, want := range []string{"Hardware", "FRITZ!Box 7520", "State", "Link", "Software", "openDECTcell 0.3.4", "Identity (RFPI)", "Last seen"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the owner's list lacks %q", want)
+		}
+	}
+	_, page := e.get(t, u, "/stations/"+id.String())
+	for _, want := range []string{"Technical data", "FRITZ!Box 7520", "openDECTcell 0.3.4", "STUB 08.25", "Capacity announced", "6 records", "Identity (RFPI)", "Certificate valid until", "Enrolled", "The base station reports <strong>FRITZ!Box 7520</strong>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the owner's station page lacks %q", want)
+		}
+	}
+	// the administrators' lists name the hardware, too
+	if _, all := e.get(t, a, "/cells"); !strings.Contains(all, "<th>Hardware</th>") || !strings.Contains(all, "FRITZ!Box 7520") {
+		t.Errorf("the administrators' list lacks the hardware: %s", all)
+	}
+	if _, one := e.get(t, a, "/cells/"+id.String()); !strings.Contains(one, "<dt>Hardware</dt><dd>FRITZ!Box 7520") {
+		t.Errorf("the administrators' page lacks the hardware")
+	}
+	// an administrator who is not the operator: hardware and state, not what is the operator's
+	_, as := e.get(t, a, "/stations/"+id.String())
+	if !strings.Contains(as, "FRITZ!Box 7520") || strings.Contains(as, "Certificate valid until") || strings.Contains(as, "Identity (RFPI)") || strings.Contains(as, "Capacity announced") {
+		t.Errorf("the administrator's view of the station page: %s", as)
+	}
+}

@@ -558,10 +558,29 @@ func (s *Store) RetireOldCerts(ctx context.Context, cellID uuid.UUID, cert *x509
 
 // RecordHello stores what the cell announced (§6.1).
 func (s *Store) RecordHello(ctx context.Context, cellID uuid.UUID, h wire.HelloMsg) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE cell SET software_version = $2, stub_version = nullif($3, ''),
-		cap_sub_records = $4, cap_audio_nb = $5, cap_audio_wb = $6, last_seen_at = $7 WHERE id = $1`,
-		cellID, h.SWVersion, h.StubVersion, int16(h.CapSubRecords), int16(h.CapAudioNB), int16(h.CapAudioWB), s.now())
-	return err
+	var rfpi []byte
+	if h.HasRFPI {
+		rfpi = h.RFPI[:]
+	}
+	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `UPDATE cell SET software_version = $2, stub_version = nullif($3, ''),
+			cap_sub_records = $4, cap_audio_nb = $5, cap_audio_wb = $6, last_seen_at = $7,
+			hw_model = CASE WHEN $8 <> '' THEN $8 ELSE hw_model END, rfpi = coalesce($9, rfpi) WHERE id = $1`,
+			cellID, h.SWVersion, h.StubVersion, int16(h.CapSubRecords), int16(h.CapAudioNB), int16(h.CapAudioWB), s.now(),
+			cleanHW(h.HWModel), rfpi); err != nil {
+			return err
+		}
+		return s.autoName(ctx, tx, cellID)
+	})
+}
+
+// cleanHW is a reported hardware model without control characters, at most 64 bytes.
+func cleanHW(m string) string {
+	m = cleanName(m)
+	if len(m) > 64 {
+		m = strings.ToValidUTF8(m[:64], "")
+	}
+	return m
 }
 
 // Seen updates last_seen_at.
@@ -596,6 +615,7 @@ type Cell struct {
 	LastSeenAt      *time.Time
 	CertExpiresAt   *time.Time
 	RPN             *int16 // the cell's number in the system identity, once it has one
+	HWModel         string // the model the cell reported in its hello ("AVM FRITZ!Box 7520"), "" until it has
 	Profile
 }
 
@@ -619,13 +639,13 @@ type Profile struct {
 const cellCols = `c.id, c.name, c.location, c.state, c.enrolled_by, c.enrolled_at, c.approved_at, c.software_version,
 	c.stub_version, c.cap_sub_records, c.cap_audio_nb, c.cap_audio_wb, c.last_seen_at,
 	(SELECT max(not_after) FROM cell_certificate k WHERE k.cell_id = c.id AND k.revoked_at IS NULL),
-	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats, c.disclosed_to_admins`
+	c.rpn, c.box_model, c.latitude, c.longitude, c.position_precision, c.share_name, c.share_position, c.share_specs, c.share_stats, c.disclosed_to_admins, c.hw_model`
 
 func scanCell(r pgx.Row) (*Cell, error) {
 	var c Cell
 	err := r.Scan(&c.ID, &c.Name, &c.Location, &c.State, &c.EnrolledBy, &c.EnrolledAt, &c.ApprovedAt, &c.SoftwareVersion,
 		&c.StubVersion, &c.CapSubRecords, &c.CapAudioNB, &c.CapAudioWB, &c.LastSeenAt, &c.CertExpiresAt,
-		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats, &c.Disclosed)
+		&c.RPN, &c.BoxModel, &c.Latitude, &c.Longitude, &c.PositionPrecision, &c.ShareName, &c.SharePosition, &c.ShareSpecs, &c.ShareStats, &c.Disclosed, &c.HWModel)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -931,7 +951,7 @@ func (s *Store) UpdateProfile(ctx context.Context, u *auth.User, id uuid.UUID, u
 				return errors.New("set a position before sharing it")
 			}
 		}
-		_, err := tx.Exec(ctx, `UPDATE cell SET name = $2, location = $3, box_model = $4,
+		_, err := tx.Exec(ctx, `UPDATE cell SET name_custom = name_custom OR name <> $2, name = $2, location = $3, box_model = $4,
 			latitude = CASE WHEN $12 THEN $5 ELSE latitude END, longitude = CASE WHEN $12 THEN $6 ELSE longitude END,
 			position_precision = CASE WHEN $12 THEN $7 ELSE position_precision END,
 			share_name = CASE WHEN $12 THEN $8 ELSE share_name END, share_position = CASE WHEN $12 THEN $9 ELSE share_position END,
@@ -1005,7 +1025,7 @@ func (c *Cell) Public(st PublicStats) PublicStation {
 		p.Latitude, p.Longitude = &lat, &lon
 	}
 	if c.ShareSpecs {
-		p.BoxModel = c.BoxModel
+		p.BoxModel = c.Model()
 	}
 	return p
 }

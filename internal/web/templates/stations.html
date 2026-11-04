@@ -13,8 +13,13 @@
           <span class="ms-auto">{{if .Live.Online}}<span class="badge bg-success-lt">online</span>{{else if eq .State "active"}}{{if .LastSeenAt}}<span class="badge bg-danger-lt">offline</span>{{else}}<span class="badge bg-warning-lt" title="enrolled, but it has never connected: see the cell's page">never connected</span>{{end}}{{else}}<span class="badge bg-secondary-lt">{{.State}}</span>{{end}}</span>
         </div>
         <dl class="kv mb-0">
-          <dt>Model</dt><dd>{{with .BoxModel}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</dd>
+          <dt>Hardware</dt><dd>{{with .Model}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}</dd>
           <dt>Place</dt><dd>{{with .Location}}{{.}}{{else}}<span class="text-secondary">not set</span>{{end}}</dd>
+          <dt>State</dt><dd>{{.State}}</dd>
+          <dt>Link</dt><dd>{{.Live.Health}}{{if .Live.Online}} · RTT p95 {{ms .Live.RTTp95}}{{end}}</dd>
+          <dt>Software</dt><dd>{{with .SoftwareVersion}}{{.}}{{else}}—{{end}}</dd>
+          <dt>Identity (RFPI)</dt><dd>{{if .Live.HasRFPI}}<code>{{printf "%x" .Live.RFPI}}</code>{{with .RPN}} · no. {{.}}{{end}}{{else}}<span class="text-secondary">not reported</span>{{end}}</dd>
+          <dt>Last seen</dt><dd>{{with .LastSeenAt}}{{fmtTime .}}{{else}}never{{end}}</dd>
           <dt>Shared</dt><dd>{{if or .ShareName .SharePosition .ShareSpecs .ShareStats}}{{if .ShareName}}name {{end}}{{if .SharePosition}}position {{end}}{{if .ShareSpecs}}specs {{end}}{{if .ShareStats}}statistics{{end}}{{else}}nothing{{end}}</dd>
         </dl>
       </div>
