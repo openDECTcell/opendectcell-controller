@@ -191,13 +191,35 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 		return
 	}
 	up := handset.Update{Name: strings.TrimSpace(r.PostFormValue("name")), DualRing: r.PostFormValue("dual_ring"), Disclosed: r.PostFormValue("disclosed") == "on"}
+	// the form carries both lines; a client that sends neither leaves them as they are
+	for _, n := range []int{1, 2} {
+		v, present := r.PostForm["account"+strconv.Itoa(n)]
+		if !present || len(v) != 1 {
+			continue
+		}
+		acct := uuid.Nil
+		if v[0] != "" {
+			var err error
+			if acct, err = uuid.Parse(v[0]); err != nil {
+				s.handsetFail(w, r, u, h, handset.ErrInvalid)
+				return
+			}
+		}
+		if up.Lines == nil {
+			up.Lines = map[int]uuid.UUID{}
+		}
+		up.Lines[n] = acct
+	}
 	if v := r.PostFormValue("default_line"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
 			s.handsetFail(w, r, u, h, handset.ErrInvalid)
 			return
 		}
-		up.DefaultLine = &n
+		// a line the same save clears cannot stay the default
+		if acct, cleared := up.Lines[n]; !cleared || acct != uuid.Nil {
+			up.DefaultLine = &n
+		}
 	}
 	if v, ok := r.PostForm["profile"]; ok && len(v) == 1 {
 		if v[0] != "" && !profileKnown(v[0]) {

@@ -292,6 +292,10 @@ type Update struct {
 	Model   string
 	// Disclosed lets administrators see the handset under its owner.
 	Disclosed bool
+	// Lines, if set, gives the account of line 1 and line 2 (uuid.Nil clears
+	// a line) in the same transaction, before DefaultLine is checked; a line
+	// left out stays as it is, and nil leaves both.
+	Lines map[int]uuid.UUID
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -303,6 +307,11 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 	if up.DualRing != "call_waiting" && up.DualRing != "busy" {
 		return ErrInvalid
 	}
+	for line := range up.Lines {
+		if line != 1 && line != 2 {
+			return ErrInvalid
+		}
+	}
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		var owner uuid.UUID
 		if err := tx.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1 FOR UPDATE", id).Scan(&owner); err != nil {
@@ -313,6 +322,13 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 		}
 		if !auth.IsOwner(u, &owner) {
 			return ErrNotFound
+		}
+		for _, line := range []int{1, 2} {
+			if account, ok := up.Lines[line]; ok {
+				if err := setLine(ctx, tx, owner, id, line, account); err != nil {
+					return err
+				}
+			}
 		}
 		if up.DefaultLine != nil {
 			var has bool
@@ -493,29 +509,46 @@ func (s *Store) SetLine(ctx context.Context, u *auth.User, id uuid.UUID, line in
 		if owner != u.ID {
 			return ErrNotFound
 		}
-		if account == uuid.Nil {
-			if _, err := tx.Exec(ctx, "DELETE FROM handset_line WHERE handset_id = $1 AND line = $2", id, line); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "UPDATE handset SET default_line = NULL WHERE id = $1 AND default_line = $2", id, line); err != nil {
-				return err
-			}
-		} else {
-			var ok bool
-			if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM sip_account WHERE id = $1 AND (owner_user_id = $2 OR owner_user_id IS NULL))", account, owner).Scan(&ok); err != nil {
-				return err
-			}
-			if !ok {
-				return ErrInvalid
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, $2, $3)
-				ON CONFLICT (handset_id, line) DO UPDATE SET sip_account_id = EXCLUDED.sip_account_id`, id, line, account); err != nil {
-				return err
-			}
-		}
-		return audit.Record(ctx, tx, audit.Entry{Action: "handset.line", ObjectType: "handset", ObjectID: id.String(),
-			Details: map[string]any{"line": line, "account": account.String()}})
+		return setLine(ctx, tx, owner, id, line, account)
 	})
+}
+
+// setLine is SetLine inside the caller's transaction, with the handset locked
+// and owner its owner. A line that already holds account is left alone.
+func setLine(ctx context.Context, tx pgx.Tx, owner, id uuid.UUID, line int, account uuid.UUID) error {
+	if line != 1 && line != 2 {
+		return ErrInvalid
+	}
+	var cur uuid.UUID
+	err := tx.QueryRow(ctx, "SELECT sip_account_id FROM handset_line WHERE handset_id = $1 AND line = $2", id, line).Scan(&cur)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if cur == account {
+		return nil
+	}
+	if account == uuid.Nil {
+		if _, err := tx.Exec(ctx, "DELETE FROM handset_line WHERE handset_id = $1 AND line = $2", id, line); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "UPDATE handset SET default_line = NULL WHERE id = $1 AND default_line = $2", id, line); err != nil {
+			return err
+		}
+	} else {
+		var ok bool
+		if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM sip_account WHERE id = $1 AND (owner_user_id = $2 OR owner_user_id IS NULL))", account, owner).Scan(&ok); err != nil {
+			return err
+		}
+		if !ok {
+			return ErrInvalid
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO handset_line (handset_id, line, sip_account_id) VALUES ($1, $2, $3)
+			ON CONFLICT (handset_id, line) DO UPDATE SET sip_account_id = EXCLUDED.sip_account_id`, id, line, account); err != nil {
+			return err
+		}
+	}
+	return audit.Record(ctx, tx, audit.Entry{Action: "handset.line", ObjectType: "handset", ObjectID: id.String(),
+		Details: map[string]any{"line": line, "account": account.String()}})
 }
 
 // PresenceCounts is how many handsets the given owners have, and how many of them are online now.

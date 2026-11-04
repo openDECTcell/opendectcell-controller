@@ -19,11 +19,20 @@
               </optgroup>{{end}}
             </select>
             <div class="form-hint">What the base knows about this model's habits (how it shows names, what it needs to ring).</div></div>
+          {{range $n := list "1" "2"}}
+          <div class="mb-3"><label class="form-label" for="acct{{$n}}">Line {{$n}}</label>
+            <select class="form-select" id="acct{{$n}}" name="account{{$n}}">
+              <option value="">none</option>
+              {{range $a := $.Data.Accounts}}<option value="{{$a.ID}}" {{with index $.Data.Line (atoi $n)}}{{if eq .AccountID $a.ID}}selected{{end}}{{end}}>{{$a.Label}}</option>{{end}}
+            </select></div>
+          {{end}}
+          {{if not .Accounts}}<p class="text-secondary">There is no VoIP profile to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
           <div class="mb-3"><label class="form-label" for="default_line">Default line for outgoing calls</label>
             <select class="form-select" id="default_line" name="default_line">
               <option value="">none</option>
-              {{range $n, $l := .Line}}<option value="{{$n}}" {{if and $.Data.H.DefaultLine (eq (deref2 $.Data.H.DefaultLine) $n)}}selected{{end}}>Line {{$n}}: {{$l.Label}}</option>{{end}}
-            </select></div>
+              {{range $n := list "1" "2"}}<option value="{{$n}}" {{if and $.Data.H.DefaultLine (eq (deref2 $.Data.H.DefaultLine) (atoi $n))}}selected{{end}}>Line {{$n}}</option>{{end}}
+            </select>
+            <div class="form-hint">A line set to "none" cannot be the default.</div></div>
           <div class="mb-0"><label class="form-label" for="dual_ring">When both lines ring</label>
             <select class="form-select" id="dual_ring" name="dual_ring">
               <option value="call_waiting" {{if eq .H.DualRing "call_waiting"}}selected{{end}}>The second call shows as call waiting</option>
@@ -36,22 +45,6 @@
     </div>
   </div>
   <div class="col-lg-6">
-    <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">{{icon "phone"}} Lines</h3></div>
-      <div class="card-body">
-        {{range $n := list "1" "2"}}
-        <form method="post" action="/handsets/{{$.Data.H.ID}}/lines/{{$n}}" class="d-flex gap-2 align-items-end mb-3" data-dirty>
-          <div class="flex-fill"><label class="form-label" for="acct{{$n}}">Line {{$n}}</label>
-            <select class="form-select" id="acct{{$n}}" name="account">
-              <option value="">none</option>
-              {{range $a := $.Data.Accounts}}<option value="{{$a.ID}}" {{with index $.Data.Line (atoi $n)}}{{if eq .AccountID $a.ID}}selected{{end}}{{end}}>{{$a.Label}}</option>{{end}}
-            </select></div>
-          <button type="submit" class="btn btn-outline-primary">Set</button>
-        </form>
-        {{end}}
-        {{if not .Accounts}}<p class="text-secondary mb-0">There is no VoIP profile to choose yet. <a href="/sip-accounts/new">Add one</a>.</p>{{end}}
-      </div>
-    </div>
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">{{icon "antenna-bars-5"}} Technical data</h3></div>
       <div class="card-body"><dl class="kv mb-0">

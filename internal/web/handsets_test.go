@@ -318,3 +318,89 @@ func TestHandsetPageShowsWideband(t *testing.T) {
 		}
 	}
 }
+
+func TestHandsetSaveCarriesTheLines(t *testing.T) {
+	e := newEnv(t)
+	var uid, aid, hs, home, shared, other uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'admin'").Scan(&aid)
+	if err := e.store.Pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc, display_name) VALUES ($1, '\\x09', 9, '\\x', 'Hall') RETURNING id", uid).Scan(&hs); err != nil {
+		t.Fatal(err)
+	}
+	acct := func(owner any, label string) (id uuid.UUID) {
+		if err := e.store.Pool.QueryRow(ctx, "INSERT INTO sip_account (owner_user_id, label, username, domain) VALUES ($1, $2, $2, 'sip.example.org') RETURNING id", owner, label).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	home, shared, other = acct(uid, "Home"), acct(nil, "Shared"), acct(aid, "Admin private")
+	u := e.userBrowser(t)
+	state := func() (l1, l2 string, def *int) {
+		rows, _ := e.store.Pool.Query(ctx, "SELECT line, sip_account_id::text FROM handset_line WHERE handset_id = $1", hs)
+		for rows.Next() {
+			var n int
+			var a string
+			rows.Scan(&n, &a)
+			if n == 1 {
+				l1 = a
+			} else {
+				l2 = a
+			}
+		}
+		rows.Close()
+		e.store.Pool.QueryRow(ctx, "SELECT default_line FROM handset WHERE id = $1", hs).Scan(&def)
+		return
+	}
+	save := func(v url.Values) int {
+		v.Set("name", "Hall")
+		v.Set("dual_ring", "call_waiting")
+		return e.post(t, u, "/handsets/"+hs.String(), v).StatusCode
+	}
+
+	// one Save sets both lines and the default that needs one of them
+	if c := save(url.Values{"account1": {home.String()}, "account2": {shared.String()}, "default_line": {"2"}}); c != http.StatusSeeOther {
+		t.Fatalf("save: %d", c)
+	}
+	if l1, l2, def := state(); l1 != home.String() || l2 != shared.String() || def == nil || *def != 2 {
+		t.Errorf("after one save: line 1 %s, line 2 %s, default %v", l1, l2, def)
+	}
+	// a form without the line fields leaves the lines alone
+	if c := save(url.Values{"default_line": {"1"}}); c != http.StatusSeeOther {
+		t.Fatalf("save without lines: %d", c)
+	}
+	if l1, l2, def := state(); l1 != home.String() || l2 != shared.String() || def == nil || *def != 1 {
+		t.Errorf("a form without line fields changed the lines: %s %s %v", l1, l2, def)
+	}
+	// one bad account refuses the whole save: nothing is half applied
+	if c := save(url.Values{"account1": {shared.String()}, "account2": {other.String()}}); c != http.StatusBadRequest {
+		t.Errorf("someone else's account in the form: %d", c)
+	}
+	if l1, _, _ := state(); l1 != home.String() {
+		t.Errorf("line 1 changed although the save was refused: %s", l1)
+	}
+	// clearing a line clears it as default instead of failing
+	if c := save(url.Values{"account1": {home.String()}, "account2": {""}, "default_line": {"2"}}); c != http.StatusSeeOther {
+		t.Fatalf("clear line 2 with it as default: %d", c)
+	}
+	if l1, l2, def := state(); l1 != home.String() || l2 != "" || def != nil {
+		t.Errorf("after clearing line 2: %s %q %v", l1, l2, def)
+	}
+	// a default on a line that has no account is refused
+	if c := save(url.Values{"account2": {""}, "default_line": {"2"}}); c != http.StatusSeeOther {
+		t.Errorf("default on a line the same save clears: %d", c)
+	}
+	if c := save(url.Values{"default_line": {"2"}}); c != http.StatusBadRequest {
+		t.Errorf("default on an empty line: %d", c)
+	}
+
+	_, page := e.get(t, u, "/handsets/"+hs.String())
+	if strings.Contains(page, "/lines/") || strings.Contains(page, ">Set<") {
+		t.Errorf("the page still has per-line forms: %s", page)
+	}
+	if n := strings.Count(page, `name="account`); n != 2 {
+		t.Errorf("want two line selects, got %d", n)
+	}
+	if i, j := strings.Index(page, `name="account2"`), strings.Index(page, `name="default_line"`); i < 0 || j < 0 || i > j {
+		t.Errorf("the lines do not come before the default line")
+	}
+}
