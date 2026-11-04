@@ -122,6 +122,7 @@ type handsetPage struct {
 	Line     map[int]*handset.Line
 	Moves    []handset.Move
 	Makers   []profileMaker
+	Calls    handset.CallSummary
 }
 
 func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, error) {
@@ -129,6 +130,9 @@ func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, 
 	d := handsetPage{H: h, Accounts: accts, Line: map[int]*handset.Line{}, Makers: profileMakers()}
 	if err == nil {
 		d.Moves, err = s.Handsets.Moves(r.Context(), h.ID, 10)
+	}
+	if err == nil {
+		d.Calls, err = s.Handsets.CallSummary(r.Context(), h.ID)
 	}
 	for i := range h.Lines {
 		d.Line[h.Lines[i].Line] = &h.Lines[i]

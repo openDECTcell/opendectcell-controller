@@ -1348,7 +1348,7 @@ func capabilityText(c stack.Capability) map[string]any {
 	case c.NGPart3:
 		standard = "NG-DECT Part 3 (CAT-iq)"
 	case c.NGPart1:
-		standard = "NG-DECT Part 1 (wideband)"
+		standard = "NG-DECT Part 1"
 	}
 	display := map[uint8]string{0: "not applicable", 1: "no display", 2: "numeric", 3: "numeric plus", 4: "alphanumeric", 5: "full display"}
 	tone := map[uint8]string{0: "not applicable", 1: "no tones", 2: "dial tone only", 3: "ITU-T E.182 tones", 4: "complete DECT tones"}

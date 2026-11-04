@@ -3,6 +3,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -402,5 +403,49 @@ func TestHandsetSaveCarriesTheLines(t *testing.T) {
 	}
 	if i, j := strings.Index(page, `name="account2"`), strings.Index(page, `name="default_line"`); i < 0 || j < 0 || i > j {
 		t.Errorf("the lines do not come before the default line")
+	}
+}
+
+// The technical data of a handset reads as words: the standard without a wideband note, the profile octets decoded
+// (and not shown as a number), the signal with a word, the device profile by name, and the handset's own calls.
+func TestHandsetPageTechnicalDataIsReadable(t *testing.T) {
+	e := newEnv(t)
+	var uid, id uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	if err := e.store.Pool.QueryRow(ctx, `INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc, display_name, profile, signal_dbm, signal_at, capabilities)
+		VALUES ($1, '\x80a803a21557aa', 7, '\x', 'Hall', 'gigaset-a540', -62, now(), $2::jsonb) RETURNING id`, uid,
+		`{"standard":"NG-DECT Part 1 (wideband)","display":"full display","tone":"dial tone only","wideband":true,"profiles":"02000000004016"}`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range []struct {
+		ago      string
+		answered bool
+	}{{"1 hour", true}, {"2 days", true}, {"3 days", false}, {"20 days", true}} {
+		ans := "NULL"
+		if c.answered {
+			ans = fmt.Sprintf("now() - interval '%s' + interval '2 seconds'", c.ago)
+		}
+		if _, err := e.store.Pool.Exec(ctx, fmt.Sprintf(`INSERT INTO call_log (handset_id, owner_user_id, direction, started_at, answered_at, ended_at)
+			VALUES ($1, $2, 'out', now() - interval '%s', %s, now() - interval '%s' + interval '62 seconds')`, c.ago, ans, c.ago), id, uid); err != nil {
+			t.Fatal(i, err)
+		}
+	}
+	_, page := e.get(t, e.userBrowser(t), "/handsets/"+id.String())
+	for _, want := range []string{
+		"<dt>Standard</dt><dd>NG-DECT Part 1</dd>",
+		"<dt>Profiles</dt><dd>GAP (basic cordless telephony)</dd>",
+		"cipher re-keying and early encryption", "no-emission mode", "radio: GFSK only",
+		"excellent <span class=\"text-secondary\">(-62 dBm)",
+		`<span title="gigaset-a540">Gigaset A540</span>`,
+		"3 in the last 7 days (2 answered, 0.0 h talking) · 4 in all",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	for _, not := range []string{"(wideband)", "02000000004016"} {
+		if strings.Contains(page, not) {
+			t.Errorf("the page still has %q", not)
+		}
 	}
 }

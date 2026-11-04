@@ -52,14 +52,15 @@
         <dt>Manufacturer code</dt><dd>{{with emc .H}}{{.}} <span class="text-secondary small">(EMC, EN 300 175-6)</span>{{else}}<span class="text-secondary">n/a</span>{{end}}</dd>
         <dt>IPUI</dt><dd><code class="kvp">{{hexb .H.IPUI}}</code></dd>
         <dt>Temporary identity</dt><dd><code class="kvp">{{tpui .H.TPUI}}</code>{{if .H.Pooled}} <span class="text-secondary small">the same on every cell</span>{{end}}</dd>
-        <dt>Device profile</dt><dd>{{with .H.Profile}}<code class="kvp">{{.}}</code>{{else}}<span class="text-secondary">generic</span>{{end}}</dd>
-        <dt>Signal</dt><dd>{{with .H.SignalDBm}}{{.}} dBm{{with $.Data.H.SignalAt}} <span class="text-secondary small">measured {{fmtTime .}}</span>{{end}}{{else}}<span class="text-secondary">not measured yet: the base reads it while the handset is connected</span>{{end}}</dd>
+        <dt>Device profile</dt><dd>{{with .H.Profile}}<span title="{{.}}">{{with profileLabel .}}{{.}}{{else}}<code class="kvp">{{.}}</code>{{end}}</span>{{else}}<span class="text-secondary">generic</span>{{end}}</dd>
+        <dt>Signal</dt><dd>{{with .H.SignalDBm}}{{signalWord .}} <span class="text-secondary">({{.}} dBm)</span>{{with $.Data.H.SignalAt}} <span class="text-secondary small">measured {{fmtTime .}}</span>{{end}}{{else}}<span class="text-secondary">not measured yet: the base reads it while the handset is connected</span>{{end}}</dd>
         {{with .H.Capabilities}}
-        <dt>Standard</dt><dd>{{index . "standard"}}</dd>
+        <dt>Standard</dt><dd>{{$.Data.H.Standard}}</dd>
         <dt>Wideband</dt><dd>{{if $.Data.H.WidebandClaim}}<span class="text-success">{{icon "check"}} yes</span>{{else}}<span class="text-danger">{{icon "x"}} no</span>{{end}} <span class="text-secondary small">announced by the handset; the call decides what is used</span></dd>
         <dt>Display</dt><dd>{{index . "display"}}</dd>
         <dt>Tones</dt><dd>{{index . "tone"}}</dd>
-        {{with index . "profiles"}}<dt>Profiles</dt><dd><code class="kvp">{{.}}</code></dd>{{end}}
+        {{with $.Data.H.ProfileNames}}<dt>Profiles</dt><dd>{{join . " · "}}</dd>{{end}}
+        {{with $.Data.H.Features}}<dt>Features</dt><dd>{{join . " · "}}</dd>{{end}}
         {{else}}<dt>Capabilities</dt><dd><span class="text-secondary">not reported yet: the handset tells the base when it connects</span></dd>{{end}}
       </dl></div>
     </div>
@@ -70,6 +71,7 @@
         <dt>Registered</dt><dd>{{fmtTime .H.RegisteredAt}}</dd>
         <dt>Status</dt><dd>{{template "presence" .H}}</dd>
         <dt>Internal number</dt><dd>{{with .H.InternalNumber}}<code class="kvp">{{.}}</code> <span class="text-secondary small">dial it after INT from another handset of the account</span>{{else}}<span class="text-secondary">none</span>{{end}}</dd>
+        <dt>Calls</dt><dd>{{if .Calls.Total}}{{.Calls.Calls7d}} in the last 7 days{{if .Calls.Calls7d}} ({{.Calls.Answered7d}} answered, {{hours .Calls.TalkSeconds}} talking){{end}} · {{.Calls.Total}} in all{{with .Calls.LastAt}} · last {{fmtTime .}}{{end}}{{else}}<span class="text-secondary">none yet</span>{{end}}</dd>
         <dt>Last seen</dt><dd>{{with .H.LastSeenAt}}{{fmtTime .}}{{if $.Data.H.LastSeenCell}} on {{$.Data.H.LastSeenCell}}{{end}}{{else}}never{{end}}</dd>
         <dt>Held by cells</dt><dd>{{.H.CellsHoldingN}}{{if and (not .H.Pooled) (eq .H.CellsHoldingN 0)}} <span class="badge bg-warning-lt" title="No cell holds this handset now. Register it again with the assistant">not registered on any cell</span>{{else if .H.Pooled}} <span class="badge bg-blue-lt" title="Every cell holds this handset under an identity of its own, so it can move between cells and be rung wherever it is">every cell</span>{{else}} <span class="badge bg-secondary-lt" title="Registered before handsets were shared between cells: it stays with the cell it was registered on. Deregister it below and register it again to make it work on every cell">home cell only</span>{{end}}</dd>
       </dl></div>

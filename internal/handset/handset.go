@@ -575,3 +575,29 @@ func (s *Store) PresenceCounts(ctx context.Context, owners []uuid.UUID) (total, 
 	}
 	return total, online, rows.Err()
 }
+
+// CallSummary is what the call log says about one handset.
+type CallSummary struct {
+	Calls7d, Answered7d int
+	Talk7d              time.Duration
+	Total               int
+	LastAt              *time.Time
+}
+
+// TalkSeconds is the talk time of the last seven days in seconds.
+func (c CallSummary) TalkSeconds() int64 { return int64(c.Talk7d / time.Second) }
+
+// CallSummary counts a handset's calls: the last seven days and in all. The caller has checked that the user may see
+// the handset.
+func (s *Store) CallSummary(ctx context.Context, id uuid.UUID) (CallSummary, error) {
+	var c CallSummary
+	var talk int64
+	err := s.Pool.QueryRow(ctx, `SELECT
+		count(*) FILTER (WHERE started_at > now() - interval '7 days'),
+		count(*) FILTER (WHERE started_at > now() - interval '7 days' AND answered_at IS NOT NULL),
+		coalesce(sum(extract(epoch FROM ended_at - answered_at)) FILTER (WHERE started_at > now() - interval '7 days' AND answered_at IS NOT NULL AND ended_at IS NOT NULL), 0)::bigint,
+		count(*), max(started_at)
+		FROM call_log WHERE handset_id = $1`, id).Scan(&c.Calls7d, &c.Answered7d, &talk, &c.Total, &c.LastAt)
+	c.Talk7d = time.Duration(talk) * time.Second
+	return c, err
+}

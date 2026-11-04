@@ -33,6 +33,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
+	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
@@ -116,8 +117,10 @@ func (s *Server) Handler() (http.Handler, error) {
 			t, _, _ := h.IPEI()
 			return t
 		},
-		"hexb": func(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) },
-		"tpui": func(t int) string { return fmt.Sprintf("%05X", t) },
+		"signalWord":   handset.SignalWord,
+		"profileLabel": func(id string) string { return profiles.Default.Label(id) },
+		"hexb":         func(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) },
+		"tpui":         func(t int) string { return fmt.Sprintf("%05X", t) },
 		"emc": func(h *handset.Handset) string {
 			if _, e, ok := h.IPEI(); ok {
 				return fmt.Sprintf("%d (0x%04X)", e, e)
