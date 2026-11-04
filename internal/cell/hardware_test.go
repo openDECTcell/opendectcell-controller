@@ -115,6 +115,13 @@ func TestChosenNamesAreKept(t *testing.T) {
 		t.Errorf("a chosen hostname became %q", got)
 	}
 
+	// a hostname somebody gave the box, even one that looks like the default's numbered form, is a choice
+	typed := e.enrolNamed(t, "OpenWrt-7")
+	e.store.RecordHello(e.ctx, typed.ID, hello("AVM FRITZ!Box 7412", 5, 5, 5, 5, 5))
+	if got := e.nameOf(t, typed); got != "OpenWrt-7" {
+		t.Errorf("a hostname of the box's owner became %q", got)
+	}
+
 	// the owner types a name that looks like the default one: it is theirs
 	same := e.enrolNamed(t, "OpenWrt")
 	if _, err := e.store.UpdateProfile(e.ctx, e.admin, same.ID, cell.ProfileUpdate{Name: "OpenWrt-2", Location: "attic", PositionPrecision: "exact"}); err != nil {

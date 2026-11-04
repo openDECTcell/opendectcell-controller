@@ -36,8 +36,12 @@ func (c *Cell) Model() string {
 	return c.Detected()
 }
 
-// genericName matches the hostname a box has before anyone names it: the default of OpenWrt, and the "-2" and
-// "-3" the controller adds when a name is taken.
+// DefaultHostname is the name a box has before anyone names it: OpenWrt's default hostname.
+const DefaultHostname = "OpenWrt"
+
+// genericName matches that hostname and the "-2" and "-3" the controller adds when it is taken. Whether such a
+// name is the box's default or somebody's choice is name_custom's to say, which enrolment sets from the hostname
+// the box reported.
 var genericName = regexp.MustCompile(`(?i)^openwrt(-\d+)?$`)
 
 // GenericName reports whether name is one nobody chose.

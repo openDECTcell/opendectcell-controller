@@ -51,10 +51,11 @@ it in. The owner can still enter another model on the base station's page; that 
 lists, on the pages, on the public map (if the owner shares the specs) and in **Statistics** (administrators), which counts
 the active base stations by hardware.
 
-A box that has not been named reports its hostname, usually *OpenWrt*. If the name is still *OpenWrt* (or *OpenWrt-2* and so on)
-when the base station has told its model and the identity its chip broadcasts, the controller names it after both:
-**model plus the last five digits of the identity (RFPI)**, for example *FRITZ!Box 7520 72a00*. This happens once. A name
-the owner typed is never replaced, not even one that looks like the default. The rename is in the audit log.
+A box that has not been named reports its hostname, which on OpenWrt is *OpenWrt* until somebody changes it. If a base station
+enrolled with exactly that hostname (the controller numbers a second one *OpenWrt-2* and so on) and still carries the name when
+it has told its model and the identity its chip broadcasts, the controller names it after both:
+**model plus the last five digits of the identity (RFPI)**, for example *FRITZ!Box 7520 72a00*. This happens once. Any other
+hostname, and any name the owner typed later, is kept. The rename is in the audit log.
 
 Owners see the same technical data of their own base stations as administrators do (link, software, capacity, identity,
 certificate, counters), in the list and on the base station's page.

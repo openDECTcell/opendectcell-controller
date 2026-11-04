@@ -374,8 +374,11 @@ func (s *Store) Enroll(ctx context.Context, req wire.EnrollRequestMsg, addr stri
 		if auto {
 			approvedAt = &now
 		}
-		err = tx.QueryRow(ctx, `INSERT INTO cell (name, state, enrolled_by, enrolled_at, approved_at, software_version, location)
-			VALUES ($1, $2, $3, $4, $5, $6, '') RETURNING id`, name, state, by, now, approvedAt, req.SWVersion).Scan(&cellID)
+		// The name is the owner's own unless it is the box's default hostname, which the controller may number ("OpenWrt-2")
+		// when it is taken. Only that default is ever replaced by a name made of the model.
+		custom := !strings.EqualFold(strings.TrimSpace(req.NameHint), DefaultHostname)
+		err = tx.QueryRow(ctx, `INSERT INTO cell (name, state, enrolled_by, enrolled_at, approved_at, software_version, location, name_custom)
+			VALUES ($1, $2, $3, $4, $5, $6, '', $7) RETURNING id`, name, state, by, now, approvedAt, req.SWVersion, custom).Scan(&cellID)
 		if err != nil {
 			return err
 		}
