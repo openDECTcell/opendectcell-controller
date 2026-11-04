@@ -154,6 +154,7 @@
           pts.push([st.lat, st.lon]);
         });
         if (pts.length) { pm.fitBounds(pts, { maxZoom: 12, padding: [30, 30] }); }
+        else { document.getElementById("public-map-empty").hidden = false; }
       })
       .catch(function () { /* the map stays empty */ });
   }

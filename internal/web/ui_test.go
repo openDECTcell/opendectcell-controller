@@ -549,7 +549,15 @@ func TestPublicMapFeed(t *testing.T) {
 			t.Errorf("feed mentions %q: %s", leak, body)
 		}
 	}
-	if resp, page := e.get(t, anon, "/map"); resp.StatusCode != http.StatusOK || !strings.Contains(page, `id="public-map"`) {
+	resp, page := e.get(t, anon, "/map")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(page, `id="public-map"`) {
 		t.Errorf("public map page: %d", resp.StatusCode)
+	}
+	// the page can say that nothing is shared, and without tiles points an administrator to the setting (a visitor to nothing)
+	if !strings.Contains(page, `id="public-map-empty"`) || strings.Contains(page, "Set a tile server") {
+		t.Errorf("the public map has no empty-state text, or sends a visitor to the settings: %s", page)
+	}
+	if _, apage := e.get(t, e.adminBrowser(t), "/map"); !strings.Contains(apage, "Set a tile server under") {
+		t.Errorf("an administrator is not pointed to the tile setting: %s", apage)
 	}
 }
