@@ -186,7 +186,7 @@ What differs from the proposal above, and why:
 
 ## Before the default changes: the soak (plan, 2026-11-03, audit CTRL-SEC-03)
 
-*Started on the Raspberry Pi test ground on 2026-11-04 at 08:49 CET with two real cells and the crash injection, without calls (no SIP peer or handset
+*Started on the Raspberry Pi test ground on 2026-11-04 at 09:03 CET with two real cells and the crash injection, without calls (no SIP peer or handset
 is automated there): see [../test-ground.md](../test-ground.md), "The soak". The result goes into the worklog.*
 
 The default stays `OPENDECTCELL_CELLS_STACK_WORKERS=0` until this has run; the controller now logs a warning at start when the stacks

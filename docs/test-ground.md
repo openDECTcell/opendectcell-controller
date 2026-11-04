@@ -80,7 +80,7 @@ Whoever has root on the Pi has the master key, the database and every key in it:
 Point the 7520 and the 7412 at this controller by enrolling them as above: on the LAN they resolve the same name and connect over IPv6 as well
 (the controller listens on both families). The soak plan in [adr/0003-stack-isolation.md](adr/0003-stack-isolation.md) runs here.
 
-## The soak (started 2026-11-04 08:49 CET)
+## The soak (started 2026-11-04 09:03 CET, after the last deploy)
 
 The 72 hour run of [ADR 0003](adr/0003-stack-isolation.md) (audit finding SEC-03) runs here: the controller with **4 worker processes**, two real cells
 (the lab FRITZ!Box 7520, enrolled to this controller on 2026-11-04 after giving it an IPv6 address on its LAN, and the 7412) and whatever else connects.
