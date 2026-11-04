@@ -31,6 +31,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
@@ -75,6 +76,7 @@ type Server struct {
 	CellLink       CellLink
 	SIPAccounts    *sipaccount.Store // nil: no SIP pages
 	Contacts       *contacts.Store   // nil: no contact API
+	Books          *carddav.Store    // nil: no address books
 	SIP            SIPStatus
 	Registrations  *regwin.Registry // nil: no registration API
 	// HandsetChanged, if set, is told when a handset's name or device profile

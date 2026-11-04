@@ -51,6 +51,9 @@ func TestExportAndEraseAccount(t *testing.T) {
 	e.store.Pool.Exec(ctx, "INSERT INTO call_log (handset_id, owner_user_id, direction, remote_party, started_at) VALUES ($1, $2, 'out', '0409999999', now())", theirs, aid)
 	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state, enrolled_by, location, latitude, longitude) VALUES ('Hall', 'active', $1, 'Workshop', 52.1, 9.6) RETURNING id", uid).Scan(&hall)
 	e.store.Pool.Exec(ctx, "INSERT INTO audit_log (actor_user_id, actor_name, action, object_type, remote_addr) VALUES ($1, 'user', 'something.done', 'thing', '10.1.2.3')", uid)
+	var book uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO addressbook (owner_user_id, label, url, username, password_enc) VALUES ($1, 'MyCloud', 'https://c.example.org/dav/', 'anna', '\\x0102') RETURNING id", uid).Scan(&book)
+	e.store.Pool.Exec(ctx, "INSERT INTO contact (owner_user_id, last_name, first_name, addressbook_id, remote_href) VALUES ($1, 'SyncedPerson', 'X', $2, '/x')", uid, book)
 	u := e.userBrowser(t)
 
 	// the export holds the user's things, not the secrets and not other users' things
@@ -58,12 +61,12 @@ func TestExportAndEraseAccount(t *testing.T) {
 	if r.StatusCode != http.StatusOK || !strings.Contains(r.Header.Get("Content-Disposition"), "attachment") {
 		t.Fatalf("export: %d %v", r.StatusCode, r.Header)
 	}
-	for _, want := range []string{"Kitchen", "HomeLine", "Meyer", "0301234567", "Hall", "Workshop", "something.done"} {
+	for _, want := range []string{"Kitchen", "HomeLine", "Meyer", "0301234567", "Hall", "Workshop", "something.done", "MyCloud", "https://c.example.org/dav/"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the export lacks %q", want)
 		}
 	}
-	for _, not := range []string{"AdminPhone", "0409999999", "password_hash", "uak", "secret_enc"} {
+	for _, not := range []string{"AdminPhone", "0409999999", "password_hash", "uak", "secret_enc", "password_enc", "SyncedPerson"} {
 		if strings.Contains(body, not) {
 			t.Errorf("the export holds %q", not)
 		}
@@ -97,6 +100,9 @@ func TestExportAndEraseAccount(t *testing.T) {
 	if count("SELECT count(*) FROM app_user WHERE id = $1", uid) != 0 || count("SELECT count(*) FROM handset WHERE owner_user_id = $1", uid) != 0 ||
 		count("SELECT count(*) FROM sip_account WHERE owner_user_id = $1", uid) != 0 || count("SELECT count(*) FROM contact WHERE owner_user_id = $1", uid) != 0 {
 		t.Error("the account or what it owned is still there")
+	}
+	if count("SELECT count(*) FROM addressbook WHERE owner_user_id = $1", uid) != 0 || count("SELECT count(*) FROM contact WHERE addressbook_id = $1", book) != 0 {
+		t.Error("the address book or its contacts survived the erasure")
 	}
 	if count("SELECT count(*) FROM call_log WHERE remote_party = '0301234567'") != 0 {
 		t.Error("the user's call history is still there")

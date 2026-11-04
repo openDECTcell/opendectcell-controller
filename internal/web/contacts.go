@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
 )
 
@@ -20,6 +21,7 @@ func (s *Server) contactPages() {
 	s.mux.Handle("POST /contacts", s.requireUser(s.contactAdd))
 	s.mux.Handle("POST /contacts/{id}/delete", s.requireUser(s.contactRemove))
 	s.contactExchangeRoutes()
+	s.addressBookRoutes()
 }
 
 type contactsData struct {
@@ -28,6 +30,9 @@ type contactsData struct {
 	Form             contacts.Contact
 	SharedChecked    bool
 	Import           *importResult
+	Books            []*carddav.Book
+	BookErrors       carddav.ValidationError
+	BookForm         *carddav.Input
 }
 
 func (s *Server) renderContacts(w http.ResponseWriter, r *http.Request, u *auth.User, status int, d contactsData, p page) {
@@ -41,6 +46,12 @@ func (s *Server) renderContacts(w http.ResponseWriter, r *http.Request, u *auth.
 			d.Shared = append(d.Shared, c)
 		} else {
 			d.Personal = append(d.Personal, c)
+		}
+	}
+	if s.Books != nil {
+		if d.Books, err = s.Books.List(r.Context(), u); err != nil {
+			s.internalError(w, r, err)
+			return
 		}
 	}
 	p.Title, p.User, p.Data = "Contacts", u, d

@@ -48,6 +48,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/bridge"
 	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
+	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
 	"github.com/openDECTcell/opendectcell-controller/internal/cell"
 	"github.com/openDECTcell/opendectcell-controller/internal/config"
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
@@ -388,6 +389,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	// The contacts: the web pages' store, and the phonebook of the handsets; a change of either
 	// gives the handsets a new Contact List (set below, once the DECT core exists).
 	contactStore := &contacts.Store{Pool: pool}
+	// the address books users link (CardDAV), copied into contacts by a sync that runs below
+	books := &carddav.Store{Pool: pool, Client: &carddav.Client{AllowPrivate: cfg.CardDAV.AllowPrivate}}
 	// The calls between the handsets and SIP (internal/bridge): the SIP side
 	// is set below, once it exists.
 	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log},
@@ -428,6 +431,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		calls.CallLists = dect
 		dect.MWIFor = calls.MWIFor
 		dect.Contacts = phonebook{contactStore}
+		books.OnChange = func(owner uuid.UUID) { dect.ContactsChanged(owner) }
 		contactStore.OnChange = func(owner *uuid.UUID) {
 			if owner == nil {
 				dect.ContactsChanged(uuid.Nil) // a shared contact: everybody's list
@@ -486,12 +490,13 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	store := authStore(cfg, pool)
 	store.EveryoneMayEnroll = everyoneMayEnroll
 	store.Keyring = kr
+	books.Keyring = kr
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
 		Log: log, Version: buildVersion(), OIDCName: cfg.Auth.OIDC.ProviderName,
 		Cells: cells, CellLink: link, Orgs: orgs,
-		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: contactStore,
+		SIPAccounts: sipAccts, SIP: sipMgr, Contacts: contactStore, Books: books,
 		Registrations: windows,
 		HandsetChanged: func(id uuid.UUID) {
 			if dectCore != nil {
@@ -523,6 +528,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	go srv.RunLogExpiry(ctx)
 	go srv.RunCellAlerts(ctx)
 	go srv.RunMissedCallMails(ctx)
+	go books.Run(ctx, log.Warn)
 	go retention.Run(ctx, pool, instance, log)
 	if cfg.Auth.OIDC.Enabled() {
 		srv.OIDC = &auth.OIDC{Store: store, Config: cfg.Auth.OIDC,

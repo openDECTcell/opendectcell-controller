@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,9 @@ type Contact struct {
 	LastName  string     `json:"last_name"`
 	FirstName string     `json:"first_name"`
 	Numbers   []Number   `json:"numbers"`
+	// BookID is the address book (CardDAV) a contact was copied from; such a contact belongs to the book: it is
+	// changed only by the sync.
+	BookID    *uuid.UUID `json:"book_id,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 }
@@ -150,7 +154,7 @@ func canWrite(u *auth.User, owner *uuid.UUID) bool {
 
 // load fills in numbers for contacts read by q.
 func (s *Store) load(ctx context.Context, q string, args ...any) ([]*Contact, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT c.id, c.owner_user_id, c.last_name, c.first_name, c.created_at, c.updated_at,
+	rows, err := s.Pool.Query(ctx, `SELECT c.id, c.owner_user_id, c.last_name, c.first_name, c.addressbook_id, c.created_at, c.updated_at,
 		coalesce(json_agg(json_build_object('number', n.number, 'kind', n.kind, 'is_default', n.is_default) ORDER BY n.position)
 		         FILTER (WHERE n.number IS NOT NULL), '[]')
 		FROM contact c LEFT JOIN contact_number n ON n.contact_id = c.id WHERE `+q+`
@@ -162,7 +166,7 @@ func (s *Store) load(ctx context.Context, q string, args ...any) ([]*Contact, er
 	var out []*Contact
 	for rows.Next() {
 		var c Contact
-		if err := rows.Scan(&c.ID, &c.OwnerID, &c.LastName, &c.FirstName, &c.CreatedAt, &c.UpdatedAt, &c.Numbers); err != nil {
+		if err := rows.Scan(&c.ID, &c.OwnerID, &c.LastName, &c.FirstName, &c.BookID, &c.CreatedAt, &c.UpdatedAt, &c.Numbers); err != nil {
 			return nil, err
 		}
 		out = append(out, &c)
@@ -189,11 +193,11 @@ func (s *Store) List(ctx context.Context, u *auth.User, scope, owner string) ([]
 	}
 	switch scope {
 	case "personal":
-		return s.load(ctx, "c.owner_user_id = $1", me)
+		return s.load(ctx, "c.owner_user_id = $1 AND c.addressbook_id IS NULL", me)
 	case "shared":
 		return s.load(ctx, "c.owner_user_id IS NULL")
 	case "":
-		return s.load(ctx, "(c.owner_user_id = $1 OR c.owner_user_id IS NULL)", me)
+		return s.load(ctx, "((c.owner_user_id = $1 AND c.addressbook_id IS NULL) OR c.owner_user_id IS NULL)", me)
 	}
 	return nil, ValidationError{"scope": "personal or shared"}
 }
@@ -250,7 +254,7 @@ func (s *Store) Create(ctx context.Context, u *auth.User, c Contact, setOwner bo
 		return nil, err
 	}
 	var held int
-	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM contact WHERE owner_user_id IS NOT DISTINCT FROM $1", owner).Scan(&held); err != nil {
+	if err := s.Pool.QueryRow(ctx, "SELECT count(*) FROM contact WHERE owner_user_id IS NOT DISTINCT FROM $1 AND addressbook_id IS NULL", owner).Scan(&held); err != nil {
 		return nil, err
 	}
 	if held >= MaxContactsPerOwner {
@@ -285,6 +289,9 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id int64, c Contact) (
 	if !canWrite(u, old.OwnerID) {
 		return nil, auth.ErrForbidden
 	}
+	if old.BookID != nil {
+		return nil, ErrReadOnly
+	}
 	if err := validate(&c); err != nil {
 		return nil, err
 	}
@@ -314,6 +321,9 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 	if !canWrite(u, old.OwnerID) {
 		return auth.ErrForbidden
 	}
+	if old.BookID != nil {
+		return ErrReadOnly
+	}
 	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "DELETE FROM contact WHERE id = $1", id); err != nil {
 			return err
@@ -329,8 +339,12 @@ func (s *Store) Delete(ctx context.Context, u *auth.User, id int64) error {
 
 // handset views (what the DECT side will serve)
 
-// ForHandset returns the contacts a handset reads: its owner's and the
-// shared ones.
+// MaxPerHandset is how many contacts a handset's phonebook holds: the list crosses to the cell in one message.
+const MaxPerHandset = 500
+
+// ForHandset returns the contacts a handset reads: its owner's own, the shared ones, and those of the address
+// books the owner ticked for this handset. When that is more than MaxPerHandset, the owner's own come first, then
+// the shared ones, then the books' (in the order of their names inside each group).
 func (s *Store) ForHandset(ctx context.Context, handset uuid.UUID) ([]*Contact, error) {
 	var owner uuid.UUID
 	if err := s.Pool.QueryRow(ctx, "SELECT owner_user_id FROM handset WHERE id = $1", handset).Scan(&owner); errors.Is(err, pgx.ErrNoRows) {
@@ -338,7 +352,22 @@ func (s *Store) ForHandset(ctx context.Context, handset uuid.UUID) ([]*Contact, 
 	} else if err != nil {
 		return nil, err
 	}
-	return s.load(ctx, "(c.owner_user_id = $1 OR c.owner_user_id IS NULL)", owner)
+	all, err := s.load(ctx, `(c.owner_user_id = $1 OR c.owner_user_id IS NULL)
+		AND (c.addressbook_id IS NULL OR c.addressbook_id IN (SELECT addressbook_id FROM handset_addressbook WHERE handset_id = $2))`, owner, handset)
+	if err != nil || len(all) <= MaxPerHandset {
+		return all, err
+	}
+	rank := func(c *Contact) int {
+		switch {
+		case c.BookID != nil:
+			return 2
+		case c.OwnerID == nil:
+			return 1
+		}
+		return 0
+	}
+	sort.SliceStable(all, func(i, j int) bool { return rank(all[i]) < rank(all[j]) })
+	return all[:MaxPerHandset], nil
 }
 
 // SaveFromHandset stores a contact edited on a handset in its owner's
@@ -363,7 +392,7 @@ func (s *Store) SaveFromHandset(ctx context.Context, handset uuid.UUID, id int64
 	if err != nil {
 		return nil, err
 	}
-	if cur.OwnerID == nil || *cur.OwnerID != owner {
+	if cur.OwnerID == nil || *cur.OwnerID != owner || cur.BookID != nil {
 		// a handset edits only its owner's own list: not the shared contacts, and not another user's even
 		// when the handset's owner is an admin, who may see every contact (security review F-16)
 		return nil, ErrReadOnly

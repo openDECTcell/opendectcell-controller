@@ -283,8 +283,8 @@ func (s *Store) deleteFromHandset(ctx context.Context, handset uuid.UUID, id int
 	if err != nil {
 		return err
 	}
-	if cur.OwnerID == nil || *cur.OwnerID != owner {
-		return ErrReadOnly // the shared contacts, and other users', are read-only from a handset
+	if cur.OwnerID == nil || *cur.OwnerID != owner || cur.BookID != nil {
+		return ErrReadOnly // the shared contacts, other users' and an address book's are read-only from a handset
 	}
 	return s.Delete(ctx, u, id)
 }

@@ -1,0 +1,46 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "address_book.html"}}{{template "head" .}}
+{{with .Data}}
+<p><a href="/contacts">← Contacts</a></p>
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{.Book.Label}}</h3></div>
+      <form method="post" action="/address-books/{{.Book.ID}}"><div class="card-body">
+        <div class="mb-3"><label class="form-label" for="label">Name</label>
+          <input class="form-control" id="label" name="label" maxlength="64" value="{{if .Form}}{{.Form.Label}}{{else}}{{.Book.Label}}{{end}}" required>{{with fieldErr .Errors "label"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+        <div class="mb-3"><label class="form-label" for="url">Address</label>
+          <input class="form-control" id="url" name="url" type="url" maxlength="512" value="{{if .Form}}{{.Form.URL}}{{else}}{{.Book.URL}}{{end}}" required>
+          <div class="form-hint">The address of the address book itself, https only, without a user name in it. For Nextcloud: <code>https://host/remote.php/dav/addressbooks/users/NAME/contacts/</code>.</div>{{with fieldErr .Errors "url"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+        <div class="row">
+          <div class="col-md-6 mb-3"><label class="form-label" for="username">User</label>
+            <input class="form-control" id="username" name="username" maxlength="128" autocomplete="off" value="{{if .Form}}{{.Form.Username}}{{else}}{{.Book.Username}}{{end}}"></div>
+          <div class="col-md-6 mb-3"><label class="form-label" for="password">Password</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" placeholder="{{if .Book.HasPassword}}unchanged{{end}}">
+            <div class="form-hint">Kept encrypted. Leave it empty to keep the one stored. For Nextcloud use an app password.</div></div>
+        </div>
+        <div class="mb-3"><label class="form-label" for="interval">Read it every</label>
+          <select class="form-select" id="interval" name="interval">{{range $m := list "15" "30" "60" "180" "720" "1440"}}<option value="{{$m}}" {{if eq (printf "%d" $.Data.Book.IntervalMin) $m}}selected{{end}}>{{$m}} minutes</option>{{end}}</select>{{with fieldErr .Errors "interval"}}<p class="fielderr">{{.}}</p>{{end}}</div>
+        <label class="form-check mb-0"><input class="form-check-input" type="checkbox" name="enabled" {{if .Book.Enabled}}checked{{end}}><span class="form-check-label">Keep it up to date</span></label>
+      </div><div class="card-footer text-end"><button type="submit" class="btn btn-primary">Save and read it now</button></div></form>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Status</h3></div>
+      <div class="card-body"><dl class="kv mb-3">
+        <dt>Contacts</dt><dd>{{.Book.Count}}</dd>
+        <dt>Last read</dt><dd>{{with .Book.LastSyncAt}}{{fmtTime .}}{{else}}never{{end}}</dd>
+        <dt>Last success</dt><dd>{{with .Book.LastOKAt}}{{fmtTime .}}{{else}}never{{end}}</dd>
+        {{with .Book.LastError}}<dt>Problem</dt><dd class="text-danger">{{.}}</dd>{{end}}
+        {{with .Book.LastNote}}<dt>Note</dt><dd>{{.}}</dd>{{end}}
+      </dl>
+      <p class="text-secondary small">The contacts are copied here and only read: nothing is written to the server, and they cannot be changed on this controller or on a handset. A handset shows the books you tick on its page, up to 500 contacts in all (your own first, then the shared ones, then the books').</p>
+      <form method="post" action="/address-books/{{.Book.ID}}/sync" class="d-inline"><button type="submit" class="btn btn-outline-primary btn-sm">Read it now</button></form>
+      <form method="post" action="/address-books/{{.Book.ID}}/delete" class="d-inline" data-confirm="Unlink this address book? Its contacts disappear from here and from the handsets; the server is not touched."><button type="submit" class="btn btn-outline-danger btn-sm">Unlink</button></form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

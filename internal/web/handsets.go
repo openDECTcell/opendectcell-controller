@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 )
@@ -123,6 +124,8 @@ type handsetPage struct {
 	Moves    []handset.Move
 	Makers   []profileMaker
 	Calls    handset.CallSummary
+	Books    []*carddav.Book
+	Ticked   map[uuid.UUID]bool // the address books this handset shows
 }
 
 func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, error) {
@@ -133,6 +136,16 @@ func (s *Server) handsetView(r *http.Request, h *handset.Handset) (handsetPage, 
 	}
 	if err == nil {
 		d.Calls, err = s.Handsets.CallSummary(r.Context(), h.ID)
+	}
+	if err == nil && s.Books != nil {
+		d.Ticked = map[uuid.UUID]bool{}
+		var ticked []uuid.UUID
+		if d.Books, err = s.Books.List(r.Context(), auth.UserFrom(r.Context())); err == nil {
+			ticked, err = s.Books.HandsetBooks(r.Context(), h.ID)
+		}
+		for _, id := range ticked {
+			d.Ticked[id] = true
+		}
 	}
 	for i := range h.Lines {
 		d.Line[h.Lines[i].Line] = &h.Lines[i]
@@ -214,6 +227,14 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 		}
 		up.Lines[n] = acct
 	}
+	if r.PostFormValue("books_present") != "" && s.Books != nil {
+		up.BooksSet = true
+		for _, v := range r.PostForm["book"] {
+			if id, err := uuid.Parse(v); err == nil {
+				up.Books = append(up.Books, id)
+			}
+		}
+	}
 	if v := r.PostFormValue("default_line"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -235,6 +256,9 @@ func (s *Server) handsetSave(w http.ResponseWriter, r *http.Request, u *auth.Use
 	if err := s.Handsets.Update(r.Context(), u, h.ID, up); err != nil {
 		s.handsetFail(w, r, u, h, err)
 		return
+	}
+	if up.BooksSet && s.Contacts != nil && s.Contacts.OnChange != nil {
+		s.Contacts.OnChange(&h.OwnerID) // the handset's phonebook changes with its books
 	}
 	if s.HandsetChanged != nil && (up.Name != h.Name || (up.Profile != nil && *up.Profile != h.Profile)) {
 		s.HandsetChanged(h.ID)

@@ -20,6 +20,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
 )
 
 // ErrNotFound means no such handset, or one the user may not see.
@@ -296,6 +297,11 @@ type Update struct {
 	// a line) in the same transaction, before DefaultLine is checked; a line
 	// left out stays as it is, and nil leaves both.
 	Lines map[int]uuid.UUID
+	// Books, if set, are the address books the handset shows, exactly these (an empty, non-nil list: none); nil
+	// leaves them as they are.
+	Books []uuid.UUID
+	// BooksSet says Books was given (a form that has the section), also when it is empty.
+	BooksSet bool
 }
 
 // Update changes the name, default line and ring policy. A default line
@@ -328,6 +334,11 @@ func (s *Store) Update(ctx context.Context, u *auth.User, id uuid.UUID, up Updat
 				if err := setLine(ctx, tx, owner, id, line, account); err != nil {
 					return err
 				}
+			}
+		}
+		if up.BooksSet {
+			if err := carddav.SetHandsetBooks(ctx, tx, owner, id, up.Books); err != nil {
+				return err
 			}
 		}
 		if up.DefaultLine != nil {

@@ -33,6 +33,16 @@ type Config struct {
 	Cells    Cells    `yaml:"cells"`
 	SIP      SIP      `yaml:"sip"`
 	SMTP     SMTP     `yaml:"smtp"`
+	CardDAV  CardDAV  `yaml:"carddav"`
+}
+
+// CardDAV is how the controller fetches the address books its users link.
+type CardDAV struct {
+	// AllowPrivate lets the controller connect to addresses on private networks (10/8, 172.16/12, 192.168/16,
+	// fc00::/7), for an address book on the operator's own network. Off by default: on a controller that other
+	// people use, a user could otherwise make it probe the network around it. Loopback and link-local
+	// addresses are never allowed.
+	AllowPrivate bool `yaml:"allow_private"`
 }
 
 // SMTP is the outgoing mail server, for notifications. Without a host the
@@ -350,6 +360,7 @@ func vars(c *Config) []envVar {
 		{"SIP_TCP_LISTEN", false, str(&c.SIP.TCPListen)},
 		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},
 		{"SIP_MEDIA_IP", false, str(&c.SIP.MediaIP)},
+		{"CARDDAV_ALLOW_PRIVATE", false, boolean(&c.CardDAV.AllowPrivate)},
 		{"SMTP_HOST", false, str(&c.SMTP.Host)},
 		{"SMTP_PORT", false, str(&c.SMTP.Port)},
 		{"SMTP_USER", false, str(&c.SMTP.User)},

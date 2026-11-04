@@ -40,7 +40,9 @@ func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, er
 		{"contacts", `SELECT c.last_name, c.first_name, c.created_at,
 				coalesce((SELECT json_agg(json_build_object('number', n.number, 'kind', n.kind, 'default', n.is_default) ORDER BY n.position)
 				          FROM contact_number n WHERE n.contact_id = c.id), '[]') AS numbers
-			FROM contact c WHERE c.owner_user_id = $1 ORDER BY lower(c.last_name), lower(c.first_name)`},
+			FROM contact c WHERE c.owner_user_id = $1 AND c.addressbook_id IS NULL ORDER BY lower(c.last_name), lower(c.first_name)`},
+		{"address_books", `SELECT label, url, username, enabled, interval_min, last_ok_at, contact_count, created_at FROM addressbook
+			WHERE owner_user_id = $1 ORDER BY lower(label)`},
 		{"calls", `SELECT started_at, answered_at, ended_at, direction, remote_party, line, end_reason FROM call_log
 			WHERE owner_user_id = $1 ORDER BY started_at DESC LIMIT ` + itoa(maxRows)},
 		{"base_stations", `SELECT name, location, state, box_model, latitude, longitude, enrolled_at, disclosed_to_admins
@@ -50,7 +52,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, er
 			FROM organization_member m JOIN organization o ON o.id = m.org_id WHERE m.user_id = $1 ORDER BY lower(o.name)`},
 		{"audit_entries_by_you", `SELECT at, action, object_type FROM audit_log WHERE actor_user_id = $1 ORDER BY id DESC LIMIT ` + itoa(maxRows)},
 	}
-	out := map[string]any{"exported_at": time.Now().UTC(), "note": "Personal data held about this account. Secrets (password hash, handset keys, VoIP passwords, two-factor secret) are not included."}
+	out := map[string]any{"exported_at": time.Now().UTC(), "note": "Personal data held about this account. Secrets (password hash, handset keys, VoIP and address book passwords, two-factor secret) are not included."}
 	for _, s := range sections {
 		rows, err := pool.Query(ctx, "SELECT coalesce(json_agg(row_to_json(t)), '[]') FROM ("+s.query+") t", user)
 		if err != nil {

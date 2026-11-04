@@ -76,6 +76,21 @@ on the handset is ignored. A handset shows three numbers per contact: if a conta
 the web interface reaches the handset the next time it connects to a cell or within a moment if it is on one. **(Built, not yet
 tried on a handset.)** **Call lists:** the missed, received and dialled calls of the lines a handset has (and what it dialled itself) are in the handset's lists, newest first, 40 per list, and follow it from cell to cell. They are read-only: deleting an entry on the handset is undone at the next update. **(Built, not yet tried on a handset.)**
 
+### Address books from your own server (CardDAV)
+
+**Phones > Contacts > Address books** links an address book from a CardDAV server (Nextcloud, Radicale, iCloud, Google ...). The
+controller **reads** it every 15 minutes to a day (your choice, and "Read it now") and copies the contacts here; nothing is ever
+written to the server, and the copies cannot be changed here or on a handset. You can link several, each with its own server,
+user and password (the password is stored encrypted).
+
+On a **handset's page**, tick which address books that handset shows, the way you choose its VoIP lines. A handset's phonebook
+holds up to 500 contacts: your own come first, then the shared ones, then the address books'. A book is read up to its first
+500 contacts. Contacts of a book you unlink disappear from the handsets at once.
+
+The address must be `https://` and must name the address book itself (for Nextcloud:
+`https://host/remote.php/dav/addressbooks/users/NAME/contacts/`; use an app password). The controller does not connect to addresses
+on its own machine or network unless the operator allows it (`OPENDECTCELL_CARDDAV_ALLOW_PRIVATE`, see the configuration).
+
 ## Names and numbers on the display
 
 The caller's number and, if the SIP side provides it, the name are shown on the handset. CAT-iq handsets show
