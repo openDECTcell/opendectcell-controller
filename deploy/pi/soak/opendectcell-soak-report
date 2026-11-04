@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Summary of the soak: duration, restarts, memory trend, cells up, worker events and the injections. Run it any time.
+IN=/var/lib/opendectcell-soak/samples.csv
+[ -s "$IN" ] || { echo "no samples yet"; exit 1; }
+awk -F, 'NR > 1 {
+	n++; if (n == 1) { first = $1; started0 = $2; restarts0 = $3; rss0 = $4 }
+	last = $1; started = $2; restarts = $3
+	if ($4 > maxrss) maxrss = $4; if ($4 > 0) lastrss = $4
+	if ($8 > maxw) maxw = $8; if (minw == "" || $6 < minw) minw = $6
+	if (minup == "" || $9 < minup) minup = $9
+	if ($2 != prev && prev != "") changes++; prev = $2
+	ev += $10
+	if ($9 < 1) down++
+} END {
+	printf "samples: %d, from %s to %s\n", n, first, last
+	printf "controller container restarts: %d (start time changed %d times; docker restart count %s -> %s)\n", changes + 0, changes + 0, restarts0, restarts
+	printf "controller memory: first %s KB, last %s KB, max %s KB\n", rss0, lastrss, maxrss
+	printf "workers: fewest seen %s, largest worker %s KB\n", minw, maxw
+	printf "cells up: fewest %s; samples with no cell up: %d\n", minup, down + 0
+	printf "worker log events (warn/error, starts): %d\n", ev
+}' "$IN"
+if [ -s /var/lib/opendectcell-soak/inject.log ]; then
+	echo "injections:"; grep -c SIGSEGV /var/lib/opendectcell-soak/inject.log | sed 's/^/  SIGSEGV runs: /'
+	grep "NOT BACK" /var/lib/opendectcell-soak/inject.log | sed 's/^/  /'
+fi

@@ -79,3 +79,25 @@ Whoever has root on the Pi has the master key, the database and every key in it:
 
 Point the 7520 and the 7412 at this controller by enrolling them as above: on the LAN they resolve the same name and connect over IPv6 as well
 (the controller listens on both families). The soak plan in [adr/0003-stack-isolation.md](adr/0003-stack-isolation.md) runs here.
+
+## The soak (started 2026-11-04 08:49 CET)
+
+The 72 hour run of [ADR 0003](adr/0003-stack-isolation.md) (audit finding SEC-03) runs here: the controller with **4 worker processes**, two real cells
+(the lab FRITZ!Box 7520, enrolled to this controller on 2026-11-04 after giving it an IPv6 address on its LAN, and the 7412) and whatever else connects.
+
+| What | How |
+|---|---|
+| Samples | `opendectcell-soak-sample.timer`, every minute: one line in `/var/lib/opendectcell-soak/samples.csv` (container start time and restart count, memory and CPU of the controller and the workers, cells up in the last 3 minutes, worker warnings in the log) |
+| Crash injection | `opendectcell-soak-inject.timer`, every 2 hours: `SIGSEGV` to one worker, 20 s later `SIGSTOP` for 10 s to another; it checks that the workers are all back within 70 s and logs to `/var/lib/opendectcell-soak/inject.log` |
+| Report | `sudo opendectcell-soak-report` |
+| Install | `deploy/pi/soak/` (scripts to `/usr/local/sbin`, units to `/etc/systemd/system`, `systemctl enable --now` both timers) |
+| Stop | `sudo systemctl disable --now opendectcell-soak-inject.timer opendectcell-soak-sample.timer` |
+
+**Passes when** (from the ADR): no restart of the controller container, no worker restart that an injection did not cause, every injected crash recovered
+within 70 s, the memory of the controller and the workers flat. **Not part of this run, because they need a SIP peer and a handset:** a call every 30 minutes, a call up while its worker is
+killed, and the load with 100 simulated cells; the arm64 seccomp check from inside a worker. Say so when reporting the result.
+
+The injection drops every cell on the killed worker for up to a minute, so a remote tester's box (the friend's) is disturbed every two hours while it runs.
+The account `soak` (a plain user, may enroll cells; its password is in `/root/soak-user-password` on the Pi) only created the enrolment tokens: delete it
+under **Account > Delete my account and data** when it is not needed.
+

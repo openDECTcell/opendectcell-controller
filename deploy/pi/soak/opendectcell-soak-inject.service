@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Unit]
+Description=Crash injection for the soak (a worker SIGSEGV, another SIGSTOP)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/opendectcell-soak-inject

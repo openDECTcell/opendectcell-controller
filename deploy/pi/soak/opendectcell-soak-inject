@@ -1,0 +1,33 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Crash injection of the soak plan (docs/adr/0003-stack-isolation.md): SIGSEGV to one DECT worker, then SIGSTOP for 10 seconds to
+# another. The controller and the other workers must go on, and the killed worker must be back within 70 seconds. Run every two
+# hours by opendectcell-soak-inject.timer; everything is logged to /var/lib/opendectcell-soak/inject.log. Needs docker and root.
+set -u
+C=${CONTROLLER:-opendectcell-controller-1}
+DIR=/var/lib/opendectcell-soak
+mkdir -p "$DIR"
+LOG=$DIR/inject.log
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >>"$LOG"; }
+workers() { docker top "$C" -eo pid,args 2>/dev/null | awk '/opendectcell-controller cellworker/ {print $1}'; }
+before=$(workers | wc -l)
+[ "$before" -ge 2 ] || { log "skipped: $before workers"; exit 0; }
+a=$(workers | shuf -n1)
+log "SIGSEGV to worker $a ($before workers)"
+kill -SEGV "$a" 2>>"$LOG" || log "kill failed"
+sleep 20
+b=$(workers | grep -vx "$a" | shuf -n1)
+if [ -n "$b" ]; then
+	log "SIGSTOP to worker $b for 10 s"
+	kill -STOP "$b" 2>>"$LOG"
+	sleep 10
+	kill -CONT "$b" 2>>"$LOG"
+	log "SIGCONT to worker $b"
+fi
+i=0
+while [ $i -lt 14 ]; do # up to 70 s after the SIGSEGV
+	sleep 5; i=$((i + 1))
+	[ "$(workers | wc -l)" -ge "$before" ] && break
+done
+after=$(workers | wc -l)
+if [ "$after" -ge "$before" ]; then log "workers back: $after of $before"; else log "WORKERS NOT BACK: $after of $before"; fi

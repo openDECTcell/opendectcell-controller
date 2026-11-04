@@ -1,0 +1,22 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# One line per run in /var/lib/opendectcell-soak/samples.csv: how the controller and its DECT workers are doing (the soak of
+# docs/adr/0003-stack-isolation.md). Run once a minute by opendectcell-soak-sample.timer. Needs docker and root.
+set -u
+C=${CONTROLLER:-opendectcell-controller-1}
+DB=${DATABASE:-opendectcell-db-1}
+DIR=/var/lib/opendectcell-soak
+mkdir -p "$DIR"
+OUT=$DIR/samples.csv
+[ -s "$OUT" ] || echo "time,container_started,restart_count,controller_rss_kb,controller_cpu,workers,workers_rss_kb,worker_max_rss_kb,cells_up,worker_log_events" >"$OUT"
+ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+started=$(docker inspect -f '{{.State.StartedAt}}' "$C" 2>/dev/null || echo none)
+restarts=$(docker inspect -f '{{.RestartCount}}' "$C" 2>/dev/null || echo -1)
+# pid rss cputime args for every process in the container
+top=$(docker top "$C" -eo pid,rss,time,args 2>/dev/null | tail -n +2)
+ctl=$(echo "$top" | awk '/opendectcell-controller serve/ {print $2","$3; exit}')
+[ -n "$ctl" ] || ctl=","
+wk=$(echo "$top" | awk '/opendectcell-controller cellworker/ {n++; t+=$2; if ($2>m) m=$2} END {printf "%d,%d,%d", n, t, m}')
+up=$(docker exec "$DB" psql -U opendectcell -d opendectcell -Atc "select count(*) from cell where state = 'active' and last_seen_at > now() - interval '3 minutes'" 2>/dev/null || echo -1)
+ev=$(docker logs --since 70s "$C" 2>&1 | grep -ciE 'level=(WARN|ERROR).*dect-workers|a DECT worker (started|exited|died)' || true)
+echo "$ts,$started,$restarts,$ctl,$wk,$up,$ev" >>"$OUT"

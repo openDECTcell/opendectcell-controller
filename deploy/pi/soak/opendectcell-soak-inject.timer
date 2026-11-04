@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Unit]
+Description=Crash injection for the soak (a worker SIGSEGV, another SIGSTOP)
+
+[Timer]
+OnActiveSec=2h
+OnUnitActiveSec=2h
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
