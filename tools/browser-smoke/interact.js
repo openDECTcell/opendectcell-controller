@@ -32,6 +32,12 @@ const ok = (c, m) => console.log((c ? 'PASS ' : 'FAIL ') + m);
   await ad.goto(base + ben); t = await ad.evaluate(() => document.body.innerText); ok(t.includes('Bens C430') && t.includes('Bens flat'), 'admin sees ben\'s (seeded as disclosed)');
   await ad.goto(base + '/handsets'); t = await ad.evaluate(() => document.body.innerText); ok(!t.includes('Annas A540') && !t.includes('Bens C430'), 'admin\'s own handset list has nobody else\'s handsets');
   await ad.goto(base + '/cells'); t = await ad.evaluate(() => document.body.innerText); ok(t.includes('Annas lab') && t.includes('Bens flat'), 'admin cell list shows all cells'); await ad.screenshot({path: out + '/admin-cells.png', fullPage: true});
+  // sessions: a second browser of anna's is listed and can be ended from the first
+  const a2 = await newPage(b); await login(a2, 'anna');
+  await a.goto(base + '/account/sessions'); await a.screenshot({path: out + '/sessions.png', fullPage: true});
+  let st = await a.evaluate(() => document.body.innerText); ok(st.includes('this one') && (st.match(/Chrome|Headless/g) || []).length >= 2, 'sessions page lists this browser and the other one');
+  await Promise.all([a.waitForNavigation(), a.click('form[action="/account/sessions/end"] button')]);
+  await a2.goto(base + '/account'); ok(a2.url().includes('/login'), 'the ended session is logged out');
   // ben: erase the account
   const be = await newPage(b); await login(be, 'ben'); await be.goto(base + '/account/erase'); await be.type('input[name=password]', 'a long test password'); await be.click('input[name=understand]');
   await Promise.all([be.waitForNavigation(), be.click('button.btn-danger')]); console.log('after erase:', be.url()); await be.screenshot({path: out + '/after-erase.png'});

@@ -1,0 +1,27 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "sessions.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-9">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "device-mobile"}} Where you are logged in</h3></div>
+      <div class="table-responsive"><table class="table card-table">
+        <thead><tr><th>Browser</th><th>Started</th><th>Last used</th><th></th></tr></thead>
+        <tbody>
+        {{range .Sessions}}<tr>
+          <td>{{if .Device}}{{.Device}}{{else}}unknown browser{{end}}{{if .Current}} <span class="badge bg-success-lt">this one</span>{{end}}{{if eq .Method "oidc"}} <span class="text-secondary small">single sign-on</span>{{end}}</td>
+          <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+          <td>{{.LastSeenAt.Format "2006-01-02 15:04"}}</td>
+          <td class="text-end">{{if not .Current}}<form method="post" action="/account/sessions/end" class="d-inline"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="btn btn-sm btn-outline-danger">Log out</button></form>{{end}}</td>
+        </tr>{{end}}
+        </tbody>
+      </table></div>
+      <div class="card-footer d-flex flex-wrap gap-2 align-items-center">
+        <form method="post" action="/account/sessions/end-others" class="d-inline"><button type="submit" class="btn btn-danger">Log out everywhere else</button></form>
+        <span class="text-secondary small">Browsers you told to skip the code for three weeks stay trusted; to ask them again use <a href="/account/2fa">two-factor login</a>.</span>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

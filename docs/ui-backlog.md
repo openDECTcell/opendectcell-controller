@@ -13,7 +13,7 @@ the request) would expect. Built items are in ADR 0006; this is what is left.
 | B3 | Public map and a read-only JSON feed | Sharing switches exist; nothing consumes them | `cell.Public()`; add statistics counts only where `share_stats` — **built 2026-11-01** |
 | B4 | Two-factor login: TOTP, then WebAuthn; recovery codes | Standard for an admin console | admins first — **TOTP and recovery codes built 2026-11-01; WebAuthn and enforcing it for admins are not** |
 | B5 | Personal API tokens (C7 in the roadmap) | Scripts, the map feed | hashed, scoped, shown once |
-| B6 | Sessions list and "log out everywhere"; new-device e-mail | Account hygiene | |
+| B6 | Sessions list and "log out everywhere"; new-device e-mail | Account hygiene | **sessions list and "log out everywhere else" built 2026-11-04** (Account > Where am I logged in; a session keeps a short browser label, no address); the new-device e-mail is not |
 | B7 | E-mail verification for self-registration | The address is not verified today | needs SMTP; approval is the stopgap — **built 2026-11-01 (mandatory once SMTP is configured)** |
 | B8 | Password reset by e-mail | Self-registered users have no other way | needs SMTP, B7 — **built 2026-11-01** |
 | B9 | Data export (JSON) and account deletion with a grace period | GDPR Art. 20 and 17 | handsets must be moved or removed first |

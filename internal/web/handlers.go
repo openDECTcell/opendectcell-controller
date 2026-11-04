@@ -201,7 +201,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *auth.Us
 	if old := sessionFrom(r.Context()); old != nil {
 		_ = s.Auth.DeleteSession(r.Context(), old.TokenHash) // the new token is what matters
 	}
-	tok, err := s.Auth.CreateSession(r.Context(), u, method)
+	tok, err := s.Auth.CreateSessionOn(r.Context(), u, method, deviceLabel(r.UserAgent()))
 	if err != nil {
 		s.internalError(w, r, err)
 		return

@@ -199,6 +199,9 @@ func (s *Server) routes() {
 	s.accountDataRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
+	s.mux.Handle("GET /account/sessions", s.requireUser(s.sessionsPage))
+	s.mux.Handle("POST /account/sessions/end", s.requireUser(s.sessionEnd))
+	s.mux.Handle("POST /account/sessions/end-others", s.requireUser(s.sessionEndOthers))
 
 	s.mux.Handle("GET /admin/users", s.requireAdmin(s.adminUsers))
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
