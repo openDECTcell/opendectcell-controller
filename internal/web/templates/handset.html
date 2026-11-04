@@ -63,6 +63,7 @@
         <dt>Signal</dt><dd>{{with .H.SignalDBm}}{{.}} dBm{{with $.Data.H.SignalAt}} <span class="text-secondary small">measured {{fmtTime .}}</span>{{end}}{{else}}<span class="text-secondary">not measured yet: the base reads it while the handset is connected</span>{{end}}</dd>
         {{with .H.Capabilities}}
         <dt>Standard</dt><dd>{{index . "standard"}}</dd>
+        <dt>Wideband</dt><dd>{{if $.Data.H.WidebandClaim}}<span class="text-success">{{icon "check"}} yes</span>{{else}}<span class="text-danger">{{icon "x"}} no</span>{{end}} <span class="text-secondary small">announced by the handset; the call decides what is used</span></dd>
         <dt>Display</dt><dd>{{index . "display"}}</dd>
         <dt>Tones</dt><dd>{{index . "tone"}}</dd>
         {{with index . "profiles"}}<dt>Profiles</dt><dd><code class="kvp">{{.}}</code></dd>{{end}}

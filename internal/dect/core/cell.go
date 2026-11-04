@@ -1339,7 +1339,8 @@ func rfpiText(up cell.CellUp) string {
 }
 
 // capabilityText is what the page shows of a terminal capability (EN 300 175-5
-// 7.7.41): the standard the handset claims, its display and tone capability,
+// 7.7.41): the standard the handset claims, whether it claims wideband speech
+// (either NG-DECT part), its display and tone capability,
 // and the profile indicator octets as it sent them.
 func capabilityText(c stack.Capability) map[string]any {
 	standard := "GAP (no NG-DECT)"
@@ -1357,7 +1358,8 @@ func capabilityText(c stack.Capability) map[string]any {
 		}
 		return fmt.Sprintf("code %d", v)
 	}
-	out := map[string]any{"standard": standard, "display": name(display, c.Display), "tone": name(tone, c.Tone)}
+	out := map[string]any{"standard": standard, "display": name(display, c.Display), "tone": name(tone, c.Tone),
+		"wideband": c.NGPart1 || c.NGPart3}
 	if len(c.Profiles) > 0 {
 		out["profiles"] = hex.EncodeToString(c.Profiles)
 	}

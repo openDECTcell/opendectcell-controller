@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,6 +68,19 @@ type Handset struct {
 	DetachedAt     *time.Time
 	PageFailedAt   *time.Time
 	Presence       Presence
+}
+
+// WidebandClaim says whether the handset announced wideband speech (G.722) in
+// its terminal capability. It is false until the handset has reported, so a
+// page shows it only where Capabilities is set. Records the DECT core stored
+// before it wrote the flag are read from the standard text. It is what the
+// handset claims; a call may still use narrowband.
+func (h Handset) WidebandClaim() bool {
+	if v, ok := h.Capabilities["wideband"].(bool); ok {
+		return v
+	}
+	std, _ := h.Capabilities["standard"].(string)
+	return strings.HasPrefix(std, "NG-DECT")
 }
 
 // IPEI is the handset's IPEI as printed on its label, "EEEEE PPPPPPP C" (EN

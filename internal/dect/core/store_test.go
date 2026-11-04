@@ -661,3 +661,18 @@ func TestStoreTrustKeepsRecordsOffUntrustedCells(t *testing.T) {
 		t.Fatalf("a second clean-up found more: %+v %v", d, err)
 	}
 }
+
+func TestCapabilityTextSaysWideband(t *testing.T) {
+	for _, c := range []struct {
+		caps stack.Capability
+		want bool
+	}{
+		{stack.Capability{}, false},
+		{stack.Capability{NGPart1: true}, true},
+		{stack.Capability{NGPart3: true}, true},
+	} {
+		if got := capabilityText(c.caps)["wideband"]; got != c.want {
+			t.Errorf("%+v: wideband = %v, want %v", c.caps, got, c.want)
+		}
+	}
+}

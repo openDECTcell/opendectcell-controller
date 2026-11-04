@@ -287,3 +287,34 @@ func TestAdminReleasesAHandsetIdentity(t *testing.T) {
 		t.Errorf("audit entry: by %q, owner %q", by, owner)
 	}
 }
+
+func TestHandsetPageShowsWideband(t *testing.T) {
+	e := newEnv(t)
+	var uid uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	var id uuid.UUID
+	if err := e.store.Pool.QueryRow(ctx, "INSERT INTO handset (owner_user_id, ipui, tpui, uak_enc, display_name) VALUES ($1, '\\x07', 7, '\\x', 'Hall') RETURNING id", uid).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	u := e.userBrowser(t)
+	_, body := e.get(t, u, "/handsets/"+id.String())
+	if strings.Contains(body, "<dt>Wideband</dt>") {
+		t.Errorf("a handset that has not reported shows a wideband answer: %s", body)
+	}
+	for _, c := range []struct{ caps, want, not string }{
+		{`{"standard":"NG-DECT Part 1 (wideband)","wideband":true,"display":"x","tone":"y"}`, "text-success", "text-danger"},
+		{`{"standard":"GAP (no NG-DECT)","wideband":false,"display":"x","tone":"y"}`, "text-danger", "text-success"},
+		{`{"standard":"NG-DECT Part 3 (CAT-iq)","display":"x","tone":"y"}`, "text-success", "text-danger"},
+	} {
+		e.store.Pool.Exec(ctx, "UPDATE handset SET capabilities = $2::jsonb WHERE id = $1", id, c.caps)
+		_, body = e.get(t, u, "/handsets/"+id.String())
+		i := strings.Index(body, "<dt>Wideband</dt>")
+		if i < 0 {
+			t.Fatalf("%s: no wideband row: %s", c.caps, body)
+		}
+		row := body[i : i+300]
+		if !strings.Contains(row, c.want) || strings.Contains(row, c.not) {
+			t.Errorf("%s: wrong wideband mark: %s", c.caps, row)
+		}
+	}
+}
