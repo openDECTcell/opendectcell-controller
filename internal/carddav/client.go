@@ -13,13 +13,13 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/contacts"
+	"github.com/openDECTcell/opendectcell-controller/internal/netguard"
 )
 
 // MaxCards is how many cards of one book are used: a handset's phonebook holds about 500 entries.
@@ -55,29 +55,10 @@ type Client struct {
 	HTTP          *http.Client
 }
 
-var errBlocked = errors.New("that address is on this machine or its own network, which the controller does not connect to")
-
 // control is the dialer's last look at an address, after the name has been resolved: it is what stops a name that
 // resolves to a private address, and a redirect to one.
-func (c *Client) control(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
-	ip, err := netip.ParseAddr(host)
-	if err != nil {
-		return err
-	}
-	ip = ip.Unmap()
-	switch {
-	case c.allowLoopback && ip.IsLoopback():
-		return nil
-	case ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast():
-		return errBlocked
-	case ip.IsPrivate() && !c.AllowPrivate:
-		return errBlocked
-	}
-	return nil
+func (c *Client) control(network, address string, rc syscall.RawConn) error {
+	return netguard.Policy{AllowPrivate: c.AllowPrivate, AllowLoopback: c.allowLoopback}.Control(network, address, rc)
 }
 
 func (c *Client) client() *http.Client {

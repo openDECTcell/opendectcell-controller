@@ -18,6 +18,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
+	"github.com/openDECTcell/opendectcell-controller/internal/webhook"
 )
 
 // NotificationDays is how long a notification is kept.
@@ -71,6 +72,12 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, now time
 		return err
 	} else if n := tag.RowsAffected(); n > 0 {
 		log.Info("retention: VoIP registration history deleted", "events", n, "older_than_days", sipevents.KeepDays)
+	}
+	// the log of what the webhooks posted: a week
+	if tag, err := pool.Exec(ctx, "DELETE FROM webhook_delivery WHERE state <> 'pending' AND done_at < $1", now.AddDate(0, 0, -webhook.KeepDays)); err != nil {
+		return err
+	} else if n := tag.RowsAffected(); n > 0 {
+		log.Info("retention: webhook deliveries deleted", "deliveries", n, "older_than_days", webhook.KeepDays)
 	}
 	// notifications are read for a while and then only clutter: fixed, like the registration history
 	if tag, err := pool.Exec(ctx, "DELETE FROM notification WHERE at < $1", now.AddDate(0, 0, -NotificationDays)); err != nil {

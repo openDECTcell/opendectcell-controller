@@ -35,6 +35,15 @@ type Config struct {
 	SMTP     SMTP     `yaml:"smtp"`
 	CardDAV  CardDAV  `yaml:"carddav"`
 	Backup   Backup   `yaml:"backup"`
+	Webhook  Webhook  `yaml:"webhook"`
+}
+
+// Webhook is how the controller posts the events users asked for (internal/webhook).
+type Webhook struct {
+	// AllowPrivate lets webhooks post to addresses on private networks (10/8, 172.16/12, 192.168/16, fc00::/7) and over plain http: for a
+	// Home Assistant or an ntfy on the operator's own network. Off by default: on a controller that other people use, a user could otherwise
+	// make it probe the network around it. Loopback and link-local addresses are never allowed.
+	AllowPrivate bool `yaml:"allow_private"`
 }
 
 // Backup is where the controller finds what the backup service (deploy/backup) writes: the state of the last run and the
@@ -371,6 +380,7 @@ func vars(c *Config) []envVar {
 		{"SIP_MEDIA_IP", false, str(&c.SIP.MediaIP)},
 		{"CARDDAV_ALLOW_PRIVATE", false, boolean(&c.CardDAV.AllowPrivate)},
 		{"BACKUP_DIR", false, str(&c.Backup.Dir)},
+		{"WEBHOOK_ALLOW_PRIVATE", false, boolean(&c.Webhook.AllowPrivate)},
 		{"SMTP_HOST", false, str(&c.SMTP.Host)},
 		{"SMTP_PORT", false, str(&c.SMTP.Port)},
 		{"SMTP_USER", false, str(&c.SMTP.User)},

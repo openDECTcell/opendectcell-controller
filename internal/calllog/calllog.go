@@ -64,6 +64,21 @@ type Store struct {
 	// Log, if set, gets one line per call event at the calls level
 	// (logctl.LevelCalls), with the remote party masked.
 	Log *slog.Logger
+	// Hook, if set, is told after a call was recorded as started or as ended, with the call's id (the webhooks read the row). It runs on
+	// the call's own path and must return at once.
+	Hook func(ctx context.Context, event string, id int64)
+}
+
+// The events of Store.Hook.
+const (
+	EventStarted = "started"
+	EventEnded   = "ended"
+)
+
+func (s *Store) hook(ctx context.Context, event string, id int64) {
+	if s.Hook != nil {
+		s.Hook(ctx, event, id)
+	}
 }
 
 func (s *Store) note(ctx context.Context, msg string, args ...any) {
@@ -85,6 +100,7 @@ func (s *Store) Start(ctx context.Context, c Call) (int64, error) {
 		c.HandsetID, c.OwnerID, c.Line, c.SIPAccountID, c.Direction, c.RemoteParty, c.StartedAt, c.CellIDs).Scan(&id)
 	if err == nil {
 		s.note(ctx, "call started", "call", id, "direction", c.Direction, "remote", logctl.MaskNumber(c.RemoteParty), "line", c.Line, "cells", c.CellIDs)
+		s.hook(ctx, EventStarted, id)
 	}
 	return id, err
 }
@@ -122,6 +138,7 @@ func (s *Store) Ended(ctx context.Context, id int64, e End) error {
 		sip_tls = $6, srtp = $7, quality = $8 WHERE id = $1`, id, e.At, e.Reason, e.SIPCodec, e.CellCodec, e.SIPTLS, e.SRTP, q)
 	if err == nil {
 		s.note(ctx, "call ended", "call", id, "reason", e.Reason, "sip_codec", e.SIPCodec, "cell_codec", e.CellCodec, "srtp", e.SRTP != nil && *e.SRTP)
+		s.hook(ctx, EventEnded, id)
 	}
 	return err
 }

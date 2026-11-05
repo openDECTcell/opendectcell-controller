@@ -63,6 +63,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
+	"github.com/openDECTcell/opendectcell-controller/internal/netguard"
 	"github.com/openDECTcell/opendectcell-controller/internal/org"
 	"github.com/openDECTcell/opendectcell-controller/internal/retention"
 	"github.com/openDECTcell/opendectcell-controller/internal/secret"
@@ -74,6 +75,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 	"github.com/openDECTcell/opendectcell-controller/internal/transfer"
 	"github.com/openDECTcell/opendectcell-controller/internal/web"
+	"github.com/openDECTcell/opendectcell-controller/internal/webhook"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -397,7 +399,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	books := &carddav.Store{Pool: pool, Client: &carddav.Client{AllowPrivate: cfg.CardDAV.AllowPrivate}}
 	// The calls between the handsets and SIP (internal/bridge): the SIP side
 	// is set below, once it exists.
-	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: &calllog.Store{Pool: pool, Log: log}, Names: contactStore,
+	calllogStore := &calllog.Store{Pool: pool, Log: log}
+	calls := &bridge.Manager{Cells: link, Lines: bridge.PGLines{Pool: pool}, CallLog: calllogStore, Names: contactStore,
 		Log: log.With("component", "calls"), MediaIP: cfg.CellMediaIP()}
 	calls.MediaPorts[0], calls.MediaPorts[1] = cfg.Cells.MediaRange()
 	link.Media = calls
@@ -522,6 +525,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
 		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
 		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir, APITokens: &apitoken.Store{Pool: pool},
+		Webhooks: &webhook.Store{Pool: pool, Keyring: kr, Policy: netguard.Policy{AllowPrivate: cfg.Webhook.AllowPrivate}},
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {
@@ -534,6 +538,10 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	go srv.RunLogExpiry(ctx)
 	go srv.RunCellAlerts(ctx)
+	srv.AlertSink = srv.NotificationEvent
+	calllogStore.Hook = srv.CallEvent
+	go (&webhook.Dispatcher{Store: srv.Webhooks, Log: log.With("component", "webhooks")}).Run(ctx)
+	go srv.RunHandsetWebhooks(ctx)
 	go (&alerts.Engine{Pool: pool, Sources: srv.AlertSources(), Log: log.With("component", "alerts"), Sink: srv.AlertSink}).Run(ctx, time.Minute)
 	go (&alerts.MailRun{Pool: pool, Mailer: srv.Mailer, Log: log.With("component", "alerts")}).Run(ctx)
 	go srv.RunMissedCallMails(ctx)

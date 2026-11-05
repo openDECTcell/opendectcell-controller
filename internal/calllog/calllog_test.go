@@ -159,3 +159,46 @@ func TestFiltersAndReadMarks(t *testing.T) {
 		t.Errorf("ben's unread missed call was marked by anna: %d", n)
 	}
 }
+
+// The hook is told after the call is in the log (so it can read the row), once for the start and once for the end, and not when nothing
+// was recorded.
+func TestHookIsToldAfterTheRowIsWritten(t *testing.T) {
+	pool := dbtest.Migrated(t)
+	type seen struct {
+		event  string
+		id     int64
+		exists bool
+		ended  bool
+	}
+	var got []seen
+	s := &calllog.Store{Pool: pool}
+	s.Hook = func(hctx context.Context, event string, id int64) {
+		c, err := s.Get(hctx, id)
+		got = append(got, seen{event, id, err == nil, err == nil && c.EndedAt != nil})
+	}
+	id, err := s.Start(ctx, calllog.Call{Direction: "in", RemoteParty: "+4930123", StartedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Answered(ctx, id, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ended(ctx, id, calllog.End{At: time.Now(), Reason: "normal"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != (seen{calllog.EventStarted, id, true, false}) || got[1] != (seen{calllog.EventEnded, id, true, true}) {
+		t.Fatalf("hook calls: %+v", got)
+	}
+	// ending a call that is not there records nothing, and tells nobody
+	got = nil
+	if err := s.Ended(ctx, 987654, calllog.End{At: time.Now()}); err == nil {
+		t.Fatal("ending an unknown call is not an error")
+	}
+	if len(got) != 0 {
+		t.Errorf("the hook was told of a call that was not recorded: %+v", got)
+	}
+	// without a hook nothing breaks
+	if _, err := (&calllog.Store{Pool: pool}).Start(ctx, calllog.Call{Direction: "out", StartedAt: time.Now()}); err != nil {
+		t.Error(err)
+	}
+}

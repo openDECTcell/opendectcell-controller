@@ -45,6 +45,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 	"github.com/openDECTcell/opendectcell-controller/internal/transfer"
+	"github.com/openDECTcell/opendectcell-controller/internal/webhook"
 )
 
 //go:embed templates/*.html
@@ -83,6 +84,7 @@ type Server struct {
 	Transfer       *transfer.Store   // nil: no setup export and import
 	BackupDir      string            // where the backup service writes (internal/backup); "": no backup page content
 	APITokens      *apitoken.Store   // nil: no personal API tokens
+	Webhooks       *webhook.Store    // nil: no webhooks
 	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).
 	AlertSink     func(user uuid.UUID, n alerts.Notification)
 	SIP           SIPStatus
@@ -214,6 +216,7 @@ func (s *Server) routes() {
 	s.setupRoutes()
 	s.notifyRoutes()
 	s.apiTokenRoutes()
+	s.webhookRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 	s.mux.Handle("GET /account/sessions", s.requireUser(s.sessionsPage))

@@ -25,7 +25,7 @@ var ErrLastAdmin = errors.New("userdata: this is the only administrator; make an
 const maxRows = 20000
 
 // Export returns the user's data as indented JSON. It holds no secrets: no password hash, no handset key, no SIP password, no
-// two-factor secret, no API token (only their names, scopes and dates). It does hold what the user did and had: handsets, VoIP lines (without passwords), contacts, their calls with the
+// two-factor secret, no API token (only their names, scopes and dates), no webhook secret and no webhook address beyond its host. It does hold what the user did and had: handsets, VoIP lines (without passwords), contacts, their calls with the
 // remote numbers, the base stations they enrolled, organizations, and the audit entries made by them.
 func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, error) {
 	sections := []struct{ name, query string }{
@@ -44,6 +44,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, er
 		{"address_books", `SELECT label, url, username, enabled, interval_min, last_ok_at, contact_count, created_at FROM addressbook
 			WHERE owner_user_id = $1 ORDER BY lower(label)`},
 		{"api_tokens", `SELECT name, scopes, created_at, expires_at, last_used_at, last_used_ip, revoked_at FROM api_token WHERE user_id = $1 ORDER BY created_at`},
+		{"webhooks", `SELECT name, regexp_replace(url, '^(https?://[^/]+).*$', '\1') AS address, format, events, enabled, created_at, last_at, last_status FROM webhook WHERE user_id = $1 ORDER BY created_at`},
 		{"calls", `SELECT started_at, answered_at, ended_at, direction, remote_party, line, end_reason FROM call_log
 			WHERE owner_user_id = $1 ORDER BY started_at DESC LIMIT ` + itoa(maxRows)},
 		{"base_stations", `SELECT name, location, state, box_model, latitude, longitude, enrolled_at, disclosed_to_admins

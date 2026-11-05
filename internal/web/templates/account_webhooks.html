@@ -1,0 +1,53 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_webhooks.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-8">
+    {{if .NewSecret}}
+    <div class="card mb-3 border-success"><div class="card-header"><h3 class="card-title">{{icon "key"}} The signing secret of {{.NewName}}</h3></div>
+      <div class="card-body">
+        <p class="mb-2"><strong>Copy it now.</strong> It is shown only this once. Your receiver uses it to check that a post really comes from this controller (see <code>wiki/Webhooks.md</code>); the controller keeps it sealed and cannot show it again. If you lose it, make a new one on the webhook's page.</p>
+        <input class="form-control font-monospace" readonly value="{{.NewSecret}}" aria-label="The signing secret" size="60">
+      </div></div>
+    {{end}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Your webhooks</h3></div>
+      <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Name</th><th>Posts to</th><th>Events</th><th>State</th></tr></thead><tbody>
+        {{range .Hooks}}<tr>
+          <td><a href="/account/webhooks/{{.ID}}"><strong>{{.Name}}</strong></a></td>
+          <td class="font-monospace small">{{.Host}}</td>
+          <td class="small">{{range .Events}}<span class="badge bg-blue-lt me-1">{{.}}</span>{{end}}</td>
+          <td>{{if .Enabled}}<span class="badge bg-green-lt">on</span>{{else}}<span class="badge bg-red-lt">off</span>{{end}} <span class="text-secondary small">{{.LastStatus}}</span></td>
+        </tr>{{else}}<tr><td colspan="4" class="text-secondary">No webhooks yet.</td></tr>{{end}}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Add a webhook</h3></div>
+      <div class="card-body">
+        <p>The controller posts each event you choose to the address you give: signed, and again later if the receiver is not there. Home Assistant, n8n, ntfy and your own scripts can receive them.
+        At most {{.Max}} webhooks. Only <strong>your own</strong> events are sent: your calls, your handsets, your notifications.</p>
+        <form method="post" action="/account/webhooks">
+          <div class="row"><div class="col-md-5 mb-3"><label class="form-label" for="wn">Name</label><input class="form-control" id="wn" name="name" maxlength="64" value="{{.Form.Name}}" required></div>
+            <div class="col-md-7 mb-3"><label class="form-label" for="wu">Address</label><input class="form-control" id="wu" name="url" type="url" maxlength="500" value="{{.Form.URL}}" placeholder="https://example.org/hooks/opendectcell" required>
+              <div class="form-hint">{{if .Insecure}}https:// or, on your own network, http://.{{else}}Starts with https://.{{end}} Not the controller's own machine or network.</div></div></div>
+          <div class="mb-3"><label class="form-label">Tell it when</label>
+            {{range .Events}}<label class="form-check"><input class="form-check-input" type="checkbox" name="event_{{.Name}}" {{if index $.Data.Form.Events .Name}}checked{{end}}><span class="form-check-label"><code>{{.Name}}</code> {{.Title}}</span></label>{{end}}</div>
+          <div class="row"><div class="col-md-4 mb-3"><label class="form-label" for="wf">What it posts</label><select class="form-select" id="wf" name="format"><option value="json" {{if eq .Form.Format "json"}}selected{{end}}>JSON (the event as data)</option><option value="ntfy" {{if eq .Form.Format "ntfy"}}selected{{end}}>A short message (ntfy)</option></select></div>
+            <div class="col-md-8 mb-3"><label class="form-label" for="wa">Authorization header (optional)</label><input class="form-control" id="wa" name="auth" maxlength="300" autocomplete="off" placeholder="Bearer ..."><div class="form-hint">Sent with every post, for a receiver that wants a token. Kept sealed.</div></div></div>
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="enabled" {{if .Form.Enabled}}checked{{end}}><span class="form-check-label">On</span></label>
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="wp">Your password (to confirm it is you)</label><input class="form-control" id="wp" name="password" type="password" autocomplete="current-password" required></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="wun">Type your user name to confirm</label><input class="form-control" id="wun" name="username" autocomplete="off" required></div>{{end}}
+          <button type="submit" class="btn btn-primary">Add the webhook</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4"><div class="card"><div class="card-body">
+    <h4>What is sent</h4>
+    <p>A call comes in, is missed or ends (with the number, the contact's name if there is one, the handset and the line); a handset is heard or not heard; the notifications of the bell. The controller does not wait for the receiver: a failed post is tried again after 1 minute, 5 minutes, 30 minutes, 2 hours and 12 hours, and then given up.
+    A webhook that fails ten times in a row is switched off.</p>
+    <p class="mb-0 text-secondary small">Every post carries <code>X-OpenDECTcell-Signature</code>. See <code>wiki/Webhooks.md</code> for the check and for the events.</p>
+  </div></div></div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

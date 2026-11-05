@@ -27,6 +27,8 @@ var EncryptedColumns = []EncryptedColumn{
 	{"sip_account", "password_enc", "id"},
 	{"sip_account", "stunpass_enc", "id"},
 	{"addressbook", "password_enc", "id"},
+	{"webhook", "secret_enc", "id"},
+	{"webhook", "auth_enc", "id"},
 	{"cell_ca", "key_enc", "id"},
 	{"user_totp", "secret_enc", "user_id"},
 }

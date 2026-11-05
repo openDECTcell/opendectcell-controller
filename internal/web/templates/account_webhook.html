@@ -1,0 +1,53 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_webhook.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-8">
+    {{if .NewSecret}}
+    <div class="card mb-3 border-success"><div class="card-header"><h3 class="card-title">{{icon "key"}} The new signing secret</h3></div>
+      <div class="card-body"><p class="mb-2"><strong>Copy it now.</strong> It is shown only this once, and the old secret stopped working. Put the new one into your receiver.</p>
+        <input class="form-control font-monospace" readonly value="{{.NewSecret}}" aria-label="The signing secret" size="60"></div></div>
+    {{end}}
+    {{if and (not .Hook.Enabled) .Hook.DisabledReason}}<div class="alert alert-warning">{{.Hook.DisabledReason}} Fix the receiver, then switch the webhook on again below.</div>{{end}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{.Hook.Name}}</h3></div>
+      <div class="card-body">
+        <form method="post" action="/account/webhooks/{{.Hook.ID}}">
+          <div class="row"><div class="col-md-5 mb-3"><label class="form-label" for="wn">Name</label><input class="form-control" id="wn" name="name" maxlength="64" value="{{.Hook.Name}}" required></div>
+            <div class="col-md-7 mb-3"><label class="form-label" for="wu">Address</label><input class="form-control" id="wu" name="url" type="url" maxlength="500" value="{{.Hook.URL}}" required></div></div>
+          <div class="mb-3"><label class="form-label">Tell it when</label>
+            {{range .Events}}<label class="form-check"><input class="form-check-input" type="checkbox" name="event_{{.Name}}" {{if index $.Data.Selected .Name}}checked{{end}}><span class="form-check-label"><code>{{.Name}}</code> {{.Title}}</span></label>{{end}}</div>
+          <div class="row"><div class="col-md-4 mb-3"><label class="form-label" for="wf">What it posts</label><select class="form-select" id="wf" name="format"><option value="json" {{if eq .Hook.Format "json"}}selected{{end}}>JSON (the event as data)</option><option value="ntfy" {{if eq .Hook.Format "ntfy"}}selected{{end}}>A short message (ntfy)</option></select></div>
+            <div class="col-md-8 mb-3"><label class="form-label" for="wa">Authorization header{{if .Hook.HasAuth}} (one is stored: leave empty to keep it){{end}}</label><input class="form-control" id="wa" name="auth" maxlength="300" autocomplete="off" placeholder="{{if .Hook.HasAuth}}unchanged{{else}}Bearer ...{{end}}">
+              {{if .Hook.HasAuth}}<label class="form-check mt-1"><input class="form-check-input" type="checkbox" name="clear_auth"><span class="form-check-label">Remove it</span></label>{{end}}</div></div>
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="enabled" {{if .Hook.Enabled}}checked{{end}}><span class="form-check-label">On</span></label>
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="wp">Your password (to confirm it is you)</label><input class="form-control" id="wp" name="password" type="password" autocomplete="current-password"></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="wun">Type your user name to confirm</label><input class="form-control" id="wun" name="username" autocomplete="off"></div>{{end}}
+          <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">The last posts</h3></div>
+      <div class="table-responsive"><table class="table table-sm"><thead><tr><th>When</th><th>Event</th><th>Result</th><th>Tries</th></tr></thead><tbody>
+        {{range .Deliveries}}<tr><td class="text-nowrap">{{fmtTime .CreatedAt}}</td><td><code>{{.Event}}</code></td>
+          <td>{{if eq .State "done"}}<span class="badge bg-green-lt">delivered</span>{{else if eq .State "failed"}}<span class="badge bg-red-lt">failed</span> {{.Error}}{{else}}<span class="badge bg-orange-lt">waiting</span> {{.Error}} (next {{fmtTime .NextAt}}){{end}}</td>
+          <td>{{.Attempts}}</td></tr>
+        {{else}}<tr><td colspan="4" class="text-secondary">Nothing has been sent to it yet.</td></tr>{{end}}
+      </tbody></table></div>
+      <div class="card-footer text-secondary small">The log keeps 7 days.</div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card mb-3"><div class="card-body">
+      <p class="mb-2"><strong>Last:</strong> {{if .Hook.LastAt}}{{fmtTime .Hook.LastAt}}: {{.Hook.LastStatus}}{{else}}nothing yet{{end}}</p>
+      <form method="post" action="/account/webhooks/{{.Hook.ID}}/test" class="mb-2"><button type="submit" class="btn btn-outline-primary w-100">Send a test event</button></form>
+      <form method="post" action="/account/webhooks/{{.Hook.ID}}/rotate" class="mb-2" data-confirm="Make a new signing secret? The old one stops working at once.">
+        {{if .Local}}<input class="form-control mb-2" name="password" type="password" autocomplete="current-password" placeholder="Your password" aria-label="Your password">{{else}}<input class="form-control mb-2" name="username" autocomplete="off" placeholder="Your user name" aria-label="Your user name">{{end}}
+        <button type="submit" class="btn btn-outline-secondary w-100">Make a new signing secret</button></form>
+      <form method="post" action="/account/webhooks/{{.Hook.ID}}/delete" data-confirm="Remove this webhook and its log?"><button type="submit" class="btn btn-outline-danger w-100">Remove it</button></form>
+    </div></div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}
