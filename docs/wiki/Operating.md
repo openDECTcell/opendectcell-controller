@@ -114,10 +114,28 @@ A controller restart ends running calls and the cells reconnect within seconds. 
 | Is it all right | **Administration > Health**: one list of checks, green or red with the cause: the database and its schema, the clock, outgoing mail (with a button that sends you a test mail), mail that waits too long, base stations connected, the certificate authority and the base stations' certificates, VoIP lines registered, the last backup and the space left for backups |
 | Is it alive, is the database up | `GET /healthz` and `GET /readyz`; the container has a health check |
 | A page for the users of a hosted instance | `GET /status` answers anybody with `ok`, `degraded` (a check of Health fails) or `down` (the database does not answer, HTTP 503) and the time, and nothing of what is inside, when you set `OPENDECTCELL_HTTP_PUBLIC_STATUS=true`; otherwise it is a 404 |
-| Metrics | `GET /metrics` in Prometheus text format, when you set `OPENDECTCELL_HTTP_METRICS_TOKEN`; send it as `Authorization: Bearer …`. About ten series so far (cells, calls, registrations). |
+| Metrics | `GET /metrics` in Prometheus text format, when you set `OPENDECTCELL_HTTP_METRICS_TOKEN` (at least 32 characters); send it as `Authorization: Bearer …`. See below. |
 | Alerts | The bell and, if you want, mail: a VoIP line down, a base station offline, certificates ending, a backup that failed or is old ([Notifications](Notifications.md)) |
 | Cells and calls | **Administration > Dashboard**, **Cells**, **All calls**, **Statistics** |
 | Certificates | The expiry of each cell's certificate is a metric; cells renew themselves at two thirds of its life |
+
+### What `/metrics` holds
+
+| Series | Meaning |
+|---|---|
+| `opendectcell_build_info`, `opendectcell_uptime_seconds`, `opendectcell_go_goroutines`, `opendectcell_go_heap_bytes` | the process |
+| `opendectcell_db_pool_connections{state}`, `opendectcell_db_pool_max_connections`, `opendectcell_db_pool_wait_seconds_total` | the database pool: acquired near the maximum means requests wait |
+| `opendectcell_cells{state}`, `opendectcell_cells_online`, `opendectcell_users`, `opendectcell_users_pending`, `opendectcell_handsets`, `opendectcell_calls_total`, `opendectcell_calls_24h` | the fleet and what is on it |
+| `opendectcell_cell_up{cell}`, `opendectcell_cell_calls_active{cell}`, `opendectcell_cell_capacity_calls{cell}`, `opendectcell_cell_certificate_expiry_seconds{cell}`, `opendectcell_cell_last_seen_timestamp_seconds{cell}`, `opendectcell_cells_certificate_expiring` | each active base station: link, calls now against what it can carry, its certificate, when it was last heard |
+| `opendectcell_calls_active` | calls going on now |
+| `opendectcell_calls_ended_total{result}`, `opendectcell_call_mos_bucket{le}` (with `_sum` and `_count`) | since the controller started: how calls ended (answered, missed, not answered, other) and the quality (MOS) of the calls that were measured, as a histogram |
+| `opendectcell_sip_lines{state}`, `opendectcell_sip_line_registered{line}` | VoIP lines that are switched on to register, by state, and each by its **id** (names are people's: look the id up in the web interface) |
+| `opendectcell_webhook_deliveries_pending`, `opendectcell_webhook_deliveries_failed_24h`, `opendectcell_webhook_oldest_pending_seconds`, `opendectcell_webhooks_switched_off`, `opendectcell_notification_mail_waiting` | the queues |
+| `opendectcell_backup_ok`, `opendectcell_backup_last_success_timestamp_seconds`, `opendectcell_backup_volume_free_bytes`, `opendectcell_backup_volume_total_bytes` | the backup service's state and its volume |
+
+**Alert rules and a dashboard** are in `deploy/monitoring/`: `opendectcell-alerts.yml` (15 rules: the controller cannot be scraped, all or one base station offline, a base station full, certificates ending, a VoIP line that
+cannot register, a failed or old backup, the backup volume, stuck webhooks, mail that waits, a saturated database pool, poor call quality; check it with `promtool check rules`) and `opendectcell-dashboard.json`
+(import it in Grafana and pick the Prometheus that scrapes the controller). The scrape job is assumed to be called `opendectcell`. The logs can be JSON: `OPENDECTCELL_LOG_FORMAT=json`.
 
 ## Logs
 

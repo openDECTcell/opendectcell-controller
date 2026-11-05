@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Prometheus alert rules for an openDECTcell controller (docs/wiki/Operating.md, "Monitoring"). Load them with `rule_files:` and check them with
+#   promtool check rules deploy/monitoring/opendectcell-alerts.yml
+# They use the series of GET /metrics. The scrape job is assumed to be called "openDECTcell"; change the first rule if yours is not.
+groups:
+  - name: opendectcell
+    rules:
+      - alert: OpenDECTcellDown
+        expr: up{job="opendectcell"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The openDECTcell controller cannot be scraped"
+          description: "Prometheus has not got /metrics from the controller for two minutes: it is down, or the token or the address is wrong."
+
+      - alert: AllBaseStationsOffline
+        expr: opendectcell_cells_online == 0 and opendectcell_cells{state="active"} > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "No base station is connected"
+          description: "Every active base station is offline: no handset can be reached or make a call."
+
+      - alert: BaseStationOffline
+        expr: opendectcell_cell_up == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Base station {{ $labels.cell }} is offline"
+          description: "The link of {{ $labels.cell }} has been down for 10 minutes."
+
+      - alert: BaseStationFull
+        expr: opendectcell_cell_capacity_calls > 0 and opendectcell_cell_calls_active >= opendectcell_cell_capacity_calls
+        for: 1m
+        labels: {severity: info}
+        annotations:
+          summary: "Base station {{ $labels.cell }} carries as many calls as it can"
+          description: "A further call on this base station would not be carried. Add a base station or move handsets."
+
+      - alert: BaseStationCertificateEnding
+        expr: opendectcell_cell_certificate_expiry_seconds < 7 * 86400
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "The certificate of {{ $labels.cell }} ends within 7 days"
+          description: "A base station renews its certificate by itself long before it ends. If this fires it could not (is it offline?)."
+
+      - alert: BaseStationCertificatesCouldNotRenew
+        expr: opendectcell_cells_certificate_expiring > 0
+        for: 1h
+        labels: {severity: critical}
+        annotations:
+          summary: "Base station certificates end within 14 days and could not renew"
+          description: "Look at Administration > Health. A base station whose certificate ends cannot connect any more."
+
+      - alert: VoIPLineCannotRegister
+        expr: opendectcell_sip_line_registered == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "A VoIP line cannot register"
+          description: "The line {{ $labels.line }} (its id; the name is in the web interface) has not been registered for 10 minutes: calls on it do not work."
+
+      - alert: BackupFailed
+        expr: opendectcell_backup_ok == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "The last backup failed, or the last good one is too old"
+          description: "Look at Administration > Backup and the log of the backup service. A backup that cannot be restored is no backup."
+
+      - alert: BackupOld
+        expr: time() - opendectcell_backup_last_success_timestamp_seconds > 36 * 3600
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "No good backup for more than 36 hours"
+
+      - alert: BackupVolumeNearlyFull
+        expr: opendectcell_backup_volume_free_bytes / opendectcell_backup_volume_total_bytes < 0.1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Less than 10 % of the backup volume is free"
+
+      - alert: WebhookDeliveriesStuck
+        expr: opendectcell_webhook_oldest_pending_seconds > 13 * 3600
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "A webhook delivery has waited longer than its retries should take"
+          description: "Deliveries are retried for about 15 hours and then given up. One that waits longer means the dispatcher is not running."
+
+      - alert: WebhooksSwitchedOff
+        expr: opendectcell_webhooks_switched_off > 0
+        for: 1h
+        labels: {severity: info}
+        annotations:
+          summary: "A webhook was switched off after ten failed deliveries"
+
+      - alert: NotificationMailWaiting
+        expr: opendectcell_notification_mail_waiting > 0
+        for: 2h
+        labels: {severity: info}
+        annotations:
+          summary: "Notifications wait for mail for over two hours"
+          description: "Quiet hours hold mail back; if nobody has quiet hours, the mail server is not taking it."
+
+      - alert: DatabasePoolSaturated
+        expr: opendectcell_db_pool_connections{state="acquired"} >= opendectcell_db_pool_max_connections
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Every database connection of the controller is in use"
+          description: "Requests wait for a connection. Look for something slow, or raise the pool."
+
+      - alert: PoorCallQuality
+        expr: |
+          increase(opendectcell_call_mos_count[1h]) > 10
+          and
+          increase(opendectcell_call_mos_bucket{le="3.5"}[1h]) / increase(opendectcell_call_mos_count[1h]) > 0.2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than a fifth of the calls of the last hour sounded poor (MOS 3.5 or less)"
+          description: "Look at the calls page of an affected user, and at the statistics of the base stations and the lines."

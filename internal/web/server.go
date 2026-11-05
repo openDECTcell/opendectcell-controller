@@ -85,6 +85,7 @@ type Server struct {
 	BackupDir      string                               // where the backup service writes (internal/backup); "": no backup page content
 	APITokens      *apitoken.Store                      // nil: no personal API tokens
 	Webhooks       *webhook.Store                       // nil: no webhooks
+	calls          callStats                            // what the controller saw of calls since it started (metrics)
 	PublicStatus   bool                                 // serve /status, one word for anybody (OPENDECTCELL_PUBLIC_STATUS)
 	freeSpace      func(string) (uint64, uint64, error) // tests: the free and total space of the backup volume
 	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).

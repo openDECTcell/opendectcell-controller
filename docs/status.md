@@ -39,6 +39,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Calls between handsets of one account | 🟡 | |
 | Phonebook, call lists, message-waiting lamp | 🟡 | Built; not all seen on hardware |
 | CardDAV address books (read only, several, chosen per handset), vCard and CSV import and export of contacts | 🟡 | Tests against a fake server; not tried against Nextcloud; private network addresses refused unless the operator allows them |
+| Metrics: pool, per base station, per line, call quality histogram, queues, backups; Prometheus alert rules and a Grafana dashboard in deploy/monitoring | 🟡 | Format validated by tests and `promtool check metrics`, the rules by `promtool check rules`; the dashboard not imported into a Grafana |
 | Fleet view: base stations side by side, software versions and which are behind, busiest and quietest, CSV | 🟡 | Tests; "behind" needs the cells to report a comparable version |
 | Administration > Health: checks for database, schema, clock, mail, base stations, certificates, lines, backups, space; optional public /status | 🟡 | Tests; no check for DECT workers or the database disk |
 | Account > My activity (own sign-ins, failed attempts, changes, from the audit log) | 🟡 | Tests; the sentences for rarer actions are plain |

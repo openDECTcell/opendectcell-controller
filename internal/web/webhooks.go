@@ -61,6 +61,13 @@ type callEventData struct {
 // CallEvent is the hook of the call log (calllog.Store.Hook): a call that comes in is call.incoming, a call that ends is call.ended, and
 // an incoming call nobody answered is also call.missed. The call is read from the log, so the event carries what the log holds.
 func (s *Server) CallEvent(ctx context.Context, event string, id int64) {
+	if event == calllog.EventEnded {
+		go func() { // the metrics count how the call went
+			cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			s.observeCall(cctx, id)
+		}()
+	}
 	if s.Webhooks == nil || (event != calllog.EventStarted && event != calllog.EventEnded) {
 		return
 	}
