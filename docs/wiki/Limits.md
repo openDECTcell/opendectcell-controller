@@ -21,9 +21,9 @@ firmware-upload page.
 |---|---|
 | Calls | Transfer, conference, early media; calls **between** handsets (refused); handover of a call between cells |
 | Handset features | Reading a handset's call-list **deletes and read marks** back into the controller (the call lists themselves are built); the date shown by every handset model |
-| Cells | A way to update a cell's software from the controller; rotation of the controller's certificate authority; a hard limit of calls per cell |
-| Controller | WebAuthn security keys; personal API tokens; a list of your sessions; German or other languages; a manual for administrators beyond this wiki |
-| Operations | Scheduled backups (a restore is tested by `tools/restore-test.sh`); high availability (one controller, one database); more than about ten metrics; per-call and per-cell quality metrics; per-tenant quotas |
+| Cells | A way to update a cell's software from the controller; rotation of the controller's certificate authority (a runbook is in [Operating](Operating.md)); a hard limit of calls per cell |
+| Controller | WebAuthn security keys; German or other languages; roles between user and administrator (a site manager, an auditor); a manual for administrators beyond this wiki; a first-run wizard; search, sorting and paging in the long lists (hundreds of base stations or users render every row) |
+| Operations | Backups to S3 (the backup service writes to a volume and to SFTP); high availability (one controller, one database); alerts for disk, worker restarts and new releases; a "run a backup now" button; per-tenant quotas |
 | Hardware | The 7530 untested; the 7412 and the 7362 SL need kernel modules that are not in the release yet |
 | Releases | Public releases and a package repository (planned after the controller is done) |
 

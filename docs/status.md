@@ -1,6 +1,6 @@
 # What works, and what doesn't yet
 
-The state of opendectcell-controller on 2026-11-03 (one status table, as in openDECTcell's `docs/status.md`; it answers audit finding
+The state of opendectcell-controller on 2026-11-05 (one status table, as in openDECTcell's `docs/status.md`; it answers audit finding
 DOC-01). "Seen" means seen working with real cells and handsets; "tests" means covered by the automated tests only.
 
 Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen only in part · ❌ not built · ➖ out of scope
