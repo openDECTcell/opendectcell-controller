@@ -80,6 +80,7 @@ type Server struct {
 	Contacts       *contacts.Store   // nil: no contact API
 	Books          *carddav.Store    // nil: no address books
 	Transfer       *transfer.Store   // nil: no setup export and import
+	BackupDir      string            // where the backup service writes (internal/backup); "": no backup page content
 	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).
 	AlertSink     func(user uuid.UUID, n alerts.Notification)
 	SIP           SIPStatus

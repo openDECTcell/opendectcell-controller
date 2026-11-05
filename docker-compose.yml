@@ -93,6 +93,8 @@ services:
       OPENDECTCELL_CELLS_STACK_WORKERS: ${OPENDECTCELL_CELLS_STACK_WORKERS:-0}
     volumes:
       - secrets:/secrets:ro
+      # the backups, read only: the administrators see their state and download the newest one
+      - backups:/backups:ro
     # Which host address each service is published on. The default is every address, as a
     # provider and the cells must reach them; set these to one address (a LAN or a VPN address)
     # where that is enough, and see "Network exposure" in docs/deployment.md for the firewall rules.
@@ -112,7 +114,39 @@ services:
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
+  # The nightly backup: pg_dump, encrypted with a passphrase of its own, checked by restoring it into a scratch
+  # database, optionally copied to an SFTP server (docs/wiki/Operating.md, "Backups"). It sees the database's
+  # administrative credentials (read only), like `migrate`. The master key is NOT in the dump and not here: keep it apart.
+  backup:
+    build: ./deploy/backup
+    image: opendectcell-backup:local
+    environment:
+      TZ: ${OPENDECTCELL_TZ:-UTC}
+      BACKUP_AT: ${OPENDECTCELL_BACKUP_AT:-03:15}
+      BACKUP_KEEP: ${OPENDECTCELL_BACKUP_KEEP:-14}
+      BACKUP_SFTP_TARGET: ${OPENDECTCELL_BACKUP_SFTP_TARGET:-}
+      BACKUP_SFTP_PORT: ${OPENDECTCELL_BACKUP_SFTP_PORT:-22}
+    volumes:
+      - dbsecrets:/dbsecrets:ro
+      - backups:/backups
+      # the passphrase of the backups, and for SFTP the key (sftp_key) and the server's key (sftp_known_hosts)
+      - backup-secrets:/backup-secrets
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: ["/tmp:size=2g"]
+    # root only to own its volumes; the work is done as the postgres user
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
 volumes:
   secrets:
   dbsecrets:
   pgdata:
+  backups:
+  backup-secrets:

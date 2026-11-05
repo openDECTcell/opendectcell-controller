@@ -18,6 +18,7 @@ const (
 	KindHandset = "handset" // a handset has not been heard for a long time (the user chooses how long; off until they do)
 	KindCell    = "cell"    // a base station is offline
 	KindCert    = "cert"    // certificates end soon (administrators)
+	KindBackup  = "backup"  // the last backup failed or is old (administrators)
 )
 
 // KindInfo describes a kind for the page that sets the preferences.
@@ -34,6 +35,7 @@ var Kinds = []KindInfo{
 	{Kind: KindHandset, Title: "A handset has not been heard for a long time"},
 	{Kind: KindCell, Title: "A base station is offline", MailByFlag: true},
 	{Kind: KindCert, Title: "Base station certificates or the certificate authority end soon", AdminOnly: true},
+	{Kind: KindBackup, Title: "The last backup failed or is more than 36 hours old", AdminOnly: true},
 }
 
 // KindPref is a user's choice for one kind.

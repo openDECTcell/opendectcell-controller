@@ -11,11 +11,12 @@ menu (and at **Notifications**), with a red number when some are unread. You can
 | **A handset has not been heard for a long time** | the handset's owner, **only if they ask** (Account > Notifications > hours; 0 is off) | the handset was not heard for as long as you set; again when it is heard |
 | **A base station is offline** | the one who enrolled it, and the administrators | offline for 10 minutes; again when it is back |
 | **Base station certificates, or the certificate authority, end soon** | administrators | certificates end within 14 days and could not renew; the authority ends within 90 days |
+| **A backup failed or is old** | administrators | the last run of the [backup service](Operating.md) failed (also: it did not restore, or the SFTP copy failed), or the last good backup is more than 36 hours old; again when it is in order. Nothing is said if there is no backup service |
 
 A short outage (less than the time above) is not told. A line you delete or switch off while it is down is forgotten, not announced as "back".
 
 Not there yet: a database or disk nearly full (the controller cannot see the disk its database is on), a DECT worker that restarted, a new
-release, a failed or old backup (that comes with the scheduled backups).
+release, (a failed or old backup is told now).
 
 ## Choosing
 

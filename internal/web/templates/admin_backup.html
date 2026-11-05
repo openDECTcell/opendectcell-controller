@@ -2,6 +2,33 @@
 {{define "admin_backup.html"}}{{template "head" .}}
 <div class="row row-cards">
   <div class="col-lg-8">
+    {{with .Data}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "database"}} Scheduled backups</h3></div>
+      <div class="card-body">
+        {{if .Err}}<div class="alert alert-danger">The state of the backup service could not be read: {{.Err}}</div>
+        {{else if not .Status}}
+          <p class="mb-2"><strong>No backup service is running.</strong> The compose file has a <code>backup</code> service that dumps the database every night, encrypts the dump, checks that it restores, and can copy it to an SFTP server.
+          This controller finds no state of it{{if .Configured}} (it looks in a directory that has none){{end}}: start it with <code>docker compose up -d backup</code>, or make backups yourself as described below.</p>
+        {{else}}
+          {{if .Problem}}<div class="alert alert-danger">{{.Problem}}.</div>{{else}}<div class="alert alert-success">The backups are in order.</div>{{end}}
+          <table class="table"><tbody>
+            <tr><td class="fw-bold w-25">Last run</td><td>{{if .Status.Finished}}{{.Status.Finished}} (UTC): {{if .Status.OK}}<span class="badge bg-green-lt">held</span>{{else}}<span class="badge bg-red-lt">failed</span> {{.Status.Error}}{{end}}{{else}}none yet{{end}}</td></tr>
+            <tr><td class="fw-bold">Restore check</td><td>{{if not .Status.Check.Ran}}<span class="text-secondary">switched off</span>{{else if .Status.Check.OK}}<span class="badge bg-green-lt">restores</span> into a scratch database: {{.Status.Check.Users}} users, {{.Status.Check.Tables}} tables{{else}}<span class="badge bg-red-lt">did not restore</span> {{.Status.Check.Error}}{{end}}</td></tr>
+            <tr><td class="fw-bold">SFTP copy</td><td>{{if not .Status.SFTP.Configured}}<span class="text-secondary">not set up: the backups stay on this host, in the <code>backups</code> volume</span>{{else if .Status.SFTP.OK}}<span class="badge bg-green-lt">copied</span>{{else}}<span class="badge bg-red-lt">failed</span> {{.Status.SFTP.Error}}{{end}}</td></tr>
+            <tr><td class="fw-bold">Next run</td><td>{{with .Status.Next}}{{.}} (UTC){{else}}-{{end}}, the {{.Status.Keep}} newest are kept</td></tr>
+          </tbody></table>
+          {{if .Files}}
+          <h4>Backups on this host</h4>
+          <div class="table-responsive"><table class="table table-sm"><thead><tr><th>File</th><th>Made</th><th>Size</th></tr></thead><tbody>
+            {{range .Files}}<tr><td><a href="/admin/backup/{{.Name}}">{{.Name}}</a></td><td>{{fmtTime .At}}</td><td>{{.Size}} bytes</td></tr>{{end}}
+          </tbody></table></div>
+          <p class="text-secondary small mb-0">The files are encrypted with the backup service's passphrase, which this controller does not have: a download is useless without it.</p>
+          {{end}}
+        {{end}}
+      </div>
+    </div>
+    {{end}}
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">What to back up</h3></div>
       <div class="card-body">
@@ -14,7 +41,7 @@
       </div>
     </div>
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">With Docker Compose</h3></div>
+      <div class="card-header"><h3 class="card-title">By hand, with Docker Compose</h3></div>
       <div class="card-body">
 <pre class="mb-3"><code>docker compose exec db pg_dump -U opendectcell -Fc opendectcell &gt; opendectcell-$(date +%F).dump
 docker compose cp controller:/secrets/master_key ./master_key.backup</code></pre>
@@ -24,8 +51,9 @@ docker compose cp controller:/secrets/master_key ./master_key.backup</code></pre
   </div>
   <div class="col-lg-4">
     <div class="card"><div class="card-body">
-      <p class="mb-2">This page only explains: the controller does not make backups itself, because the dump belongs next to your other backups, not inside the application.</p>
-      <p class="mb-0 text-secondary small">Check a backup by restoring it into a scratch instance now and then.</p>
+      <p class="mb-2"><strong>Keep three things apart:</strong> the backups, the <strong>passphrase</strong> that encrypts them (in the <code>backup-secrets</code> volume of the backup service; its first start prints it once), and the <strong>master key</strong> of this controller. Whoever has a backup and its passphrase and the master key has everything.</p>
+      <p class="mb-2">The passphrase and the master key are not in the backups. Without the passphrase a backup cannot be read; without the master key a restored database cannot open its secrets.</p>
+      <p class="mb-0 text-secondary small">The backup service is the only place that makes backups: the controller shows them, hands out the newest and warns, but cannot write to them.</p>
     </div></div>
   </div>
 </div>

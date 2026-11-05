@@ -9,19 +9,62 @@ once their handsets and VoIP lines are gone, and release a handset registered un
 
 ## Backups
 
-Two things make a backup, and **they must be stored apart**:
+A controller has two things that cannot be rebuilt, and **they must be stored apart**:
 
-1. **The database.** `docker compose exec db pg_dump -U opendectcell opendectcell > opendectcell.sql` (the `pgdata` volume holds
-   the live data). It contains handsets' keys, SIP passwords and TOTP secrets, **encrypted** with the data keys.
+1. **The database**: users, handsets and their keys, VoIP lines and their passwords, cells, settings, call log, audit log. The keys and passwords in it are
+   **encrypted** with the data keys; the rest is not secret from whoever holds a dump.
 2. **The master key** (`/secrets/master_key` in the `secrets` volume), which protects the data keys:
-   `docker compose cp controller:/secrets/master_key ./master_key.backup`.
+   `docker compose cp controller:/secrets/master_key ./master_key.backup`. It is **not** in any backup. Without it a restored database cannot open its secrets;
+   with it next to the dump, anyone holding the dump can.
 
-A database backup without the master key is useless, and the master key next to the backup defeats its
-purpose. **Administration > Backup** explains the same. There is no scheduled backup yet. Restore by loading the dump into
-a fresh PostgreSQL, putting the master key back in the `secrets` volume and running `opendectcell-controller migrate up` (it makes
-the runtime database role again). `tools/restore-test.sh [IMAGE]` does exactly that on throwaway containers and checks that the
-user can log in and that every encrypted value opens; run it after changing anything about backups, and try the real restore
-once before you need it.
+### The backup service (nightly)
+
+The compose file has a **`backup`** service. Every night (at `OPENDECTCELL_BACKUP_AT`, default 03:15, in the zone `OPENDECTCELL_TZ`) it:
+
+1. dumps the database (`pg_dump -Fc`) and **encrypts** the dump with a **passphrase** of its own (gpg, AES-256, with an integrity check): the files hold personal data
+   and must not be readable by whoever finds them;
+2. **checks that it restores**: it reads the file back, loads it into a scratch PostgreSQL that lives for a minute inside the service, and compares the tables and the
+   users with the live database. A backup that does not restore is reported as failed;
+3. copies it to an **SFTP server** if you set one up (below);
+4. removes the oldest beyond `OPENDECTCELL_BACKUP_KEEP` (default 14), here and on the SFTP server;
+5. writes `status.json`, which the controller shows under **Administration > Backup** (last run, restore check, SFTP, the files, a download of any of them) and uses to
+   tell the administrators when the last run failed or the last good backup is more than 36 hours old ([Notifications](Notifications.md)).
+
+**The passphrase.** The first start makes one in the `backup-secrets` volume and prints it **once** in the log (`docker compose logs backup`). **Copy it away now**, apart from
+the backups and from the master key: without it no backup can be read, and nobody can recover it for you. The controller does not have it either, so a downloaded backup is useless
+to whoever steals it from the controller.
+
+```sh
+docker compose up -d backup                 # start it (it is part of the stack)
+docker compose logs backup                  # the passphrase, once, on its first start
+docker compose exec backup opendectcell-backup once    # make one backup now; exit status 0 only if it held
+docker compose exec backup opendectcell-backup check /backups/opendectcell-....dump.gpg   # does this file restore?
+```
+
+**SFTP.** Set `OPENDECTCELL_BACKUP_SFTP_TARGET=user@host:directory` (and `OPENDECTCELL_BACKUP_SFTP_PORT` if it is not 22) in the environment of `docker compose`, and put two files in the
+`backup-secrets` volume: **`sftp_key`**, a private key without a passphrase (the public key goes into the server's `authorized_keys`; use a key that may only write there), and
+**`sftp_known_hosts`**, the server's host key (`ssh-keyscan -t ed25519 host`, checked by you). The service never trusts a host key on first use: a wrong or changed key fails the backup
+and says so. The upload goes to a `.part` name and is renamed when complete.
+
+```sh
+docker run --rm -v opendectcell_backup-secrets:/s alpine sh -c 'ls -l /s'    # what is there
+docker cp ./sftp_key $(docker compose ps -q backup):/backup-secrets/sftp_key   # or copy them into the volume any way you like
+```
+
+**Restoring** (try it once before you need it):
+
+```sh
+docker compose exec backup opendectcell-backup decrypt /backups/opendectcell-20261105-031500.dump.gpg > opendectcell.dump   # or gpg --decrypt with the passphrase, anywhere
+# a fresh stack: start db and migrate, stop the controller, then
+pg_restore --clean --if-exists --no-owner -d opendectcell opendectcell.dump
+# put the same master key back in the `secrets` volume, then: docker compose run --rm migrate && docker compose up -d
+```
+
+The nightly check proves the file restores into PostgreSQL; `tools/restore-test.sh [IMAGE]` goes further and proves the restored database lets a user log in and opens every
+encrypted value under the master key; `tools/backup-test.sh` tests the service itself on throwaway containers. Run them after changing anything about backups.
+
+The backup service sees the database's administrative credentials (read only), like the `migrate` service. If you make backups some other way, leave the service out
+(`docker compose up -d` without `backup`, or `docker compose rm backup`): the Administration > Backup page then says no service is running, and nothing is warned.
 
 ## Upgrading
 

@@ -34,6 +34,14 @@ type Config struct {
 	SIP      SIP      `yaml:"sip"`
 	SMTP     SMTP     `yaml:"smtp"`
 	CardDAV  CardDAV  `yaml:"carddav"`
+	Backup   Backup   `yaml:"backup"`
+}
+
+// Backup is where the controller finds what the backup service (deploy/backup) writes: the state of the last run and the
+// backups themselves, mounted read only.
+type Backup struct {
+	// Dir is that directory. Without the files in it the controller says the backup service has not run.
+	Dir string `yaml:"dir"`
 }
 
 // CardDAV is how the controller fetches the address books its users link.
@@ -252,9 +260,10 @@ func Default() Config {
 			SessionMaxAge:  7 * 24 * time.Hour,
 			LoginRateLimit: 10,
 		},
-		Cells: Cells{Listen: ":7300", HandsetPool: true, MediaPorts: "41100-41199"},
-		SIP:   SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
-		SMTP:  SMTP{Port: "587", Security: "starttls"},
+		Cells:  Cells{Listen: ":7300", HandsetPool: true, MediaPorts: "41100-41199"},
+		SIP:    SIP{UDPListen: ":5060", TCPListen: ":5060", RTPPorts: "41000-41999"},
+		SMTP:   SMTP{Port: "587", Security: "starttls"},
+		Backup: Backup{Dir: "/backups"},
 	}
 }
 
@@ -361,6 +370,7 @@ func vars(c *Config) []envVar {
 		{"SIP_RTP_PORTS", false, str(&c.SIP.RTPPorts)},
 		{"SIP_MEDIA_IP", false, str(&c.SIP.MediaIP)},
 		{"CARDDAV_ALLOW_PRIVATE", false, boolean(&c.CardDAV.AllowPrivate)},
+		{"BACKUP_DIR", false, str(&c.Backup.Dir)},
 		{"SMTP_HOST", false, str(&c.SMTP.Host)},
 		{"SMTP_PORT", false, str(&c.SMTP.Port)},
 		{"SMTP_USER", false, str(&c.SMTP.User)},

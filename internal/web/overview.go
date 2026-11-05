@@ -307,6 +307,9 @@ func (s *Server) overviewSystem(ctx context.Context, o *overview) *overviewSyste
 	if sys.CertsExpiring > 0 {
 		o.Attention = append(o.Attention, attention{"danger", fmt.Sprintf("%d base station certificates end within 14 days and could not renew", sys.CertsExpiring), "/cells", "Base stations"})
 	}
+	if p := s.backupAttention(); p != "" {
+		o.Attention = append(o.Attention, attention{"danger", p, "/admin/backup", "Backups"})
+	}
 	if sys.UsersPending > 0 {
 		o.Attention = append(o.Attention, attention{"info", fmt.Sprintf("%d sign-ups wait for approval", sys.UsersPending), "/admin/users", "Users"})
 	}

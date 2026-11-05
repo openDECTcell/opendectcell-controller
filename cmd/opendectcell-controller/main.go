@@ -520,7 +520,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		},
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
 		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
-		LogCtl:   logCtl, StartedAt: time.Now(),
+		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir,
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {

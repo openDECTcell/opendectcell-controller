@@ -32,7 +32,8 @@ func (s *Server) AlertSources() []alerts.Source {
 		out = append(out, alerts.Source{Kinds: []string{alerts.KindLine}, Find: s.lineConditions})
 	}
 	out = append(out, alerts.Source{Kinds: []string{alerts.KindHandset}, Find: s.handsetConditions},
-		alerts.Source{Kinds: []string{alerts.KindCert}, Find: s.certConditions})
+		alerts.Source{Kinds: []string{alerts.KindCert}, Find: s.certConditions},
+		alerts.Source{Kinds: []string{alerts.KindBackup}, Find: s.backupConditions})
 	return out
 }
 

@@ -17,9 +17,7 @@ import (
 
 func (s *Server) adminRoutes() {
 	s.mux.Handle("GET /admin/system", s.requireAdmin(s.adminSystem))
-	s.mux.Handle("GET /admin/backup", s.requireAdmin(func(w http.ResponseWriter, r *http.Request, u *auth.User) {
-		s.render(w, http.StatusOK, "admin_backup.html", page{Title: "Backup", User: u})
-	}))
+	s.backupRoutes()
 }
 
 type dashData struct {
