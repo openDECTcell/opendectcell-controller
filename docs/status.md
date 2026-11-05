@@ -59,7 +59,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 |---|---|---|
 | Docker Compose deployment, least-privilege database role, one-shot migration | ✅ | `docs/deployment.md` |
 | Test ground on a Raspberry Pi with Let's Encrypt, DynDNS and a host firewall | ✅ | `docs/test-ground.md` |
-| First-run step: the first administrator of a new controller is proposed a DECT network identity (class B), may decline, and the overview keeps a warning until one is set | 🟡 | `docs/wiki/Cells.md`; built and tested with the web tests, not seen on a real controller with real base stations |
+| First-run step: the first administrator of a new controller is proposed a DECT network identity (class B), may decline, and the overview keeps a warning until one is set | 🟡 | `docs/wiki/Cells.md`; the page is tested with the web tests; the identity itself was seen on air on 2026-11-05 (a 7520 and a 7412, four handsets followed the 7412), the first-run page itself not yet on a fresh controller |
 | Load test (calls, cells, handsets) with a manual; measured on the Pi 4: about 30 calls / 20 to 30 cells / 100 handsets as a plan, DECT stack cost not measured | 🟡 | `docs/load-test-2026-11-05.md`, `wiki/Load-testing.md`, `tools/load-test.sh` |
 | DECT stacks in worker processes | 🟡 | The 72 h soak runs on the Pi from 2026-11-04 (SEC-03): crash injection and samples, no calls yet |
 | Backup page, retention, audit log, metrics | 🟡 | `tools/restore-test.sh` proves a dump and the master key restore a working controller (BUILD-06); backups are not scheduled |

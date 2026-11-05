@@ -6,13 +6,13 @@ An honest list, so you can judge whether openDECTcell fits your case today. It i
 ## Works, and has been seen on hardware
 
 Registering handsets; calls in and out with audio, HD voice (G.722), encrypted on the air; two cells (a 7520 and a
-7412) of one controller; **handsets moving between boxes only with a shared network identity** (without it every box is a DECT system of its own and a handset registered on one finds no other; the first sign-in now proposes the identity; a shared identity with the 7412 has not been tried on air); the cell connection (TLS, enrolment,
+7412) of one controller; **a shared network identity on two boxes, a 7520 and a 7412, and handsets moving to the 7412 within seconds when the 7520 was unplugged** (2026-11-05, with a Gigaset A420, A540, AS690H and a Motorola O201; the AS690H also needed its own restart before it could dial; without a shared identity every box is a DECT system of its own and a handset registered on one finds no other; the first sign-in now proposes the identity); the cell connection (TLS, enrolment,
 certificate renewal) against the real controller; SIP registration and calls; caller number on the display.
 
 ## Built, but not seen on hardware
 
 The message-waiting indicator (the SIP mailbox to the handset's lamp); the **handset call lists** (missed, received, dialled, from the call log; read-only) and the **handset phonebook** (each handset reads its owner's contacts and the shared ones, and its edits go back to the controller); handsets choosing a cell by walking around with several boxes on at once; hold and resume; two calls on one handset;
-three or five parallel calls on one cell; call waiting; the audio of a cell beyond a test peer; a handset **imported with its key** from a setup file (it should need no new registration; not tried on air); the LuCI
+five parallel calls on one cell (three at once were up on a 7412 on 2026-11-05, G.722 passed through; the log shows them set up, whether the audio was good is not recorded); call waiting; the audio of a cell beyond a test peer; a handset **imported with its key** from a setup file (it should need no new registration; not tried on air); the LuCI
 firmware-upload page.
 
 ## Not built

@@ -84,7 +84,7 @@ to know before you accept:
 - **Changing the identity later makes every handset register again.** Until the first handset is registered it
   costs nothing, which is why the controller asks first.
 - A Gigaset A540 did not find a class B base station again after a restart in one of our tests (a class A identity
-  worked). If you own such a handset, decline here, connect your base stations first and choose a class A identity
+  worked); on 2026-11-05 it followed from the 7520 to the 7412 on a class B identity without trouble. If you own such a handset, decline here, connect your base stations first and choose a class A identity
   on the Network identity page (up to 7 base stations).
 
 **You can say no.** The page says what that means: the boxes keep their factory identities, each is a system of its

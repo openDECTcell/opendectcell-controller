@@ -42,13 +42,15 @@ is 1 to 6, and the controller now hands out only those. If a handset that was re
 deaf on a 7412, restart the cell's service once (`/etc/init.d/opendectcell restart` on the box) so the handset re-registers
 and takes a new number; if it still is, switch it off and on, and tell us.
 
-## A handset found another base station but cannot dial
+## A handset shows no base station, or cannot dial, after its base went away
 
-Seen once on the lab (2026-11-05): the 7520 was unplugged, the handsets moved to the 7412 (both boxes with the shared
-network identity), and a **Gigaset AS690H could not dial out until it was restarted** (battery out, or its own
-off/on). Nothing was wrong on the controller's side. If a handset shows a base station but does not dial or ring after
-its old base went away, restart the handset once. We have not seen whether other models do the same, or how long the
-AS690H waits before it recovers by itself; tell us if you can tell.
+Seen on the lab (2026-11-05): the 7520 and the 7412 shared a network identity, all handsets had been registered under
+it, and the 7520 was unplugged. The A420 and the A540 were on the 7412 within seconds. A **Gigaset AS690H** showed
+`---` and **could not dial until it was restarted** (battery out, or its own off/on); the controller saw nothing from
+it on the 7412 until then, and it dialled at the first try afterwards. If a handset does not find the remaining
+base station, restart the handset once. Before that, check that the base stations share an identity (Administration >
+Network identity): without one, a handset registered on one box cannot use another at all. We have seen the AS690H do
+this once; we do not know whether other models do, or whether it recovers by itself if you wait.
 
 ## Other
 
