@@ -22,6 +22,13 @@ can show less than 90 days). A line without a record shows "no record". Time bef
 
 Not there: how long handsets were online (nothing samples that), call set-up time, and the SIP status of a failed call (the log keeps a reason in words, shown under How calls ended).
 
+## The fleet view (administrators)
+
+**Administration > Statistics** also puts the active base stations **side by side**: hardware, software version, calls and talk time in the range, the handsets heard on each in the last 7 days,
+when it was last seen, the busiest first, with the busiest and the quietest named (not when they carried the same). A base station whose software is older than the newest in the fleet is marked **behind**
+(versions are compared as numbers: 0.10 is later than 0.9), and a second table counts the base stations by software version. A base station that has not reported its software or hardware says so. Each of
+the base stations has its own page for the rest. CSV: `table=fleet`.
+
 ## The monthly usage report (administrators)
 
 **Administration > Statistics > Monthly usage report** lists, for a month, the calls of each **user** and of each **organization** (calls, answered, talk time, and the handsets and VoIP

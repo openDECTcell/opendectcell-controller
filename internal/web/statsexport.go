@@ -31,7 +31,7 @@ func (s *Server) statsExportRoutes() {
 
 // csvTables are the tables of the statistics pages that can be taken as CSV: what the page shows, for the range of days it was
 // showing, and for the same scope (a user's own, or everything for an administrator).
-var csvTables = []string{"days", "reasons", "stations", "station_peaks", "peaks", "heat", "lines", "handsets", "quality"}
+var csvTables = []string{"fleet", "days", "reasons", "stations", "station_peaks", "peaks", "heat", "lines", "handsets", "quality"}
 
 func (s *Server) statsExport(w http.ResponseWriter, r *http.Request, sc stats.Scope) {
 	days := rangeDays(r)
@@ -57,6 +57,18 @@ func (s *Server) statsExport(w http.ResponseWriter, r *http.Request, sc stats.Sc
 			head = []string{"reason", "calls"}
 			for _, x := range rs {
 				rows = append(rows, []string{csvSafe(x.Reason), itoa(x.Count)})
+			}
+		}
+	case "fleet":
+		if sc.User != nil { // the whole controller's base stations are the administrators'
+			http.NotFound(w, r)
+			return
+		}
+		var fc []stats.FleetCell
+		if fc, err = s.Stats.FleetCells(ctx, days); err == nil {
+			head = []string{"base_station", "hardware", "software", "stub", "calls", "talk_seconds", "handsets_heard_7d", "behind"}
+			for _, c := range fc {
+				rows = append(rows, []string{csvSafe(c.Name), csvSafe(c.Hardware), csvSafe(c.Software), csvSafe(c.Stub), itoa(c.Calls), strconv.FormatInt(c.TalkSeconds, 10), itoa(c.Handsets), strconv.FormatBool(c.Behind)})
 			}
 		}
 	case "stations":

@@ -119,6 +119,25 @@
   <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="subheader">Certificates ending in 14 days</div><div class="h1 mb-0">{{.Fleet.CertsExpiring}}</div><div class="text-secondary small">cells that could not renew</div></div></div></div>
 </div>
 {{end}}
+
+{{if .FleetCells}}
+<h3 class="mt-4 mb-2">The base stations side by side</h3>
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Load and coverage, last {{.Days}} days</h3><div class="card-actions"><a href="{{.Export}}?table=fleet&days={{.Days}}">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Base station</th><th>Hardware</th><th>Software</th><th>Calls</th><th>Talk time</th><th>Handsets heard, 7 days</th><th>Last seen</th></tr></thead><tbody>
+    {{range .FleetCells}}<tr><td><a href="/stations/{{.ID}}">{{.Name}}</a></td><td>{{with .Hardware}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}</td>
+      <td>{{with .Software}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}{{if .Behind}} <span class="badge bg-orange-lt" title="A newer software runs on another base station">behind</span>{{end}}</td>
+      <td>{{.Calls}}</td><td>{{hours .TalkSeconds}}</td><td>{{.Handsets}}</td><td>{{if .LastSeenAt}}{{fmtTime .LastSeenAt}}{{else}}<span class="text-secondary">never</span>{{end}}</td></tr>{{end}}
+  </tbody></table></div>
+  <div class="card-footer text-secondary small">{{if .Busiest}}Busiest: <strong>{{.Busiest.Name}}</strong> ({{.Busiest.Calls}} calls). Quietest: <strong>{{.Quietest.Name}}</strong> ({{.Quietest.Calls}}). {{end}}A call that moved between base stations counts on each. "Handsets heard" counts the handsets that were heard on the base station in the last 7 days.</div>
+</div>
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Software versions</h3></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Version</th><th class="w-1">Base stations</th></tr></thead><tbody>
+    {{range .Versions}}<tr><td>{{with .Version}}{{.}}{{else}}<span class="text-secondary">not reported</span>{{end}}{{if .Newest}} <span class="badge bg-green-lt">newest</span>{{end}}{{if .Behind}} <span class="badge bg-orange-lt">behind</span>{{end}}</td><td>{{.Count}}</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
 {{if .Live}}
 <div class="card">
   <div class="card-header"><h3 class="card-title">Base stations by hardware</h3><div class="card-actions">{{.Live.Online}} online · {{.Live.Offline}} offline</div></div>

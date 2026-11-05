@@ -34,6 +34,11 @@ type statsData struct {
 	Cells   []stats.CellUse
 	Fleet   *stats.Fleet
 	Live    *fleetLive
+	// the fleet view of the administrators: the active base stations side by side, and how the software versions are spread
+	FleetCells []stats.FleetCell
+	Versions   []stats.VersionGroup
+	Busiest    *stats.FleetCell
+	Quietest   *stats.FleetCell
 
 	// the series of C1, and the comparison of C2
 	Heat      stats.Heat
@@ -114,6 +119,14 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request, u *auth.User,
 			return
 		}
 		d.Fleet = &f
+		if d.FleetCells, err = s.Stats.FleetCells(r.Context(), d.Days); err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		d.Versions = stats.VersionSpread(d.FleetCells)
+		if n := len(d.FleetCells); n > 1 && d.FleetCells[0].Calls > d.FleetCells[n-1].Calls {
+			d.Busiest, d.Quietest = &d.FleetCells[0], &d.FleetCells[n-1]
+		}
 		if s.Cells != nil {
 			d.Live, err = s.liveFleet(r, u)
 			if err != nil {

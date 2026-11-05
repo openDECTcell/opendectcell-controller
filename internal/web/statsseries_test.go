@@ -148,6 +148,12 @@ func TestStatisticsCSV(t *testing.T) {
 		VALUES ($1, $2, 'in', now() - interval '1 hour', now() - interval '59 minutes', now() - interval '50 minutes', '{"mos": 3.1}')`, uid, line)
 	u, a := e.userBrowser(t), e.adminBrowser(t)
 	for _, table := range csvTables {
+		if table == "fleet" { // the base stations side by side are the administrators'
+			if resp, _ := e.get(t, u, "/statistics/export.csv?table=fleet"); resp.StatusCode != http.StatusNotFound {
+				t.Errorf("a user's fleet CSV: %d", resp.StatusCode)
+			}
+			continue
+		}
 		resp, body := e.get(t, u, "/statistics/export.csv?table="+table+"&days=7")
 		if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/csv") || !strings.Contains(resp.Header.Get("Content-Disposition"), "opendectcell-"+table+"-7d-") || !strings.HasPrefix(body, "\xef\xbb\xbf") {
 			t.Errorf("%s: %d %q", table, resp.StatusCode, resp.Header)
@@ -245,5 +251,46 @@ func TestChangeText(t *testing.T) {
 	}
 	if got := change64(5400, 3600); got != "+0.5 h (+50 %)" {
 		t.Errorf("change64: %q", got)
+	}
+}
+
+func TestFleetViewForAdministrators(t *testing.T) {
+	e, uid, _ := statsEnv(t)
+	var hall, attic uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state, hw_model, software_version, last_seen_at) VALUES ('Hall', 'active', 'AVM FRITZ!Box 7520', '0.3.10', now()) RETURNING id").Scan(&hall)
+	e.store.Pool.QueryRow(ctx, "INSERT INTO cell (name, state, hw_model, software_version, last_seen_at) VALUES ('=Attic', 'active', 'AVM FRITZ!Box 7412', '0.3.4', now()) RETURNING id").Scan(&attic)
+	e.store.Pool.Exec(ctx, "INSERT INTO cell (name, state) VALUES ('Shed', 'disabled')")
+	for i := 0; i < 3; i++ {
+		e.store.Pool.Exec(ctx, `INSERT INTO call_log (owner_user_id, direction, started_at, answered_at, ended_at, cell_ids) VALUES ($1, 'out', now() - interval '1 hour', now() - interval '59 minutes', now() - interval '50 minutes', ARRAY[$2::uuid])`, uid, hall)
+	}
+	a, u := e.adminBrowser(t), e.userBrowser(t)
+	resp, body := e.get(t, a, "/admin/statistics?days=7")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("page: %d", resp.StatusCode)
+	}
+	for _, want := range []string{"The base stations side by side", "Software versions", "0.3.10", "0.3.4", `>newest<`, `>behind<`, "AVM FRITZ!Box 7412", "Busiest:", "Quietest:", "table=fleet"} {
+		if !strings.Contains(body, want) && !strings.Contains(body, strings.ReplaceAll(want, "&", "&amp;")) {
+			t.Errorf("the fleet view lacks %q", want)
+		}
+	}
+	if strings.Contains(body, ">Shed<") {
+		t.Error("a base station that is not active is compared")
+	}
+	if i, j := strings.Index(body, `>Hall</a>`), strings.Index(body, ">=Attic</a>"); i < 0 || j < 0 || i > j {
+		t.Errorf("the busiest base station is not first (Hall at %d, Attic at %d)", i, j)
+	}
+	if _, ub := e.get(t, u, "/statistics"); strings.Contains(ub, "side by side") || strings.Contains(ub, "Software versions") {
+		t.Error("a user sees the fleet view")
+	}
+	// base stations that carried the same number of calls have no busiest and no quietest
+	for i := 0; i < 3; i++ {
+		e.store.Pool.Exec(ctx, `INSERT INTO call_log (owner_user_id, direction, started_at, answered_at, ended_at, cell_ids) VALUES ($1, 'out', now() - interval '1 hour', now() - interval '59 minutes', now() - interval '50 minutes', ARRAY[$2::uuid])`, uid, attic)
+	}
+	if _, tie := e.get(t, a, "/admin/statistics?days=7"); strings.Contains(tie, "Busiest:") {
+		t.Error("a busiest and a quietest are named for base stations that carried the same")
+	}
+	_, csv := e.get(t, a, "/admin/statistics/export.csv?table=fleet&days=7")
+	if !strings.Contains(csv, "base_station,hardware,software,stub,calls,talk_seconds,handsets_heard_7d,behind") || !strings.Contains(csv, "Hall,AVM FRITZ!Box 7520,0.3.10,,3,") || !strings.Contains(csv, "'=Attic") || !strings.Contains(csv, ",true") {
+		t.Errorf("fleet CSV: %q", csv)
 	}
 }
