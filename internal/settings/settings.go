@@ -29,7 +29,16 @@ const (
 	KeySecurity     = "security"
 	KeyRoaming      = "roaming"
 	KeyCells        = "cells"
+	KeySetup        = "setup"
 )
+
+// Setup records what the first-run steps of a new controller came to. IdentityDeclined: an administrator was
+// proposed a DECT network identity and said no (web/firstrun.go); the step is not shown again, the warning stays.
+type Setup struct {
+	IdentityDeclined   bool      `json:"identity_declined"`
+	IdentityDeclinedBy string    `json:"identity_declined_by,omitempty"`
+	IdentityDeclinedAt time.Time `json:"identity_declined_at,omitempty"`
+}
 
 // MaxLogoBytes is the largest logo the controller stores.
 const MaxLogoBytes = 256 << 10

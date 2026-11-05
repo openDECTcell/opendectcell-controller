@@ -1,0 +1,52 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "setup_identity.html"}}{{template "head" .}}
+{{with .Data}}
+<p class="text-secondary">One step before you add base stations and handsets. It takes a minute, and nothing is registered yet, so nothing can break.</p>
+
+<h3 class="mb-2">Give your base stations one DECT identity</h3>
+<p>DECT handsets know a network by its <strong>identity</strong>. Base stations that share one are <strong>one DECT system</strong>: a handset registers once, finds the best base station by itself, and keeps working when one of them is switched off or out of reach. That is what this controller is for. Base stations without a shared identity keep the factory identity of their box, and every box is then a DECT system of its own.</p>
+<p>We propose this identity for your network. Every base station you connect takes it, with a number of its own.</p>
+
+<div class="card mb-3"><div class="card-body">
+  <dl class="kv mb-3">
+    <dt>Proposed identity</dt><dd>{{.Proposed.String}} · {{if eq .Proposed.Source "random"}}made up on this controller{{else}}an EIC allocated by ETSI{{end}}</dd>
+    <dt>Class</dt><dd>B: up to 255 base stations; one registration serves them all</dd>
+  </dl>
+  <h4 class="mb-2">What to know before you accept it</h4>
+  <ul>
+  {{if eq .Proposed.Source "random"}}
+    <li><strong>This EIC is made up.</strong> ETSI allocates EICs (EN 300 175-6 §5.2) and publishes no list, so it cannot be checked: it may belong to a real DECT system. If a system with the same identity is within radio range, its handsets and yours may try each other's base stations. A made-up EIC is fine for a home, a lab or an experiment; for a service you run for others, use one <a href="https://www.etsi.org/security-algorithms-and-codes/codes" rel="noreferrer">allocated to you by ETSI</a> (below).</li>
+  {{else}}
+    <li>Use only an EIC ETSI allocated to you, and an FPN and FPS of yours under it: the same identity on two systems within radio range lets handsets try each other's base stations.</li>
+  {{end}}
+    <li>The base stations reload their DECT chip with it when they next connect. A base station that is already connected does so within a minute and is out of service for a short while.</li>
+    <li>Handsets register under this identity. <strong>Changing it later makes every handset register again</strong>, one by one. Until you register the first handset you can change it without cost, on the Network identity page.</li>
+    <li>In one of our tests a Gigaset A540 did not find a class B base station again after a restart (a class A identity, taken from one of your base stations, worked: the Network identity page offers it, up to 7 base stations). If you have a handset like that, say no here, connect your base stations first and choose there.</li>
+  </ul>
+  <form method="post" action="/setup/identity" class="narrow">
+    <input type="hidden" name="eic" value="{{printf "%04X" .Proposed.EIC}}">
+    <input type="hidden" name="fpn" value="{{.Proposed.FPN}}">
+    <input type="hidden" name="fps" value="{{.Proposed.FPS}}">
+    <input type="hidden" name="source" value="{{.Proposed.Source}}">
+    <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="understood"><span class="form-check-label">I read the notes above.</span></label>
+    <button type="submit" name="action" value="accept" class="btn btn-primary">Use this identity</button>
+    {{if eq .Proposed.Source "random"}}<button type="submit" name="action" value="another" class="btn btn-outline-secondary" formnovalidate>Propose another</button>{{end}}
+  </form>
+</div></div>
+
+<details class="card mb-3"><summary class="card-body">I have an EIC from ETSI…</summary>
+<div class="card-body border-top"><form method="post" action="/setup/identity" class="narrow">
+  <label class="form-label">EIC, 4 hex digits <input class="form-control" name="eic" pattern="[0-9A-Fa-f]{4}" maxlength="4" required></label>
+  <label class="form-label">FPN, 0 to 255 <input class="form-control" name="fpn" type="number" min="0" max="255" value="0" required></label>
+  <label class="form-label">FPS, 1 to 15 <input class="form-control" name="fps" type="number" min="1" max="15" value="1" required></label>
+  <button type="submit" name="action" value="eic" class="btn btn-outline-primary">Propose this one</button>
+</form></div></details>
+
+<div class="card mb-3 border-warning"><div class="card-body">
+  <h4 class="mb-2">Not now</h4>
+  <p><strong>If you say no:</strong> the base stations keep the factory identities of their boxes. Each box is then a DECT system of its own. A handset registered on one box cannot use another, and loses its base when that box is switched off or unplugged. Your overview keeps a warning until an identity is set.</p>
+  <p class="text-secondary">You can set one at any time on <em>Network identity</em> in the Administration menu. Once handsets are registered, doing so makes each of them register again, and the page asks you to confirm that.</p>
+  <form method="post" action="/setup/identity"><button type="submit" name="action" value="decline" class="btn btn-outline-warning">No, not now</button></form>
+</div></div>
+{{end}}
+{{template "foot" .}}{{end}}

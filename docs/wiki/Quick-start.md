@@ -28,7 +28,9 @@ docker compose exec controller opendectcell-controller user create --username ad
 
 The last command asks for a password on its standard input: type it and press Enter. The image is built
 **with the DECT core** (the build needs the `opendectcell` submodule; without it the build stops with a message).
-Open <http://localhost:8080> and sign in as `admin`.
+Open <http://localhost:8080> and sign in as `admin`. The first thing you see is **the DECT network identity**: the
+controller proposes one and says what it means (below, and [Base stations](Cells.md#the-dect-network-identity)).
+Accept it unless you have a reason not to, **before you register the first handset**.
 
 Back up the master key now, separately from the database. Without it, every stored key and SIP password
 in a database backup is lost:

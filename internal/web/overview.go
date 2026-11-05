@@ -270,6 +270,13 @@ func (s *Server) buildOverview(ctx context.Context, u *auth.User) overview {
 		{Done: len(o.Lines) > 0, Text: "A VoIP line (SIP account) is set up", Href: "/sip-accounts", Label: "VoIP lines"},
 		{Done: len(o.Handsets) > 0, Text: "A handset is registered", Href: "/handsets", Label: "Handsets"},
 	}
+	if u.IsAdmin() && s.Cells != nil {
+		id, _ := s.Cells.SystemIdentity(ctx)
+		o.Steps = append([]homeStep{{Done: id != nil, Text: "The DECT network has an identity, so that base stations form one system", Href: "/network-identity", Label: "Network identity"}}, o.Steps...)
+		if id == nil {
+			o.Attention = append(o.Attention, attention{"warning", "The DECT network has no identity: every base station is a DECT system of its own, and a handset cannot move to another one or find another when its own is off", "/network-identity", "Set an identity"})
+		}
+	}
 	o.StepsDone = true
 	for _, st := range o.Steps {
 		o.StepsDone = o.StepsDone && st.Done

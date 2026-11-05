@@ -293,6 +293,12 @@ type homeStep struct {
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request, u *auth.User) {
+	if u.IsAdmin() { // a new controller: the identity of the DECT network is proposed first (firstrun.go)
+		if due, err := s.identityStepDue(r.Context()); err == nil && due {
+			http.Redirect(w, r, "/setup/identity", http.StatusSeeOther)
+			return
+		}
+	}
 	s.render(w, http.StatusOK, "home.html", page{Title: "Overview", User: u, Data: s.buildOverview(r.Context(), u)})
 }
 

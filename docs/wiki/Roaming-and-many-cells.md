@@ -20,8 +20,10 @@ not been walked with real boxes.
 
 ## How a handset moves
 
-1. A handset that is registered keeps listening for a base it knows. All your cells show the same network name
-   (the same DECT system identity), so it picks the best signal by itself. You cannot tell it to prefer a cell.
+1. A handset that is registered keeps listening for a base it knows. Your cells show the same network name
+   (the same DECT system identity, which an administrator creates on first sign-in or on the Network identity page:
+   see [Base stations](Cells.md#the-dect-network-identity); without it every box is its own DECT system and nothing roams),
+   so it picks the best signal by itself. You cannot tell it to prefer a cell.
 2. When it first talks to a new cell (a *location registration*), the cell does not know it yet. It asks the
    controller, receives the handset's record from the database and puts it in the cell's **working set** (its
    memory of the handsets that are around). Up to 26 handsets at a time per cell, beyond the six chip slots.

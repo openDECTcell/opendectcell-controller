@@ -6,7 +6,7 @@ An honest list, so you can judge whether openDECTcell fits your case today. It i
 ## Works, and has been seen on hardware
 
 Registering handsets; calls in and out with audio, HD voice (G.722), encrypted on the air; two cells (a 7520 and a
-7412) of one controller; handsets moving between them when a box goes away; the cell connection (TLS, enrolment,
+7412) of one controller; **handsets moving between boxes only with a shared network identity** (without it every box is a DECT system of its own and a handset registered on one finds no other; the first sign-in now proposes the identity; a shared identity with the 7412 has not been tried on air); the cell connection (TLS, enrolment,
 certificate renewal) against the real controller; SIP registration and calls; caller number on the display.
 
 ## Built, but not seen on hardware

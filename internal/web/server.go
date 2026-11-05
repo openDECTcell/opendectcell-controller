@@ -244,6 +244,7 @@ func (s *Server) routes() {
 	s.notificationRoutes()
 	s.cellRoutes()
 	s.identityRoutes()
+	s.firstRunRoutes()
 	s.sipRoutes()
 	s.userRoutes()
 	s.apiRoutes()

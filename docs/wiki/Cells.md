@@ -68,15 +68,39 @@ needs a new enrollment string. Revoke the old cell on the controller as well.
 
 ## The DECT network identity
 
-All cells of a controller share one **DECT system identity** so that a handset sees them as one network.
-**Administration > Network identity** shows it. Each cell gets an identity of its own, derived from the system
-identity (the same operator codes, a number of its own per cell), and every cell reloads its chip with it when
-it next connects.
+Base stations are **one DECT system**, with handsets that register once and move between them, only when they share
+an **identity**. A base station without one keeps the factory identity of its box, and then every box is a DECT
+system of its own: a handset registered on one box does not find another, and when that box is switched off or
+unplugged the handset says *no base station*. The identity does not exist until an administrator creates it.
+
+**On a new controller you are asked right after your first sign-in.** The controller proposes an identity (class B,
+up to 255 base stations; the EIC is made up on the controller, or you type one you got from ETSI) and tells you what
+to know before you accept:
+
+- A made-up EIC cannot be checked against a list (ETSI publishes none), so it may belong to a real system. Near
+  such a system, handsets of either may try the other's base station. Fine for a home, a lab or an experiment; for
+  a service run for others, use an EIC allocated to you.
+- The base stations reload their DECT chip with the identity when they next connect (a short outage each).
+- **Changing the identity later makes every handset register again.** Until the first handset is registered it
+  costs nothing, which is why the controller asks first.
+- A Gigaset A540 did not find a class B base station again after a restart in one of our tests (a class A identity
+  worked). If you own such a handset, decline here, connect your base stations first and choose a class A identity
+  on the Network identity page (up to 7 base stations).
+
+**You can say no.** The page says what that means: the boxes keep their factory identities, each is a system of its
+own, and the overview shows a warning until an identity is set. The question is not asked again. **Administration >
+Network identity** sets or replaces it later; once handsets are registered that page asks you to confirm, more than
+once, because every handset has to register again.
+
+On a controller that already has handsets, nothing is proposed automatically (it would break them); the overview
+warns that there is no identity, and the Network identity page does it with the confirmations.
+
+Each base station gets an identity of its own, derived from the system identity (the same operator codes, a number
+of its own per base station). **Administration > Network identity** also shows what is in use and whether the base
+stations have taken it.
 
 > **Handle with care.** Replacing the system identity makes **every handset registered so far lose its
-> base** and register again. You do not need to touch this page for normal use. It exists for the day you
-> want to give the system an identity of your own (for example your own EIC, the operator code from ETSI) or
-> take one cell's identity as the system's. It asks for confirmation twice.
+> base** and register again. It asks for confirmation twice.
 
 ## Base stations for users, and the map
 
