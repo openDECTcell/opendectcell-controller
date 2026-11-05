@@ -39,6 +39,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Calls between handsets of one account | 🟡 | |
 | Phonebook, call lists, message-waiting lamp | 🟡 | Built; not all seen on hardware |
 | CardDAV address books (read only, several, chosen per handset), vCard and CSV import and export of contacts | 🟡 | Tests against a fake server; not tried against Nextcloud; private network addresses refused unless the operator allows them |
+| Personal API tokens with scopes (no administrator scope), the handsets, calls and statistics endpoints | 🟡 | Tests, including that a token with every scope cannot reach the administrators' API; not tried by a real client |
 | Statistics: peaks at once (per day, per base station against capacity), weekday and hour, quality, per line and handset, line availability, against the previous period, CSV, monthly usage report | 🟡 | Tests against the database and the pages; not looked at with a month of real data; presence and set-up time are not built |
 | Scheduled backups: nightly encrypted dump, restore check, SFTP copy, retention; state, download and alerts in the interface | 🟡 | Proven on throwaway containers with a real SFTP server (`tools/backup-test.sh`); not run on the Pi; S3 not built |
 | Notification centre: a bell, VoIP line down, handset not heard (opt-in), base station offline, certificates ending; mail with quiet hours | 🟡 | Tests; not seen with real failures on the Pi; disk, worker restart, release and backup alerts are not built |

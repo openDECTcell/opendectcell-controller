@@ -1,0 +1,55 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_tokens.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-8">
+    {{if .New}}
+    <div class="card mb-3 border-success"><div class="card-header"><h3 class="card-title">{{icon "key"}} Your new token: {{.NewName}}</h3></div>
+      <div class="card-body">
+        <p class="mb-2"><strong>Copy it now.</strong> It is shown only this once; the controller keeps just a fingerprint and cannot show it again. If you lose it, revoke it and make another.</p>
+        <input class="form-control font-monospace mb-2" readonly value="{{.New}}" aria-label="The token" size="70">
+        <p class="text-secondary small mb-0">Use it as <code>Authorization: Bearer &lt;token&gt;</code> on <code>/api/v1/...</code>. Treat it like a password: it acts as you, with the things you chose below.</p>
+      </div></div>
+    {{end}}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Your tokens</h3></div>
+      <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Name</th><th>What it may do</th><th>Expires</th><th>Last used</th><th></th></tr></thead><tbody>
+        {{range .Tokens}}<tr>
+          <td><strong>{{.Name}}</strong><div class="text-secondary small font-monospace">{{.Display}}</div></td>
+          <td class="small">{{range .Scopes}}<span class="badge bg-blue-lt me-1">{{.}}</span>{{end}}</td>
+          <td>{{if eq .Status "active"}}{{.ExpiresAt.Local.Format "2006-01-02"}}{{else if eq .Status "revoked"}}<span class="badge bg-secondary-lt">revoked</span>{{else}}<span class="badge bg-secondary-lt">expired {{.ExpiresAt.Local.Format "2006-01-02"}}</span>{{end}}</td>
+          <td>{{if .LastUsedAt}}{{fmtTime .LastUsedAt}}{{with .LastUsedIP}} from {{.}}{{end}}{{else}}<span class="text-secondary">never</span>{{end}}</td>
+          <td class="text-end">{{if .Active}}<form method="post" action="/account/tokens/{{.ID}}/revoke" data-confirm="Revoke this token? Whatever uses it stops working."><button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button></form>{{end}}</td>
+        </tr>{{else}}<tr><td colspan="5" class="text-secondary">No tokens yet.</td></tr>{{end}}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Make a token</h3></div>
+      <div class="card-body">
+        <p>A token lets a script, a widget or another program use your account through the API without your password. It can do only what you tick, only until it expires, and you can revoke it any time.
+        Tick as little as the program needs. At most {{.Max}} tokens at a time.</p>
+        <form method="post" action="/account/tokens">
+          <div class="mb-3"><label class="form-label" for="tn">Name (what it is for)</label><input class="form-control" id="tn" name="name" maxlength="64" value="{{.Name}}" required></div>
+          <div class="mb-3"><label class="form-label">It may</label>
+            {{range .Scopes}}<label class="form-check"><input class="form-check-input" type="checkbox" name="scope_{{.Name}}" {{if index $.Data.Checked .Name}}checked{{end}}><span class="form-check-label"><code>{{.Name}}</code> {{.Title}}{{if .Write}} <span class="badge bg-orange-lt">changes things</span>{{end}}</span></label>{{end}}
+          </div>
+          <div class="mb-3"><label class="form-label" for="td">It lasts</label><select class="form-select w-auto" id="td" name="days">{{range .Lifetime}}<option value="{{.Days}}" {{if .Default}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="tp">Your password (to confirm it is you)</label><input class="form-control" id="tp" name="password" type="password" autocomplete="current-password" required></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="tu">Type your user name to confirm</label><input class="form-control" id="tu" name="username" autocomplete="off" required></div>{{end}}
+          <button type="submit" class="btn btn-primary">Make the token</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4"><div class="card"><div class="card-body">
+    <h4>What a token cannot do</h4>
+    <ul class="mb-0">
+      <li>Anything of the administrators' side, enrolling base stations, organizations, or making tokens: those need you at the browser.</li>
+      <li>Read a VoIP line's password, or a handset's key.</li>
+      <li>Reach the web pages: it works on <code>/api/v1</code> only.</li>
+    </ul>
+    <p class="mt-3 mb-0 text-secondary small">The API is described in <code>docs/api/openapi.yaml</code>.</p>
+  </div></div></div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

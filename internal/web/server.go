@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/alerts"
+	"github.com/openDECTcell/opendectcell-controller/internal/apitoken"
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
@@ -81,6 +82,7 @@ type Server struct {
 	Books          *carddav.Store    // nil: no address books
 	Transfer       *transfer.Store   // nil: no setup export and import
 	BackupDir      string            // where the backup service writes (internal/backup); "": no backup page content
+	APITokens      *apitoken.Store   // nil: no personal API tokens
 	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).
 	AlertSink     func(user uuid.UUID, n alerts.Notification)
 	SIP           SIPStatus
@@ -166,7 +168,7 @@ func (s *Server) Handler() (http.Handler, error) {
 			return nil, err
 		}
 	}
-	var h http.Handler = s.mux
+	h := s.withToken(s.mux) // inside withSession: a token on an API request is what the request is made with
 	h = s.withSession(h)
 	h = cop.Handler(h)
 	h = s.withClientAddr(h)
@@ -211,6 +213,7 @@ func (s *Server) routes() {
 	s.accountDataRoutes()
 	s.setupRoutes()
 	s.notifyRoutes()
+	s.apiTokenRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 	s.mux.Handle("GET /account/sessions", s.requireUser(s.sessionsPage))

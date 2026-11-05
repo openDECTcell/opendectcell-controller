@@ -30,8 +30,22 @@ info:
 
     **Authentication.** The browser session cookie. State-changing requests
     from a browser must be same-origin (checked with Fetch metadata / Origin).
-    Personal API tokens (`bearerToken`) are planned for C7 and listed here so
-    that the shape is settled.
+    **Personal API tokens** (`bearerToken`, Account > API tokens): `Authorization:
+    Bearer odc_<16 hex>_<43 characters>`, on `/api/v1` only. A token acts as its
+    user, with the scopes the user ticked, until it expires (30 days to a year)
+    or is revoked, and never more than a session: **there is no scope for
+    administration**, and the administrators' operations, organizations, the
+    trust setting, the enrolment of base stations and the making of tokens need
+    a session (`403 token_not_allowed`). A token that lacks the scope an
+    operation needs gets `403 insufficient_scope` with a
+    `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` header;
+    a token that is unknown, wrong, expired or revoked gets `401 invalid_token`,
+    also when the request carries a valid session cookie as well. The scope of an
+    operation is in `x-scope`; an operation without one is session-only.
+    Scopes: `profile:read`, `handsets:read`, `handsets:write`, `lines:read`,
+    `lines:write`, `contacts:read`, `contacts:write`, `calls:read`,
+    `calls:write` (mark missed calls read), `statistics:read`, `stations:read`,
+    `registration:write` (open, look at and close a registration window).
 
     **Errors** are `application/problem+json` (RFC 9457) with a stable `code`.
     Secrets are write-only: they are accepted on create/update and never
@@ -84,6 +98,7 @@ paths:
       operationId: getMe
       summary: The logged-in user
       x-authz: user
+      x-scope: "profile:read"
       responses:
         "200":
           description: OK
@@ -209,6 +224,7 @@ paths:
       tags: [handsets]
       operationId: listHandsets
       x-authz: owner
+      x-scope: "handsets:read"
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Before" }
@@ -222,6 +238,7 @@ paths:
       tags: [handsets]
       operationId: getHandset
       x-authz: owner
+      x-scope: "handsets:read"
       responses:
         "200":
           description: OK
@@ -232,6 +249,7 @@ paths:
       operationId: updateHandset
       description: A handset's owner cannot be changed; a handset always has an owner.
       x-authz: owner
+      x-scope: "handsets:write"
       requestBody:
         required: true
         content:
@@ -242,7 +260,8 @@ paths:
                 display_name: { type: string, maxLength: 64 }
                 default_line: { type: integer, enum: [1, 2], nullable: true }
                 dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
-                disclosed_to_admins: { type: boolean, default: false, description: "The owner lets administrators see this handset under their account (name, model, status, last seen; never its lines)" }
+                disclosed_to_admins: { type: boolean, default: false, description: "Planned. Not accepted yet: privacy settings are changed on the handset's page, with a session" }
+                lines: { type: object, description: "The VoIP line (an account id of the user's own, or null for none) of line 1 and line 2; a key that is left out stays as it is", properties: { "1": { type: string, format: uuid, nullable: true }, "2": { type: string, format: uuid, nullable: true } } }
       responses:
         "403": { $ref: "#/components/responses/Forbidden" }
         "200":
@@ -369,6 +388,7 @@ paths:
         per hour (`429 rate_limited`); `503 busy` when 32 PINs are live or
         quarantined network-wide.
       x-authz: user
+      x-scope: "registration:write"
       requestBody:
         required: true
         content:
@@ -408,6 +428,7 @@ paths:
       operationId: getRegistrationWindow
       description: Poll for the outcome. Visible to the user who opened it, and admins.
       x-authz: owner-or-admin
+      x-scope: "registration:write"
       responses:
         "200":
           description: OK
@@ -417,6 +438,7 @@ paths:
       tags: [registration]
       operationId: cancelRegistrationWindow
       x-authz: owner-or-admin
+      x-scope: "registration:write"
       responses:
         "204": { description: Cancelled }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -426,6 +448,7 @@ paths:
       tags: [sip-accounts]
       operationId: listSipAccounts
       x-authz: owner-or-admin
+      x-scope: "lines:read"
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { $ref: "#/components/parameters/Before" }
@@ -439,6 +462,7 @@ paths:
       operationId: createSipAccount
       description: Owned by the caller; admins may set `owner_id` (or `null` = shared).
       x-authz: user
+      x-scope: "lines:write"
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
@@ -454,6 +478,7 @@ paths:
       tags: [sip-accounts]
       operationId: getSipAccount
       x-authz: owner-or-admin
+      x-scope: "lines:read"
       responses:
         "200":
           description: OK
@@ -464,6 +489,7 @@ paths:
       operationId: updateSipAccount
       description: Omitting `password` keeps it; `""` clears it. `owner_id` is admin-only.
       x-authz: owner-or-admin
+      x-scope: "lines:write"
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/SipAccountInput" } } }
@@ -479,6 +505,7 @@ paths:
       operationId: deleteSipAccount
       description: "`409 in_use` while a handset line uses it."
       x-authz: owner-or-admin
+      x-scope: "lines:write"
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -490,6 +517,7 @@ paths:
       operationId: getSipAccountStatus
       summary: Live registration state
       x-authz: owner-or-admin
+      x-scope: "lines:read"
       responses:
         "200":
           description: OK
@@ -506,6 +534,7 @@ paths:
         home set; this is the one list that is not filtered by ownership,
         because cells are not owned.
       x-authz: user
+      x-scope: "stations:read"
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { name: state, in: query, schema: { $ref: "#/components/schemas/CellState" } }
@@ -678,16 +707,33 @@ paths:
       operationId: listCalls
       description: An administrator sees other users' calls with the remote number masked (all but the last three characters); the owner sees their own in full.
       x-authz: owner-or-admin
+      x-scope: "calls:read"
       parameters:
         - { $ref: "#/components/parameters/Limit" }
         - { name: before, in: query, schema: { type: integer, format: int64 }, description: Call id cursor }
         - { $ref: "#/components/parameters/OwnerFilter" }
-        - { name: handset_id, in: query, schema: { type: string, format: uuid } }
+        - { name: handset, in: query, schema: { type: string, format: uuid } }
+        - { name: line, in: query, schema: { type: string, format: uuid }, description: The VoIP line }
+        - { name: direction, in: query, schema: { type: string, enum: [in, out] } }
+        - { name: missed, in: query, schema: { type: boolean }, description: Only incoming calls nobody answered }
         - { name: since, in: query, schema: { type: string, format: date-time } }
       responses:
         "200":
-          description: OK
+          description: OK. Only the requesting user's own calls (an administrator's list holds the administrator's own too; the other users' calls are on the pages).
           content: { application/json: { schema: { $ref: "#/components/schemas/CallList" } } }
+        "400": { $ref: "#/components/responses/Invalid" }
+  /calls/{callId}:
+    parameters: [{ name: callId, in: path, required: true, schema: { type: integer, format: int64 } }]
+    get:
+      tags: [calls]
+      operationId: getCall
+      x-authz: owner
+      x-scope: "calls:read"
+      responses:
+        "200":
+          description: OK
+          content: { application/json: { schema: { $ref: "#/components/schemas/Call" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /contacts:
     get:
@@ -696,6 +742,7 @@ paths:
       summary: The caller's personal contacts and the shared ones
       description: CAT-iq list access, controller side (docs/list-access.md). A personal list is private to its user; no one, an admin included, reads another's (`owner`, if given, must be the caller's own id).
       x-authz: user
+      x-scope: "contacts:read"
       parameters:
         - { name: scope, in: query, schema: { type: string, enum: [personal, shared] } }
         - { name: owner, in: query, schema: { type: string, format: uuid }, description: Must be the caller's own id }
@@ -709,6 +756,7 @@ paths:
       operationId: createContact
       description: A personal contact of the caller; admins may set `owner_id` (`null` = shared).
       x-authz: user
+      x-scope: "contacts:write"
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/ContactInput" } } }
@@ -724,6 +772,7 @@ paths:
       tags: [contacts]
       operationId: getContact
       x-authz: owner-or-admin-shared-read
+      x-scope: "contacts:read"
       responses:
         "200":
           description: OK
@@ -734,6 +783,7 @@ paths:
       operationId: replaceContact
       description: Replaces names and numbers.
       x-authz: owner-or-admin-shared-read
+      x-scope: "contacts:write"
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/ContactInput" } } }
@@ -748,6 +798,7 @@ paths:
       tags: [contacts]
       operationId: deleteContact
       x-authz: owner-or-admin-shared-read
+      x-scope: "contacts:write"
       responses:
         "204": { description: Deleted }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -766,6 +817,7 @@ paths:
         accounts of the handset's lines. `outgoing_calls`: calls placed from this
         handset (docs/list-access.md §1).
       x-authz: owner
+      x-scope: "handsets:read"
       parameters:
         - { $ref: "#/components/parameters/Limit" }
       responses:
@@ -786,10 +838,42 @@ paths:
       operationId: markMissedCallRead
       description: Sets the missed call's read mark, which every handset on the line shares (docs/list-access.md §2). `409 not_missed` for other calls.
       x-authz: owner-or-admin
+      x-scope: "calls:write"
       responses:
         "204": { description: Marked }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /statistics/summary:
+    get:
+      tags: [stats]
+      operationId: getMyStatistics
+      summary: The requesting user's own numbers
+      x-authz: owner
+      x-scope: "statistics:read"
+      parameters:
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 90, default: 30 }, description: How many days of calls per day }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  handsets: { type: integer }
+                  lines: { type: integer }
+                  calls_total: { type: integer }
+                  calls_24h: { type: integer }
+                  calls_7d: { type: integer }
+                  answered_7d: { type: integer }
+                  failed_7d: { type: integer, description: Outgoing calls that never reached a conversation }
+                  talk_seconds_7d: { type: integer }
+                  encrypted_7d: { type: integer, description: Calls with SRTP on the SIP side }
+                  days:
+                    type: array
+                    items: { type: object, properties: { date: { type: string, format: date }, calls: { type: integer }, answered: { type: integer }, talk_seconds: { type: integer } } }
+        "400": { $ref: "#/components/responses/Invalid" }
 
   /stats/summary:
     get:
@@ -1104,7 +1188,7 @@ components:
     bearerToken:
       type: http
       scheme: bearer
-      description: Personal API token. Planned for C7.
+      description: Personal API token (see the description above for the scopes).
 
   parameters:
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
@@ -1181,11 +1265,16 @@ components:
     DualRingPolicy: { type: string, enum: [call_waiting, busy] }
     Handset:
       type: object
-      required: [id, owner_id, display_name, registered_at, lines, home_cell_ids]
+      required: [id, display_name, registered_at, lines]
       properties:
         id: { type: string, format: uuid }
-        owner_id: { type: string, format: uuid, description: "Always set: a team's handset belongs to an organisation or admin account" }
+        owner_id: { type: string, format: uuid, description: "Planned: not returned yet" }
         display_name: { type: string }
+        profile: { type: string, description: "The id of its device profile; empty is the standard behaviour" }
+        presence: { type: string, enum: [online, unresponsive, offline], description: "Online while it is heard within its registration interval" }
+        signal_dbm: { type: integer, nullable: true, description: "The last field strength measured on a link to it" }
+        internal_number: { type: integer, description: "What another handset of the account dials after INT to reach it (0: none)" }
+        last_seen_cell: { type: string, description: "The name of the base station it was last heard on" }
         ipui_display: { type: string, description: "The identity in the form handsets show it, for telling handsets apart. Not a secret, but personal data" }
         manufacturer_emc: { type: integer, nullable: true }
         model: { type: string, nullable: true }
@@ -1194,8 +1283,8 @@ components:
         dual_ring_policy: { $ref: "#/components/schemas/DualRingPolicy" }
         disclosed_to_admins: { type: boolean, default: false, description: "The owner lets administrators see this handset under their account (name, model, status, last seen; never its lines)" }
         lines: { type: array, maxItems: 2, items: { $ref: "#/components/schemas/HandsetLine" } }
-        home_cell_ids: { type: array, items: { type: string, format: uuid } }
-        last_seen_cell_id: { type: string, format: uuid, nullable: true }
+        home_cell_ids: { type: array, items: { type: string, format: uuid }, description: "Planned: not returned yet" }
+        last_seen_cell_id: { type: string, format: uuid, nullable: true, description: "Planned: not returned yet" }
         last_seen_at: { type: string, format: date-time, nullable: true }
         registered_at: { type: string, format: date-time }
     HandsetList:
@@ -1210,7 +1299,8 @@ components:
       properties:
         line: { type: integer, enum: [1, 2] }
         sip_account_id: { type: string, format: uuid }
-        display_name: { type: string }
+        display_name: { type: string, description: "The VoIP line's name" }
+        address: { type: string, description: "user@domain of the line" }
         enabled: { type: boolean }
     FeatureSettingInput:
       type: object
@@ -1423,7 +1513,11 @@ components:
         cell_codec: { type: string, nullable: true }
         sip_tls: { type: boolean, nullable: true }
         srtp: { type: boolean, nullable: true }
-        quality: { type: object, additionalProperties: true, description: "Admins only: jitter, loss, MOS estimate" }
+        duration_seconds: { type: integer, description: "The conversation time; 0 for a call nobody answered or one still going on" }
+        result: { type: string, enum: [answered, ongoing, ringing, missed, not answered, unknown] }
+        mos: { type: number, nullable: true, description: "The call's quality, 1 to 4.5 (ITU-T G.107), when it was measured" }
+        missed_read: { type: boolean, nullable: true, description: "For a missed call: whether it was marked as seen" }
+        quality: { type: object, additionalProperties: true, description: "Planned (administrators): jitter, loss, MOS estimate. Not returned yet" }
     CallList:
       type: object
       required: [items]

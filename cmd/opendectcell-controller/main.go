@@ -45,6 +45,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/alerts"
+	"github.com/openDECTcell/opendectcell-controller/internal/apitoken"
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/bridge"
@@ -520,7 +521,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		},
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
 		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
-		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir,
+		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir, APITokens: &apitoken.Store{Pool: pool},
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {

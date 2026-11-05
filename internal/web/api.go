@@ -21,7 +21,7 @@ import (
 // The JSON API (docs/api/openapi.yaml) for the resources that exist so
 // far. It uses the browser session and the same CSRF protection as the
 // pages, and the same store functions, so the authorisation rules are the
-// same code. Personal API tokens are C7.
+// same code. A request may carry a personal API token instead of a session (apiscopes.go): then only what the token's scopes allow.
 
 const apiPrefix = "/api/v1"
 
@@ -36,6 +36,7 @@ func (s *Server) apiRoutes() {
 	h("PATCH "+apiPrefix+"/users/{id}", s.apiAdmin(s.apiUserPatch))
 	h("DELETE "+apiPrefix+"/users/{id}", s.apiAdmin(s.apiUserDelete))
 	h("GET "+apiPrefix+"/audit", s.apiAdmin(s.apiAudit))
+	s.resourceRoutes()
 	if s.Orgs != nil {
 		s.apiOrgRoutes(h)
 	}
@@ -87,7 +88,11 @@ func (s *Server) apiUser(h func(http.ResponseWriter, *http.Request, *auth.User))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
 		if u == nil {
-			problem(w, http.StatusUnauthorized, "unauthenticated", "log in first", nil)
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			problem(w, http.StatusUnauthorized, "unauthenticated", "log in first, or send a personal API token", nil)
+			return
+		}
+		if tok, ok := tokenFrom(r.Context()); ok && !tokenAllows(w, r, tok) {
 			return
 		}
 		h(w, r, u)
