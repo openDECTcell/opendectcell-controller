@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_health.html"}}{{template "head" .}}
+{{with .Data}}
+{{if eq .Summary "ok"}}<div class="alert alert-success">Everything that can be checked is in order.</div>
+{{else if eq .Summary "warn"}}<div class="alert alert-warning">{{.Warn}} {{if eq .Warn 1}}thing needs{{else}}things need{{end}} a look.</div>
+{{else}}<div class="alert alert-danger">{{.Fail}} {{if eq .Fail 1}}check fails{{else}}checks fail{{end}}{{if .Warn}}, and {{.Warn}} need a look{{end}}.</div>{{end}}
+<div class="card mb-3"><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th class="w-1"></th><th>Check</th><th>What it found</th></tr></thead><tbody>
+  {{range .Checks}}<tr>
+    <td>{{if eq .Status "ok"}}<span class="badge bg-green-lt">ok</span>{{else if eq .Status "warn"}}<span class="badge bg-orange-lt">look</span>{{else if eq .Status "fail"}}<span class="badge bg-red-lt">fails</span>{{else}}<span class="badge bg-secondary-lt">-</span>{{end}}</td>
+    <td class="fw-bold">{{if .Href}}<a href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+    <td>{{.Detail}}</td>
+  </tr>{{end}}
+</tbody></table></div>
+<div class="card-footer text-secondary small">Checked {{fmtTime .At}}. The same checks run for a monitor at <code>/readyz</code> (the database answers) and, if the operator switched it on, <code>/status</code> (one word for anybody: ok, degraded or down).</div></div>
+<div class="card"><div class="card-header"><h3 class="card-title">Mail</h3></div><div class="card-body">
+  <p class="mb-2">Send a test mail to {{if .Email}}<strong>{{.Email}}</strong>{{else}}your address (your account has none){{end}} to see that the mail server takes it.</p>
+  <form method="post" action="/admin/health/mail"><button type="submit" class="btn btn-outline-primary" {{if not .MailOK}}disabled{{end}}>Send a test mail</button></form>
+</div></div>
+{{end}}
+{{template "foot" .}}{{end}}

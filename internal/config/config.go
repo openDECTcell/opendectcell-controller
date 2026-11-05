@@ -108,6 +108,8 @@ type HTTP struct {
 	// MetricsToken turns on /metrics (Prometheus) for a client that sends it
 	// as a bearer token. Secret. Empty: no endpoint.
 	MetricsToken string `yaml:"metrics_token"`
+	// PublicStatus serves /status to anybody: one word (ok, degraded, down) and the time, for a hosted instance whose users want to know.
+	PublicStatus bool `yaml:"public_status"`
 }
 
 // Database configures the PostgreSQL connection pool.
@@ -345,6 +347,7 @@ func vars(c *Config) []envVar {
 		{"HTTP_BASE_URL", false, str(&c.HTTP.BaseURL)},
 		{"HTTP_TRUSTED_PROXIES", false, list(&c.HTTP.TrustedProxies)},
 		{"HTTP_METRICS_TOKEN", true, str(&c.HTTP.MetricsToken)},
+		{"HTTP_PUBLIC_STATUS", false, boolean(&c.HTTP.PublicStatus)},
 		{"DATABASE_URL", true, str(&c.Database.URL)},
 		{"DATABASE_ADMIN_URL", true, str(&c.Database.AdminURL)},
 		{"DATABASE_MAX_CONNS", false, uintN(&c.Database.MaxConns, 31)},

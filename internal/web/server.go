@@ -78,13 +78,15 @@ type Server struct {
 	Version        string
 	Cells          *cell.Store // nil: no cell pages
 	CellLink       CellLink
-	SIPAccounts    *sipaccount.Store // nil: no SIP pages
-	Contacts       *contacts.Store   // nil: no contact API
-	Books          *carddav.Store    // nil: no address books
-	Transfer       *transfer.Store   // nil: no setup export and import
-	BackupDir      string            // where the backup service writes (internal/backup); "": no backup page content
-	APITokens      *apitoken.Store   // nil: no personal API tokens
-	Webhooks       *webhook.Store    // nil: no webhooks
+	SIPAccounts    *sipaccount.Store                    // nil: no SIP pages
+	Contacts       *contacts.Store                      // nil: no contact API
+	Books          *carddav.Store                       // nil: no address books
+	Transfer       *transfer.Store                      // nil: no setup export and import
+	BackupDir      string                               // where the backup service writes (internal/backup); "": no backup page content
+	APITokens      *apitoken.Store                      // nil: no personal API tokens
+	Webhooks       *webhook.Store                       // nil: no webhooks
+	PublicStatus   bool                                 // serve /status, one word for anybody (OPENDECTCELL_PUBLIC_STATUS)
+	freeSpace      func(string) (uint64, uint64, error) // tests: the free and total space of the backup volume
 	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).
 	AlertSink     func(user uuid.UUID, n alerts.Notification)
 	SIP           SIPStatus
@@ -217,6 +219,7 @@ func (s *Server) routes() {
 	s.notifyRoutes()
 	s.apiTokenRoutes()
 	s.activityRoutes()
+	s.healthRoutes()
 	s.webhookRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))

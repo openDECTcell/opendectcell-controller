@@ -524,7 +524,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		},
 		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
 		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
-		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir, APITokens: &apitoken.Store{Pool: pool},
+		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir, PublicStatus: cfg.HTTP.PublicStatus, APITokens: &apitoken.Store{Pool: pool},
 		Webhooks: &webhook.Store{Pool: pool, Keyring: kr, Policy: netguard.Policy{AllowPrivate: cfg.Webhook.AllowPrivate}},
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}

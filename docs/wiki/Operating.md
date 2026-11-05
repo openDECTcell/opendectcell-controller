@@ -111,9 +111,11 @@ A controller restart ends running calls and the cells reconnect within seconds. 
 
 | What | How |
 |---|---|
+| Is it all right | **Administration > Health**: one list of checks, green or red with the cause: the database and its schema, the clock, outgoing mail (with a button that sends you a test mail), mail that waits too long, base stations connected, the certificate authority and the base stations' certificates, VoIP lines registered, the last backup and the space left for backups |
 | Is it alive, is the database up | `GET /healthz` and `GET /readyz`; the container has a health check |
+| A page for the users of a hosted instance | `GET /status` answers anybody with `ok`, `degraded` (a check of Health fails) or `down` (the database does not answer, HTTP 503) and the time, and nothing of what is inside, when you set `OPENDECTCELL_HTTP_PUBLIC_STATUS=true`; otherwise it is a 404 |
 | Metrics | `GET /metrics` in Prometheus text format, when you set `OPENDECTCELL_HTTP_METRICS_TOKEN`; send it as `Authorization: Bearer …`. About ten series so far (cells, calls, registrations). |
-| Cell offline | The controller sends an alert mail when a cell goes offline, if mail is set up |
+| Alerts | The bell and, if you want, mail: a VoIP line down, a base station offline, certificates ending, a backup that failed or is old ([Notifications](Notifications.md)) |
 | Cells and calls | **Administration > Dashboard**, **Cells**, **All calls**, **Statistics** |
 | Certificates | The expiry of each cell's certificate is a metric; cells renew themselves at two thirds of its life |
 

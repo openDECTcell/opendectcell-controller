@@ -61,6 +61,7 @@ var menu = []navEntry{
 	{group: "Administration", navItem: navItem{Label: "Logging", Href: "/admin/logging", Icon: "bug"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Audit log", Href: "/admin/audit", Icon: "history"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Settings", Href: "/admin/settings", Icon: "settings"}, admin: true},
+	{group: "Administration", navItem: navItem{Label: "Health", Href: "/admin/health", Icon: "heartbeat"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "System", Href: "/admin/system", Icon: "server"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Backup", Href: "/admin/backup", Icon: "database"}, admin: true},
 	{group: "Account", navItem: navItem{Label: "Account", Href: "/account", Icon: "user"}},

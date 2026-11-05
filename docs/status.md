@@ -39,6 +39,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Calls between handsets of one account | 🟡 | |
 | Phonebook, call lists, message-waiting lamp | 🟡 | Built; not all seen on hardware |
 | CardDAV address books (read only, several, chosen per handset), vCard and CSV import and export of contacts | 🟡 | Tests against a fake server; not tried against Nextcloud; private network addresses refused unless the operator allows them |
+| Administration > Health: checks for database, schema, clock, mail, base stations, certificates, lines, backups, space; optional public /status | 🟡 | Tests; no check for DECT workers or the database disk |
 | Account > My activity (own sign-ins, failed attempts, changes, from the audit log) | 🟡 | Tests; the sentences for rarer actions are plain |
 | Webhooks: signed posts for calls, handset presence and notifications, with retries and a switch-off | 🟡 | Tests with a real HTTP receiver; not tried with Home Assistant or ntfy; the delivery needs the controller to reach the receiver |
 | Personal API tokens with scopes (no administrator scope), the handsets, calls and statistics endpoints | 🟡 | Tests, including that a token with every scope cannot reach the administrators' API; not tried by a real client |
