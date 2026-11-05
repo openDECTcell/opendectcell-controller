@@ -36,10 +36,17 @@ firmware-upload page.
 - **By default all cells' DECT stacks run inside one controller process.** A crash in the DECT library stops every call
   until it restarts. Worker processes (`OPENDECTCELL_CELLS_STACK_WORKERS`) contain a crash to one worker and its cells; built and
   tried on the lab, off by default until it has had a long soak.
-- **Scale.** Designed and tested at the database and routing level for 100 cells and 500 handsets. The cell link was
-  tried with 300 simulated cells on one machine (all connected within a second, about 6 goroutines and 70 KiB of memory per
-  cell); no calls, no DECT stacks and no real radios were part of that. The documented comfortable size today is about
-  10 cells and 50 handsets. Cells that restart together behind one address reconnect 16 at a time and retry the rest.
+- **Scale, measured on the Pi 4** (4 cores, 3.8 GB; [load-test-2026-11-05.md](../load-test-2026-11-05.md) has the method and
+  the numbers). *Calls:* the media engine alone carries about **90 calls at once** in G.722 passthrough, about **70** between
+  a narrowband phone line and the cell (PCMA to L16) and about **50 to 60** when it has to convert between a G.711 line and
+  a wideband handset, with clean audio (delay variation under 25 ms, no loss); above that the audio degrades quickly
+  (110 / 100 / 80 calls: 90 to 340 ms of variation and concealed frames). The Pi gets to 75 to 80 degrees doing it.
+  *Cells:* 300 simulated cells connect in 8 s and need 80 KiB each; the database side holds 500 handsets on 100 cells
+  (a move takes 7 ms). **Not measured:** the DECT stack's cost per cell and per call (the stacks of the two real cells
+  idle at about 5 % of one core together with the controller itself), real radios, and the web interface under load.
+  *A comfortable size for one Pi is about 30 simultaneous calls, 20 to 30 cells and 100 handsets.* The limit that
+  bites first is the cells' own: a 7520 carries 5 calls and a 7412 3. Cells that restart together behind one address
+  reconnect 16 at a time and retry the rest.
 - **The cell operator can read the handset keys of its cell** by design (the base has to hold them): do not enrol a
   cell you do not trust. See [threat-model.md](../threat-model.md).
 - **A hand-edited file under `/etc` on the box** meets the package manager's `*.apk-new` files on upgrade.
