@@ -60,6 +60,7 @@ audio: [Install the controller](docs/wiki/Controller-install.md).
 | [docs/architecture.md](docs/architecture.md) | Components, data model, cell protocol, security |
 | [docs/configuration.md](docs/configuration.md), [docs/deployment.md](docs/deployment.md) | Every setting and command |
 | [docs/test-ground.md](docs/test-ground.md) | The permanent test system (a Raspberry Pi with a public, TLS-protected address): what runs there, which ports to open, how to operate it |
+| [docs/load-test-2026-11-05.md](docs/load-test-2026-11-05.md), [wiki/Load-testing.md](docs/wiki/Load-testing.md) | What one Raspberry Pi 4 carries (calls, cells, handsets), how it was measured, and how to measure your own machine (`tools/load-test.sh`) |
 | [docs/roaming.md](docs/roaming.md) | How handsets move between cells and how calls find them |
 | [docs/cell-protocol.md](docs/cell-protocol.md) | Cell↔controller wire protocol: framing, enrollment, mTLS, heartbeat, mail tunnel, subscription slots, media |
 | [docs/libopendectcell-integration.md](docs/libopendectcell-integration.md) | How the controller embeds `libopendectcell` through cgo: sessions, memory, timers, build |

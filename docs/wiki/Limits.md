@@ -37,7 +37,7 @@ firmware-upload page.
   until it restarts. Worker processes (`OPENDECTCELL_CELLS_STACK_WORKERS`) contain a crash to one worker and its cells; built and
   tried on the lab, off by default until it has had a long soak.
 - **Scale, measured on the Pi 4** (4 cores, 3.8 GB; [load-test-2026-11-05.md](../load-test-2026-11-05.md) has the method and
-  the numbers). *Calls:* the media engine alone carries about **90 calls at once** in G.722 passthrough, about **70** between
+  the numbers; [Load testing](Load-testing.md) shows how to measure your own machine). *Calls:* the media engine alone carries about **90 calls at once** in G.722 passthrough, about **70** between
   a narrowband phone line and the cell (PCMA to L16) and about **50 to 60** when it has to convert between a G.711 line and
   a wideband handset, with clean audio (delay variation under 25 ms, no loss); above that the audio degrades quickly
   (110 / 100 / 80 calls: 90 to 340 ms of variation and concealed frames). The Pi gets to 75 to 80 degrees doing it.

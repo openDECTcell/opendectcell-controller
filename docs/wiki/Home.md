@@ -30,9 +30,10 @@ This wiki explains how to use what the project builds, from nothing to a handset
 14. [API tokens](API-tokens.md): scripts and widgets using your account, with only what you allowed.
 15. [Webhooks](Webhooks.md): the controller posts calls, handsets and notifications to Home Assistant, ntfy or your own script, signed.
 16. [Operating a controller](Operating.md): backups, upgrades, monitoring, logs, secrets, data retention.
-17. [Troubleshooting](Troubleshooting.md)
-18. [Limits and what is not there yet](Limits.md)
-19. [Glossary](Glossary.md)
+17. [Load testing](Load-testing.md): how many calls, cells and handsets your machine carries, and how to measure it.
+18. [Troubleshooting](Troubleshooting.md)
+19. [Limits and what is not there yet](Limits.md)
+20. [Glossary](Glossary.md)
 
 ## Where the technical documents are
 

@@ -183,3 +183,7 @@ CPUs (for example `OPENDECTCELL_CELLS_STACK_WORKERS=4 docker compose up -d contr
 separate processes, a crash or hang ends one of them, the cells in it restart within seconds and the controller and
 the other cells carry on. It has run on the lab (a crash was provoked on purpose) but has not had a long soak, so it is off
 by default.
+
+## How big a machine do I need?
+
+See [Load testing](Load-testing.md): a measured estimate for a Raspberry Pi 4 and the tools to measure your own server (calls, cells, handsets), and the idle cost of a running controller.
