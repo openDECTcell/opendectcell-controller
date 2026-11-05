@@ -197,3 +197,48 @@ func List(ctx context.Context, q db.Querier, f Filter) ([]Row, error) {
 	}
 	return out, rows.Err()
 }
+
+// SignInActions are the actions that are about getting into an account and its protection; every other action is a change of something.
+var SignInActions = []string{"user.login", "user.login_failed", "user.login_ratelimited", "user.login_denied", "user.logout", "session.end", "session.end_others",
+	"user.password_change", "user.password_reset", "user.password_check_failed", "user.totp_on", "user.totp_off", "user.totp_failed", "user.recovery_code_used", "user.devices_forgotten"}
+
+// ForUser selects what concerns one user: what they did, what others did to their account (object_type user and their id), and the
+// failed and refused sign-in attempts on their user name.
+type ForUser struct {
+	ID       uuid.UUID
+	Username string
+	Kind     string // "access", "changes" or "" for both
+	Before   int64
+	Limit    int // default 50, max 200
+}
+
+// ListForUser returns the entries that concern the user, newest first. It is what the user sees as their own activity.
+func ListForUser(ctx context.Context, q db.Querier, f ForUser) ([]Row, error) {
+	if f.Limit <= 0 || f.Limit > 200 {
+		f.Limit = 50
+	}
+	rows, err := q.Query(ctx, `SELECT id, at, actor_user_id, actor_name, action, object_type, object_id, details, remote_addr
+		FROM audit_log
+		WHERE (actor_user_id = $1 OR (object_type = 'user' AND object_id = $1::text)
+			OR (action IN ('user.login_failed', 'user.login_ratelimited', 'user.login_denied') AND lower(details->>'username') = lower($2)))
+		  AND ($3 = '' OR ($3 = 'access') = (action = ANY($6)))
+		  AND ($4 = 0 OR id < $4)
+		ORDER BY id DESC LIMIT $5`, f.ID, f.Username, f.Kind, f.Before, f.Limit, SignInActions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Row
+	for rows.Next() {
+		var r Row
+		var details []byte
+		if err := rows.Scan(&r.ID, &r.At, &r.ActorID, &r.ActorName, &r.Action, &r.ObjectType, &r.ObjectID, &details, &r.RemoteAddr); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(details, &r.Details); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

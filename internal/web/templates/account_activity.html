@@ -1,0 +1,20 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_activity.html"}}{{template "head" .}}
+{{with .Data}}
+<p class="text-secondary">What was done with your account: your sign-ins and the attempts on your user name, and the changes you made or that were made to your account. If you see something you did not do,
+change your password and end your other sessions under <a href="/account">Account</a>. The log keeps a year, as set by the administrators.</p>
+<div class="btn-group mb-3" role="group" aria-label="What to show">
+  <a class="btn btn-sm {{if eq .Kind ""}}btn-primary{{else}}btn-outline-secondary{{end}}" href="/account/activity">All</a>
+  <a class="btn btn-sm {{if eq .Kind "access"}}btn-primary{{else}}btn-outline-secondary{{end}}" href="/account/activity?kind=access">Sign-ins and protection</a>
+  <a class="btn btn-sm {{if eq .Kind "changes"}}btn-primary{{else}}btn-outline-secondary{{end}}" href="/account/activity?kind=changes">Changes</a>
+</div>
+<div class="card"><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>When</th><th>What</th><th>From</th></tr></thead><tbody>
+  {{range .Rows}}<tr>
+    <td class="text-nowrap">{{fmtTime .At}}</td>
+    <td>{{if .Warn}}<span class="badge bg-orange-lt">attempt</span> {{end}}{{.Text}}{{with .ByOther}} <span class="text-secondary">by {{.}}</span>{{end}}{{with .Detail}}<div class="text-secondary small">{{.}}</div>{{end}}</td>
+    <td class="text-secondary small">{{.From}}</td>
+  </tr>{{else}}<tr><td colspan="3" class="text-secondary">Nothing to show.</td></tr>{{end}}
+</tbody></table></div>
+{{if .NextURL}}<div class="card-footer"><a href="{{.NextURL}}">Older</a></div>{{end}}</div>
+{{end}}
+{{template "foot" .}}{{end}}

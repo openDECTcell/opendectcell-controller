@@ -35,7 +35,7 @@
 </form></div></div>
 {{end}}{{end}}
 <h3 class="mt-4 mb-2">Sessions</h3>
-<p><a class="btn btn-outline-primary" href="/account/sessions">{{icon "device-mobile"}} Where am I logged in</a></p>
+<p><a class="btn btn-outline-primary" href="/account/sessions">{{icon "device-mobile"}} Where am I logged in</a> <a class="btn btn-outline-primary" href="/account/activity">{{icon "history"}} My activity</a></p>
 <h3 class="mt-4 mb-2">Your data</h3>
 <p><a class="btn btn-outline-primary" href="/account/export">{{icon "download"}} Download my data</a> <a class="btn btn-outline-primary" href="/account/webhooks">{{icon "webhook"}} Webhooks</a> <a class="btn btn-outline-primary" href="/account/tokens">{{icon "key"}} API tokens</a> <a class="btn btn-outline-primary" href="/account/setup">{{icon "arrows-exchange"}} Move or back up my setup</a> <a class="btn btn-outline-danger" href="/account/erase">{{icon "trash"}} Delete my account and data</a></p>
 {{if eq .User.AuthSource "local"}}

@@ -216,6 +216,7 @@ func (s *Server) routes() {
 	s.setupRoutes()
 	s.notifyRoutes()
 	s.apiTokenRoutes()
+	s.activityRoutes()
 	s.webhookRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))

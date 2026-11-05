@@ -2,7 +2,7 @@
 
 ## A user's data
 
-**Account > Your data**: a user downloads everything the controller holds about them (JSON, no secrets) and can **delete their account and data**:
+**Account > My activity** shows a user their own sign-ins and the failed attempts on their user name, and the changes they made or that were made to their account (by an administrator, with the name), from the audit log. **Account > Your data**: a user downloads everything the controller holds about them (JSON, no secrets) and can **delete their account and data**:
 handsets (the base stations forget them), VoIP lines, the base stations they enrolled (revoked), contacts, call history and sessions go. The audit
 log keeps what happened but forgets who did it. The last administrator cannot delete themselves. Administrators remove other users in **Administration > Users**
 once their handsets and VoIP lines are gone, and release a handset registered under someone else's name in **Administration > Release a handset**.
@@ -65,6 +65,31 @@ encrypted value under the master key; `tools/backup-test.sh` tests the service i
 
 The backup service sees the database's administrative credentials (read only), like the `migrate` service. If you make backups some other way, leave the service out
 (`docker compose up -d` without `backup`, or `docker compose rm backup`): the Administration > Backup page then says no service is running, and nothing is warned.
+
+## The base stations' certificate authority
+
+Every controller has one **certificate authority (CA)** that its base stations trust: it signs the controller's server certificate (1 year) and each base station's certificate (90 days, renewed by the
+base station over its link, long before it ends). The CA is made on the first start, valid for **10 years**, and its key is stored sealed with the master key. Every base station **pins** the CA's public
+key when it is enrolled: that pin is in the enrolment string, and a controller whose CA has another pin is not the controller the base station was enrolled with.
+
+**What to know**
+
+* A certificate is never valid longer than the CA: in the last months the base stations' certificates get shorter, and **when the CA ends no base station can connect any more**. The notification centre
+  tells administrators 90 days before (see [Notifications](Notifications.md)); the date is in the table `cell_ca` (`docker compose exec db psql -U opendectcell -c "select id, active, not_after from cell_ca"`).
+* The CA is the **same across restarts and upgrades**, and across a restore of the database with its master key. It cannot be opened without the master key that sealed it: a controller started with another
+  master key **fails to start** instead of making a new CA (a test pins this down).
+* A new CA is made **only when none is active**. That is what happens, with another pin, if the row is deleted or retired (`update cell_ca set active = false`) and the controller started.
+* Rotating the CA, with the old and the new one trusted side by side so that nothing has to be done at the boxes, is **not built** (a time bomb for 2036, not an emergency).
+
+**If the CA is lost or about to end: enrol every base station again.** The only way today:
+
+1. Pick a quiet time: calls end and base stations are offline until they are enrolled again. Take a [database backup](#backups) first, and keep the master key.
+2. Stop the controller, retire the CA (`update cell_ca set active = false`), start the controller. It makes a new CA and logs its pin (`cell_ca_pin`). The base stations now refuse it: they show as offline.
+3. For each base station, enrol it again as the first time ([Quick start](Quick-start.md)): make an enrolment under **Base stations**, and give the string to the box.
+4. Handsets keep their registration: their keys are in the database and do not depend on the CA.
+
+**Not tested end to end:** whether a base station that is enrolled again keeps its name and settings or comes as a new entry, and how the old entry is best removed. Try it with one spare box first, and write down what you
+see in the maintainers' notes. Until the CA's end is near, none of this is needed.
 
 ## Upgrading
 
