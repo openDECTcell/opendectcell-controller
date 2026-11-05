@@ -66,6 +66,7 @@ type line struct {
 
 	mu       sync.Mutex
 	st       RegStatus
+	tryAt    time.Time // when the attempt in progress began
 	callID   string
 	fromTag  string
 	cseq     uint32
@@ -100,8 +101,30 @@ func (l *line) status() RegStatus {
 
 func (l *line) setStatus(fn func(*RegStatus)) {
 	l.mu.Lock()
+	old := l.st
 	fn(&l.st)
+	cur, took := l.st, l.attemptTook(old.State, l.st.State)
 	l.mu.Unlock()
+	l.noteChange(old, cur, took)
+}
+
+// attemptTook keeps the time a registration attempt began and, when it has just succeeded, says how long it took. The caller holds l.mu.
+func (l *line) attemptTook(from, to RegState) time.Duration {
+	now := l.m.cfg.Now()
+	switch {
+	case to == RegRegistering && from != RegRegistering:
+		l.tryAt = now
+	case to == RegRegistered && from != RegRegistered && !l.tryAt.IsZero():
+		return max(now.Sub(l.tryAt), 0)
+	}
+	return 0
+}
+
+// noteChange tells the hook (Config.OnRegChange) that the state or the error changed. It runs outside the lock.
+func (l *line) noteChange(old, cur RegStatus, took time.Duration) {
+	if l.m.cfg.OnRegChange != nil && (old.State != cur.State || old.LastError != cur.LastError) {
+		l.m.cfg.OnRegChange(l.acct.ID, cur, took)
+	}
 }
 
 func (l *line) start() {
@@ -128,7 +151,10 @@ func (l *line) stop(unregister bool) {
 			cancel()
 		}
 	}
-	l.setStatus(func(s *RegStatus) { s.State = RegDisabled })
+	// no hook: a line that is stopped is being replaced or the controller is going down, which is not a change of the account's registration
+	l.mu.Lock()
+	l.st.State = RegDisabled
+	l.mu.Unlock()
 }
 
 func (l *line) sleep(d time.Duration) bool {
@@ -302,9 +328,12 @@ func (l *line) fail(st RegState, msg string) {
 
 func (l *line) registered(t resolve.Target, granted time.Duration) {
 	l.mu.Lock()
+	old := l.st
 	l.target, l.hasTgt = t, true
 	l.st = RegStatus{State: RegRegistered, RegisteredUntil: l.m.cfg.Now().Add(granted), Server: t.String(), Transport: t.Transport}
+	cur, took := l.st, l.attemptTook(old.State, RegRegistered)
 	l.mu.Unlock()
+	l.noteChange(old, cur, took)
 	l.startMWI()
 }
 

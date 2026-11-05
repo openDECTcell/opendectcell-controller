@@ -68,6 +68,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 	"github.com/openDECTcell/opendectcell-controller/internal/transfer"
 	"github.com/openDECTcell/opendectcell-controller/internal/web"
@@ -613,10 +614,13 @@ func startSIP(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, kr *se
 	}); ok {
 		sc.OnMWI = w.AccountMWI // an account's mailbox: the handsets that have it as a line are told
 	}
+	history := &sipevents.Recorder{Pool: pool, Log: log.With("component", "sip-history")}
+	sc.OnRegChange = history.Note // a line's registration history, for its page
 	m, err := sip.New(sc, endpoint)
 	if err != nil {
 		return nil, nil, err
 	}
+	go history.Run(ctx)
 	m.Start(ctx)
 	accts := &sipaccount.Store{Pool: pool, Keyring: kr}
 	reconcile := func() {

@@ -48,6 +48,13 @@ all send `+49301234567`. **Never changed:** emergency numbers and anything up to
 and the harmonised 116 numbers. A shown number is changed on the handset only; the Calls page and the call log keep what the
 provider sent.
 
+## How a line is doing: its history
+
+A line's page shows, below the form, its **registration history**: when it went up, when it went down and why (the server's answer, such as
+`403 Forbidden`, or "timeout"), how long a registration took, and how much of the last seven days it was registered. A line that keeps failing
+the same way is one entry, not one per retry; a line you switched off is not counted as down. The history is kept for 90 days. Below it are the
+last five calls on the line, with a link to all of them on the Calls page.
+
 ## What works
 
 | | |

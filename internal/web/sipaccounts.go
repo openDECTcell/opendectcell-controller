@@ -8,14 +8,17 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
 	"github.com/openDECTcell/opendectcell-controller/internal/numberplan"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip"
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/resolve"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
 )
 
 // SIPStatus is what the UI needs from the running SIP side.
@@ -110,6 +113,9 @@ type sipForm struct {
 	Status   sip.RegStatus
 	HasState bool
 	Warnings []string
+	History  []sipevents.Event
+	Summary  sipevents.Summary
+	Calls    []callRow
 	Tab      string          // the tab the page opens on: the first with an error, else Account
 	TabErr   map[string]bool // tabs holding a marked field
 }
@@ -163,6 +169,7 @@ func (s *Server) renderSIPForm(w http.ResponseWriter, r *http.Request, u *auth.U
 	if f.Rec != nil && !f.New {
 		f.Status, f.HasState = s.sipStatus(f.Rec.ID)
 		f.Warnings = f.Rec.Warnings()
+		s.sipHistory(r, u, &f)
 	}
 	f.markTabs()
 	title := "New VoIP line"
@@ -171,6 +178,23 @@ func (s *Server) renderSIPForm(w http.ResponseWriter, r *http.Request, u *auth.U
 	}
 	p.Title, p.User, p.Data = title, u, f
 	s.render(w, status, "sip_account.html", p)
+}
+
+// sipHistory fills in what the page of an existing line shows besides the form: how its registration went, and its last calls.
+// A failure of either leaves the section out; the form is what the page is for.
+func (s *Server) sipHistory(r *http.Request, u *auth.User, f *sipForm) {
+	ctx := r.Context()
+	now := time.Now()
+	if ev, err := sipevents.Window(ctx, s.Pool, f.Rec.ID, now, 7*24*time.Hour); err == nil {
+		f.Summary = sipevents.Summarise(ev, now, 7*24*time.Hour)
+	}
+	f.History, _ = sipevents.Recent(ctx, s.Pool, f.Rec.ID, 30)
+	acct := f.Rec.ID
+	calls, err := (&calllog.Store{Pool: s.Pool}).List(ctx, calllog.Filter{Owner: &u.ID, Account: &acct, Limit: 5})
+	if err != nil {
+		return
+	}
+	f.Calls = s.rowsFor(calls, nil, map[uuid.UUID]string{acct: f.Rec.Label}, s.contactNames(ctx, u.ID, calls))
 }
 
 func (s *Server) sipNew(w http.ResponseWriter, r *http.Request, u *auth.User) {

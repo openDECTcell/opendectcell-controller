@@ -213,6 +213,39 @@
   <button type="submit" class="btn btn-primary">Save</button>
 </form></div></div>
 {{if not .New}}
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">{{icon "activity"}} Registration history</h3></div>
+  <div class="card-body">
+    {{if .Summary.HasData}}
+    <p class="mb-2">{{if .Summary.Counted}}Registered <strong>{{f1 .Summary.UpPercent}} %</strong> of the last 7 days (of the {{f1 .Summary.Hours}} hours the line was switched on and watched).{{else}}Not enough time on record yet to say how much of the last 7 days it was registered.{{end}}
+    {{if .Summary.Downs}} Went down <strong>{{.Summary.Downs}}</strong> time{{if ne .Summary.Downs 1}}s{{end}}.{{else if .Summary.Counted}} It did not go down.{{end}}
+    {{if .Summary.AvgTook}} A registration takes about {{ms .Summary.AvgTook}}.{{end}}</p>
+    {{else}}<p class="text-secondary">Nothing is on record yet. Changes of the registration are written here from now on, and kept for 90 days.</p>{{end}}
+    {{if .History}}
+    <div class="table-responsive"><table class="table table-sm">
+      <thead><tr><th>When</th><th>What happened</th><th>Took</th></tr></thead>
+      <tbody>{{range .History}}<tr><td class="text-nowrap">{{fmtTime .At}}</td>
+        <td>{{if eq .State "registered"}}<span class="badge bg-green-lt">registered</span>
+          {{else if eq .State "disabled"}}<span class="badge bg-secondary-lt">switched off</span>
+          {{else if eq .State "failed"}}<span class="badge bg-red-lt">refused</span> {{.Error}}
+          {{else}}<span class="badge bg-orange-lt">not reachable</span> {{.Error}}{{end}}</td>
+        <td>{{if .Took}}{{ms .Took}}{{end}}</td></tr>{{end}}</tbody>
+    </table></div>
+    {{end}}
+  </div>
+</div>
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">{{icon "phone"}} Last calls on this line</h3><div class="card-actions"><a href="/calls?line={{.Rec.ID}}">All calls on this line</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table">
+    <tbody>{{range .Calls}}<tr><td class="text-nowrap">{{fmtTime .StartedAt}}</td>
+      <td title="{{if eq .Direction "in"}}incoming{{else}}outgoing{{end}}">{{if eq .Direction "in"}}↙{{else}}↗{{end}}</td>
+      <td>{{if .Name}}<strong>{{.Name}}</strong> <span class="text-secondary small">{{.RemoteParty}}</span>{{else}}{{with .RemoteParty}}{{.}}{{else}}<span class="text-secondary">unknown</span>{{end}}{{end}}</td>
+      <td><span class="badge {{.ResultClass}}">{{.Result}}</span></td>
+      <td>{{if and .AnsweredAt .EndedAt}}{{dur .Duration}}{{end}}</td>
+      <td class="text-end"><a href="/calls/{{.ID}}">Details</a></td></tr>
+    {{else}}<tr><td class="text-secondary">No calls on this line yet.</td></tr>{{end}}</tbody>
+  </table></div>
+</div>
 <form method="post" action="/sip-accounts/{{.Rec.ID}}/delete" data-confirm="Delete this VoIP line?"><button type="submit" class="btn btn-link px-0">Delete this VoIP line</button></form>
 {{end}}
 {{end}}

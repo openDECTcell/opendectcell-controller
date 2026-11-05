@@ -49,6 +49,9 @@ type Config struct {
 	// OnMWI is called with what an MWI account's mailbox says (a NOTIFY of
 	// event message-summary); it must return quickly.
 	OnMWI func(account uuid.UUID, m MWI)
+	// OnRegChange is called when an account's registration state or its error changes, with the new status and, for a
+	// registration that has just succeeded, how long the attempt took (0 otherwise); it must return quickly.
+	OnRegChange func(account uuid.UUID, st RegStatus, took time.Duration)
 	// AllowLocal lets accounts use servers on loopback and link-local addresses (tests, a PBX on the
 	// controller's own host); off, they are refused (target.go).
 	AllowLocal bool

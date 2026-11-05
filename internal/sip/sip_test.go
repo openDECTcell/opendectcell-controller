@@ -49,12 +49,17 @@ func newManager(t *testing.T, ep sip.Endpoint, dns resolve.DNS) *sip.Manager {
 
 func newManagerRoots(t *testing.T, ep sip.Endpoint, dns resolve.DNS, roots *x509.CertPool) *sip.Manager {
 	t.Helper()
+	return newManagerHook(t, ep, dns, roots, nil)
+}
+
+func newManagerHook(t *testing.T, ep sip.Endpoint, dns resolve.DNS, roots *x509.CertPool, hook func(uuid.UUID, sip.RegStatus, time.Duration)) *sip.Manager {
+	t.Helper()
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m, err := sip.New(sip.Config{UDP: conn, RTP: &rtp.Ports{IP: netip.MustParseAddr("127.0.0.1"), Min: 42000, Max: 42199},
-		DNS: dns, TLSRoots: roots, AllowLocal: true, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
+		DNS: dns, TLSRoots: roots, AllowLocal: true, OnRegChange: hook, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, ep)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +76,7 @@ func account(p *pbx, user string) sip.Account {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second) // the full gate runs the packages in parallel under -race: 5 s was missed once
 	for !cond() {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)
@@ -617,4 +622,62 @@ func TestInDialogRequestsNeedBothTags(t *testing.T) {
 		t.Fatalf("BYE: %v", err)
 	}
 	nextEvent(t, c, sip.EvEnded)
+}
+
+type regReport struct {
+	id   uuid.UUID
+	st   sip.RegStatus
+	took time.Duration
+}
+
+// The SIP side tells the history (Config.OnRegChange) when a line's registration state or error changes: a success with the
+// time it took, a refusal with its reason; and not when a line is only stopped (removed or replaced).
+func TestRegistrationChangesAreReported(t *testing.T) {
+	p := newPBX(t)
+	p.set(func() { p.users["305"] = "secret-305"; p.users["306"] = "the-right-one" })
+	var mu sync.Mutex
+	var got []regReport
+	m := newManagerHook(t, nil, nil, nil, func(id uuid.UUID, st sip.RegStatus, took time.Duration) {
+		mu.Lock()
+		got = append(got, regReport{id, st, took})
+		mu.Unlock()
+	})
+	good, bad := account(p, "305"), account(p, "306") // 306: wrong password
+	m.SetAccounts([]sip.Account{good, bad})
+	waitFor(t, "both settled", func() bool {
+		a, _ := m.Status(good.ID)
+		b, _ := m.Status(bad.ID)
+		return a.State == sip.RegRegistered && b.State == sip.RegFailed
+	})
+	find := func(id uuid.UUID, state sip.RegState) (regReport, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, r := range got {
+			if r.id == id && r.st.State == state {
+				return r, true
+			}
+		}
+		return regReport{}, false
+	}
+	if r, ok := find(good.ID, sip.RegRegistered); !ok || r.took <= 0 || r.took > 5*time.Second {
+		t.Errorf("the success was not reported with its time: %+v %v", r, ok)
+	}
+	if _, ok := find(good.ID, sip.RegRegistering); !ok {
+		t.Error("the attempt was not reported")
+	}
+	if r, ok := find(bad.ID, sip.RegFailed); !ok || !strings.HasPrefix(r.st.LastError, "401") || strings.Contains(r.st.LastError, "secret") || r.took != 0 {
+		t.Errorf("the refusal was not reported with its reason: %+v %v", r, ok)
+	}
+	// removing the lines stops them: that is not a change of the account's registration
+	m.SetAccounts(nil)
+	waitFor(t, "unregister", func() bool { c, _ := p.registered("305"); return c.Host == "" })
+	time.Sleep(100 * time.Millisecond)
+	if _, ok := find(good.ID, sip.RegDisabled); ok {
+		t.Error("stopping a line was reported as the account being disabled")
+	}
+	// a line that does not register is reported as disabled once
+	off := account(p, "307")
+	off.Register = false
+	m.SetAccounts([]sip.Account{off})
+	waitFor(t, "off", func() bool { _, ok := find(off.ID, sip.RegDisabled); return ok })
 }

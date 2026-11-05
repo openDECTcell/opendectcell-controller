@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -376,5 +377,67 @@ func TestVoIPLineNumbersTab(t *testing.T) {
 	rec, _ = store.Get(ctx, mustUser(t, e, "user"), id)
 	if !rec.Advanced.Numbers.Zero() {
 		t.Errorf("rules after clearing: %+v", rec.Advanced.Numbers)
+	}
+}
+
+// A line's page tells how its registration went (the history and the share of time it was up) and shows its last calls: the user's
+// own, never another user's on a shared line.
+func TestVoIPLineHistoryAndCalls(t *testing.T) {
+	var store *sipaccount.Store
+	e := newEnvWith(t, func(s *Server) {
+		kr, err := db.LoadKeyring(ctx, s.Pool, testMK, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store = &sipaccount.Store{Pool: s.Pool, Keyring: kr}
+		s.SIPAccounts, s.SIP = store, fakeSIP{}
+	})
+	user := e.userBrowser(t)
+	r := e.post(t, user, "/sip-accounts", sipFormValues("Home", "pw"))
+	if r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("create: %d", r.StatusCode)
+	}
+	var id, uid uuid.UUID
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM sip_account").Scan(&id)
+	e.store.Pool.QueryRow(ctx, "SELECT id FROM app_user WHERE username = 'user'").Scan(&uid)
+	loc := "/sip-accounts/" + id.String()
+
+	// nothing recorded yet: it says so, and the page works
+	if resp, body := e.get(t, user, loc); resp.StatusCode != http.StatusOK || !strings.Contains(body, "Registration history") || !strings.Contains(body, "Nothing is on record yet") ||
+		!strings.Contains(body, "No calls on this line yet") {
+		t.Fatalf("empty history: %d", resp.StatusCode)
+	}
+
+	now := time.Now()
+	ev := func(ago time.Duration, state, msg string, took int) {
+		e.store.Pool.Exec(ctx, "INSERT INTO sip_reg_event (account_id, at, state, error, took_ms) VALUES ($1, $2, $3, $4, $5)", id, now.Add(-ago), state, msg, took)
+	}
+	ev(48*time.Hour, "registered", "", 300)
+	ev(5*time.Hour, "failed", "403 Forbidden", 0)
+	ev(4*time.Hour, "backoff", "timeout talking to the server", 0)
+	ev(1*time.Hour, "registered", "", 180)
+	// a call of the user's on this line, and one of somebody else's on the same line
+	e.store.Pool.Exec(ctx, `INSERT INTO call_log (owner_user_id, sip_account_id, direction, remote_party, started_at, answered_at, ended_at)
+		VALUES ($1, $2, 'in', '+4930111222', now() - interval '10 minutes', now() - interval '9 minutes', now() - interval '5 minutes')`, uid, id)
+	var other uuid.UUID
+	e.store.Pool.QueryRow(ctx, "INSERT INTO app_user (username, role, auth_source) VALUES ('stranger', 'user', 'local') RETURNING id").Scan(&other)
+	e.store.Pool.Exec(ctx, `INSERT INTO call_log (owner_user_id, sip_account_id, direction, remote_party, started_at)
+		VALUES ($1, $2, 'out', '0049999888777', now() - interval '20 minutes')`, other, id)
+
+	resp, body := e.get(t, user, loc)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("page: %d", resp.StatusCode)
+	}
+	for _, want := range []string{"403 Forbidden", "timeout talking to the server", "refused", "not reachable", "registered", "180 ms", "Went down <strong>1</strong> time.", "4930111222", "answered"} {
+		if !strings.Contains(strings.ReplaceAll(body, "\n", " "), want) && !strings.Contains(body, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	// 7 days window: up from -48 h to -5 h, down -5 h to -1 h, up -1 h to now: 44 of 48 h
+	if !strings.Contains(body, "91.7") {
+		t.Errorf("the share of time up is not on the page (want 91.7 %%)")
+	}
+	if strings.Contains(body, "0049999888777") {
+		t.Error("another user's call on the line is shown")
 	}
 }

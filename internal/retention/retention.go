@@ -17,6 +17,7 @@ import (
 
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
 )
 
 // Run applies the retention settings once a day until ctx ends.
@@ -61,6 +62,12 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, now time
 		if n := tag.RowsAffected(); n > 0 {
 			log.Info("retention: handset moves erased", "moves", n, "older_than_days", r.LocationDays)
 		}
+	}
+	// a VoIP line's registration history is not personal data: a fixed time, not a setting
+	if tag, err := pool.Exec(ctx, "DELETE FROM sip_reg_event WHERE at < $1", now.AddDate(0, 0, -sipevents.KeepDays)); err != nil {
+		return err
+	} else if n := tag.RowsAffected(); n > 0 {
+		log.Info("retention: VoIP registration history deleted", "events", n, "older_than_days", sipevents.KeepDays)
 	}
 	if r.AuditDays > 0 {
 		var n int64
