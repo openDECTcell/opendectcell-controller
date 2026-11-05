@@ -11,3 +11,7 @@ source = "DECT Command Finder run 2026-11-05, lab 7412; docs/vendor-specific-sup
 # source: variant 2, basic service 0x80: authenticated, ciphered, alerted, answered, narrowband audio both ways (265 frames up,
 # source: 241 down, no underruns).
 cc.basic_service = basic
+# source: outgoing calls, DECT Command Finder run 2026-11-05: with the plain setup the O201 played nothing, or only after seconds, on 10 or so calls;
+# source: with <<PROGRESS-INDICATOR>> cause 8 ("in-band information is now available", EN 300 175-5 section 9.3.1.4) on our SETUP-ACK
+# source: alone, audio at once on 2 of 2 calls, with it on SETUP-ACK, CALL-PROC and ALERTING on 3 of 3, on ALERTING alone on 0 of 3.
+cc.progress_in_band = yes
