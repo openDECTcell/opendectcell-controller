@@ -1,0 +1,26 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "admin_usage.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="d-flex mb-3 align-items-center gap-2">
+  <a class="btn btn-sm btn-outline-secondary" href="?month={{.Prev}}">&larr; {{.Prev}}</a>
+  <h3 class="mb-0">{{.Month.Format "January 2006"}}</h3>
+  {{if .HasNext}}<a class="btn btn-sm btn-outline-secondary" href="?month={{.Next}}">{{.Next}} &rarr;</a>{{end}}
+  <span class="ms-auto text-secondary small">calls that started in the month, in the controller's time zone; handsets and lines are what the user has now</span>
+</div>
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">By organization</h3><div class="card-actions"><a href="/admin/statistics/usage.csv?month={{.MonthKey}}&table=orgs">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Organization</th><th>Members</th><th>Calls</th><th>Answered</th><th>Talk time</th><th>Handsets</th><th>Lines</th></tr></thead><tbody>
+    {{range .Orgs}}<tr><td>{{.Name}}</td><td>{{.Members}}</td><td>{{.Calls}}</td><td>{{.Answered}}</td><td>{{hours .TalkSeconds}}</td><td>{{.Handsets}}</td><td>{{.Lines}}</td></tr>
+    {{else}}<tr><td colspan="7" class="text-secondary">No organizations.</td></tr>{{end}}
+  </tbody></table></div>
+  <div class="card-footer text-secondary small">An organization's figures are those of its members. A user who is in two organizations is counted in both, so the rows do not add up to the controller's total.</div>
+</div>
+<div class="card">
+  <div class="card-header"><h3 class="card-title">By user</h3><div class="card-actions"><a href="/admin/statistics/usage.csv?month={{.MonthKey}}&table=users">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>User</th><th>Name</th><th>Calls</th><th>Answered</th><th>Talk time</th><th>Handsets</th><th>Lines</th></tr></thead><tbody>
+    {{range .Users}}<tr><td>{{.Username}}</td><td>{{.DisplayName}}</td><td>{{.Calls}}</td><td>{{.Answered}}</td><td>{{hours .TalkSeconds}}</td><td>{{.Handsets}}</td><td>{{.Lines}}</td></tr>
+    {{else}}<tr><td colspan="7" class="text-secondary">Nothing to report for this month.</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

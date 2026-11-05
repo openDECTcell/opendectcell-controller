@@ -287,3 +287,32 @@ func Summarise(newestFirst []Event, now time.Time, window time.Duration) Summary
 	}
 	return s
 }
+
+// WindowMany is Window for several accounts at once: the events of each that decide a Summary over the window ending at now, newest
+// first per account.
+func WindowMany(ctx context.Context, pool *pgxpool.Pool, accounts []uuid.UUID, now time.Time, window time.Duration) (map[uuid.UUID][]Event, error) {
+	out := map[uuid.UUID][]Event{}
+	if len(accounts) == 0 {
+		return out, nil
+	}
+	rows, err := pool.Query(ctx, `SELECT account_id, at, state, error, coalesce(took_ms, 0) FROM sip_reg_event
+		WHERE account_id = ANY($1) AND (at >= $2 OR id IN (SELECT DISTINCT ON (account_id) id FROM sip_reg_event WHERE account_id = ANY($1) AND at < $2
+			ORDER BY account_id, at DESC, id DESC))
+		ORDER BY account_id, at DESC, id DESC`, accounts, now.Add(-window))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var e Event
+		var st string
+		var ms int
+		if err := rows.Scan(&id, &e.At, &st, &e.Error, &ms); err != nil {
+			return nil, err
+		}
+		e.State, e.Took = sip.RegState(st), time.Duration(ms)*time.Millisecond
+		out[id] = append(out[id], e)
+	}
+	return out, rows.Err()
+}

@@ -119,7 +119,7 @@ func (s *Server) Handler() (http.Handler, error) {
 		},
 		"f1":         func(f float64) string { return strconv.FormatFloat(f, 'f', 1, 64) },
 		"icon":       s.iconFunc(),
-		"callsChart": callsChart, "hms": hms, "hours": hours, "pct": pct,
+		"callsChart": callsChart, "heatmap": heatmap, "change": change, "change64": change64, "peakChart": peakChart, "hms": hms, "hours": hours, "pct": pct,
 		"deref": func(b *bool) bool { return b != nil && *b },
 		"ipei": func(h *handset.Handset) string {
 			t, _, _ := h.IPEI()

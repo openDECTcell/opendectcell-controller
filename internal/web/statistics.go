@@ -6,8 +6,12 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
 )
 
@@ -18,6 +22,7 @@ func (s *Server) statsRoutes() {
 	s.mux.Handle("GET /statistics", s.requireUser(s.statisticsUser))
 	s.mux.Handle("GET /admin/statistics", s.requireAdmin(s.statisticsAdmin))
 	s.mux.Handle("GET /admin", s.requireAdmin(s.adminDashboard))
+	s.statsExportRoutes()
 }
 
 type statsData struct {
@@ -29,7 +34,35 @@ type statsData struct {
 	Cells   []stats.CellUse
 	Fleet   *stats.Fleet
 	Live    *fleetLive
+
+	// the series of C1, and the comparison of C2
+	Heat      stats.Heat
+	Peaks     []stats.Peak
+	PeakMax   int
+	CellPeaks []cellPeakRow
+	Lines     []lineRow
+	Handsets  []stats.Usage
+	Quality   []stats.QualityDay
+	Worst     []stats.WorstCall
+	Cur, Prev stats.Period
+	Export    string // the address the CSV links start from
 }
+
+// cellPeakRow is a base station's peak with what is made of it against its capacity.
+type cellPeakRow struct {
+	stats.CellPeak
+	Full bool // the peak reached what it can carry
+}
+
+// lineRow is a VoIP line's use, and how much of the time it was registered.
+type lineRow struct {
+	stats.Usage
+	Avail    sipevents.Summary
+	HasAvail bool
+}
+
+// maxLineRows is how many VoIP lines the administrators' table shows (the least available first).
+const maxLineRows = 30
 
 // fleetLive counts the cells' links right now.
 type fleetLive struct {
@@ -67,6 +100,9 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request, u *auth.User,
 	if err == nil {
 		d.Cells, err = s.Stats.PerCell(r.Context(), sc, d.Days)
 	}
+	if err == nil {
+		err = s.moreStats(r, sc, &d)
+	}
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -87,6 +123,116 @@ func (s *Server) statsPage(w http.ResponseWriter, r *http.Request, u *auth.User,
 		}
 	}
 	s.render(w, http.StatusOK, "statistics.html", page{Title: title, User: u, Data: d})
+}
+
+// moreStats fills in the series of C1 and the comparison of C2.
+func (s *Server) moreStats(r *http.Request, sc stats.Scope, d *statsData) error {
+	ctx := r.Context()
+	var err error
+	d.Export = "/statistics/export.csv"
+	if d.All {
+		d.Export = "/admin/statistics/export.csv"
+	}
+	if d.Heat, err = s.Stats.Heat(ctx, sc, d.Days); err != nil {
+		return err
+	}
+	if d.Peaks, err = s.Stats.Peaks(ctx, sc, d.Days); err != nil {
+		return err
+	}
+	for _, p := range d.Peaks {
+		d.PeakMax = max(d.PeakMax, p.Peak)
+	}
+	cps, err := s.Stats.PeakPerCell(ctx, sc, d.Days)
+	if err != nil {
+		return err
+	}
+	for _, c := range cps {
+		d.CellPeaks = append(d.CellPeaks, cellPeakRow{CellPeak: c, Full: c.Capacity > 0 && c.Peak >= c.Capacity})
+	}
+	if d.Handsets, err = s.Stats.PerHandset(ctx, sc, d.Days); err != nil {
+		return err
+	}
+	if d.Quality, err = s.Stats.Quality(ctx, sc, d.Days); err != nil {
+		return err
+	}
+	if sc.User != nil { // the details of a call are its owner's
+		if d.Worst, err = s.Stats.Worst(ctx, sc, d.Days, 5); err != nil {
+			return err
+		}
+	}
+	if d.Cur, d.Prev, err = s.Stats.Compare(ctx, sc, d.Days); err != nil {
+		return err
+	}
+	d.Lines, err = s.lineRows(r, sc, d.Days)
+	return err
+}
+
+// lineRows joins what each VoIP line did with how available it was (from its registration history). Lines without a call are in it.
+func (s *Server) lineRows(r *http.Request, sc stats.Scope, days int) ([]lineRow, error) {
+	ctx := r.Context()
+	use, err := s.Stats.PerLine(ctx, sc, days)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, "SELECT id, label FROM sip_account WHERE $1::uuid IS NULL OR owner_user_id = $1 ORDER BY lower(label), id", sc.User)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[uuid.UUID]*lineRow{}
+	var order []uuid.UUID
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		var label string
+		if err := rows.Scan(&id, &label); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		byID[id] = &lineRow{Usage: stats.Usage{ID: id, Name: label}}
+		order, ids = append(order, id), append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var gone *lineRow
+	for _, u := range use {
+		if row, ok := byID[u.ID]; ok {
+			row.Usage = u
+		} else if u.ID == uuid.Nil {
+			gone = &lineRow{Usage: u}
+		}
+	}
+	now := time.Now()
+	window := time.Duration(days) * 24 * time.Hour
+	events, err := sipevents.WindowMany(ctx, s.Pool, ids, now, window)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]lineRow, 0, len(order)+1)
+	for _, id := range order {
+		row := byID[id]
+		row.Avail = sipevents.Summarise(events[id], now, window)
+		row.HasAvail = row.Avail.Counted > 0
+		out = append(out, *row)
+	}
+	if sc.User == nil {
+		// everybody's lines: the ones that deserve a look come first, and not more than fit a page
+		sort.SliceStable(out, func(i, j int) bool {
+			a, b := out[i], out[j]
+			if a.HasAvail != b.HasAvail {
+				return a.HasAvail // a line with a record before one without
+			}
+			return a.Avail.UpPercent < b.Avail.UpPercent
+		})
+		if len(out) > maxLineRows {
+			out = out[:maxLineRows]
+		}
+	}
+	if gone != nil {
+		out = append(out, *gone)
+	}
+	return out, nil
 }
 
 func (s *Server) liveFleet(r *http.Request, u *auth.User) (*fleetLive, error) {

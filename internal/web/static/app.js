@@ -20,12 +20,12 @@
     });
   });
 
-  // a chart's day: its text next to the pointer (data-tip on the group)
+  // a chart's day or square: its text next to the pointer (data-tip on the group or the square)
   var tip = null;
   document.querySelectorAll("svg.chart").forEach(function (svg) {
     var hide = function () { if (tip) { tip.hidden = true; } };
     svg.addEventListener("mousemove", function (e) {
-      var g = e.target.closest ? e.target.closest("g[data-tip]") : null;
+      var g = e.target.closest ? e.target.closest("[data-tip]") : null;
       if (!g) { hide(); return; }
       if (!tip) {
         tip = document.createElement("div");

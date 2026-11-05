@@ -26,10 +26,11 @@ This wiki explains how to use what the project builds, from nothing to a handset
 10. [Organizations and trust](Organizations-and-trust.md): what a base station's operator can read, and whose base stations your handsets may use.
 11. [Move or back up your setup](Move-or-back-up.md): export and import of handsets (with keys), VoIP lines and contacts; many lines from a CSV.
 12. [Notifications](Notifications.md): what the controller tells you, in the interface and by mail.
-13. [Operating a controller](Operating.md): backups, upgrades, monitoring, logs, secrets, data retention.
-14. [Troubleshooting](Troubleshooting.md)
-15. [Limits and what is not there yet](Limits.md)
-16. [Glossary](Glossary.md)
+13. [Statistics](Statistics.md): calls, peaks, quality, line availability, comparison, CSV, the monthly usage report.
+14. [Operating a controller](Operating.md): backups, upgrades, monitoring, logs, secrets, data retention.
+15. [Troubleshooting](Troubleshooting.md)
+16. [Limits and what is not there yet](Limits.md)
+17. [Glossary](Glossary.md)
 
 ## Where the technical documents are
 

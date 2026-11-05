@@ -5,6 +5,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"strconv"
 	"strings"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
@@ -111,4 +112,120 @@ func pct(a, b int) string {
 		return "–"
 	}
 	return fmt.Sprintf("%d %%", (100*a+b/2)/b)
+}
+
+// heatmap draws the calls by weekday (rows, Monday first) and hour (columns) as inline SVG: a square per hour, darker for more calls
+// (five steps, as classes heat-0 to heat-4; no style attribute). Each square carries its text in data-tip.
+func heatmap(h stats.Heat) template.HTML {
+	const left, top, cell, gap = 34, 14, 22, 2
+	w, ht := left+24*(cell+gap), top+7*(cell+gap)
+	days := [7]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg class="chart heat" viewBox="0 0 %d %d" role="img" aria-label="Calls by weekday and hour, %d in all"><desc>`, w, ht, h.Total)
+	for d, row := range h.Cells {
+		for hr, n := range row {
+			if n > 0 {
+				fmt.Fprintf(&b, "%s %02d:00: %d. ", days[d], hr, n)
+			}
+		}
+	}
+	b.WriteString(`</desc>`)
+	for hr := 0; hr < 24; hr += 3 {
+		fmt.Fprintf(&b, `<text class="chart-label" x="%d" y="9" text-anchor="middle">%d</text>`, left+hr*(cell+gap)+cell/2, hr)
+	}
+	for d, row := range h.Cells {
+		y := top + d*(cell+gap)
+		fmt.Fprintf(&b, `<text class="chart-label" x="%d" y="%d" text-anchor="end">%s</text>`, left-6, y+cell/2+3, days[d])
+		for hr, n := range row {
+			level := 0
+			if n > 0 && h.Max > 0 {
+				level = 1 + (n-1)*4/h.Max // 1 to 4
+				level = min(level, 4)
+			}
+			fmt.Fprintf(&b, `<rect class="heat-cell heat-%d" x="%d" y="%d" width="%d" height="%d" rx="3" data-tip="%s %02d:00 to %02d:59: %s"/>`,
+				level, left+hr*(cell+gap), y, cell, cell, days[d], hr, hr, countText(n))
+		}
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String()) //nolint:gosec // G203: numbers and fixed names only
+}
+
+func countText(n int) string {
+	if n == 0 {
+		return "no calls"
+	}
+	return fmt.Sprintf("%d %s", n, plural(n, "call", "calls"))
+}
+
+// peakChart draws the most calls at once on each day as bars, like callsChart.
+func peakChart(peaks []stats.Peak) template.HTML {
+	const w, h, pad, label, left = 640, 140, 4, 18, 36
+	if len(peaks) == 0 {
+		return ""
+	}
+	most := 1
+	for _, p := range peaks {
+		most = max(most, p.Peak)
+	}
+	step := niceStep(most)
+	ticks := (most + step - 1) / step
+	axisMax := ticks * step
+	top := float64(h - label)
+	plot := top - 8
+	slot := float64(w-left-pad) / float64(len(peaks))
+	bw := slot * 0.7
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg class="chart" viewBox="0 0 %d %d" role="img" aria-label="Most calls at once per day, up to %d in the last %d days"><desc>`, w, h, most, len(peaks))
+	for _, p := range peaks {
+		fmt.Fprintf(&b, "%s: %d. ", p.Day.Format("Mon 2 Jan"), p.Peak)
+	}
+	b.WriteString(`</desc>`)
+	for t := 0; t <= ticks; t++ {
+		y := top - plot*float64(t*step)/float64(axisMax)
+		fmt.Fprintf(&b, `<line class="chart-grid" x1="%d" y1="%.1f" x2="%d" y2="%.1f"/>`, left, y, w-pad, y)
+		fmt.Fprintf(&b, `<text class="chart-label" x="%d" y="%.1f" text-anchor="end">%d</text>`, left-6, y+3.5, t*step)
+	}
+	for i, p := range peaks {
+		x := float64(left) + slot*float64(i) + (slot-bw)/2
+		bh := plot * float64(p.Peak) / float64(axisMax)
+		fmt.Fprintf(&b, `<g class="day" data-tip="%s: %s">`, p.Day.Format("Mon 2 Jan"), peakText(p.Peak))
+		fmt.Fprintf(&b, `<rect class="chart-hit" x="%.1f" y="0" width="%.1f" height="%.1f"/>`, float64(left)+slot*float64(i), slot, top)
+		fmt.Fprintf(&b, `<rect class="bar bar-answered" x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="2"/></g>`, x, top-bh, bw, bh)
+		if len(peaks) <= 16 || (len(peaks)-1-i)%7 == 0 {
+			fmt.Fprintf(&b, `<text class="chart-label" x="%.1f" y="%d" text-anchor="middle">%s</text>`, x+bw/2, h-4, p.Day.Format("2.1."))
+		}
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String()) //nolint:gosec // G203: numbers and fixed-format dates only
+}
+
+func peakText(n int) string {
+	if n == 0 {
+		return "no call"
+	}
+	return fmt.Sprintf("%d at once", n)
+}
+
+// change says how a figure moved against the period before: "+12 (+20 %)", "unchanged", or "new" when there was nothing before.
+func change(cur, prev int) string {
+	return changeText(float64(cur), float64(prev), strconv.Itoa(cur-prev))
+}
+
+// change64 is change for seconds, shown in hours.
+func change64(cur, prev int64) string {
+	return changeText(float64(cur), float64(prev), fmt.Sprintf("%.1f h", float64(cur-prev)/3600))
+}
+
+func changeText(cur, prev float64, diff string) string {
+	switch {
+	case cur == prev:
+		return "unchanged"
+	case prev == 0:
+		return "+" + strings.TrimPrefix(diff, "+") + " (new)"
+	}
+	sign := ""
+	if cur > prev {
+		sign = "+"
+	}
+	return fmt.Sprintf("%s%s (%s%.0f %%)", sign, diff, sign, 100*(cur-prev)/prev)
 }

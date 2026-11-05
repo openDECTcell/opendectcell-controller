@@ -3,7 +3,8 @@
 {{with .Data}}
 <div class="d-flex mb-3 align-items-center">
   <p class="text-secondary mb-0">{{if .All}}Everything on this controller.{{else}}Your handsets, accounts and calls only.{{end}}</p>
-  <div class="btn-group ms-auto" role="group" aria-label="Time range">
+  {{if .All}}<a class="btn btn-sm btn-outline-primary ms-auto me-2" href="/admin/statistics/usage">{{icon "report-analytics"}} Monthly usage report</a>{{end}}
+  <div class="btn-group{{if not .All}} ms-auto{{end}}" role="group" aria-label="Time range">
     {{range $d := list "7" "14" "30" "90"}}<a class="btn btn-sm {{if eq (printf "%d" $.Data.Days) $d}}btn-primary{{else}}btn-outline-secondary{{end}}" href="?days={{$d}}">{{$d}} days</a>{{end}}
   </div>
 </div>
@@ -21,24 +22,93 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">The last {{.Days}} days against the {{.Days}} before</h3><div class="card-actions"><a href="{{.Export}}?table=days&days={{.Days}}">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th></th><th>Last {{.Days}} days</th><th>Before</th><th>Change</th></tr></thead><tbody>
+    <tr><td>Calls</td><td>{{.Cur.Calls}}</td><td>{{.Prev.Calls}}</td><td>{{change .Cur.Calls .Prev.Calls}}</td></tr>
+    <tr><td>Answered</td><td>{{.Cur.Answered}} ({{pct .Cur.Answered .Cur.Calls}})</td><td>{{.Prev.Answered}} ({{pct .Prev.Answered .Prev.Calls}})</td><td>{{change .Cur.Answered .Prev.Answered}}</td></tr>
+    <tr><td>Missed (incoming, nobody answered)</td><td>{{.Cur.Missed}}</td><td>{{.Prev.Missed}}</td><td>{{change .Cur.Missed .Prev.Missed}}</td></tr>
+    <tr><td>Outgoing that never reached a conversation</td><td>{{.Cur.Failed}}</td><td>{{.Prev.Failed}}</td><td>{{change .Cur.Failed .Prev.Failed}}</td></tr>
+    <tr><td>Talk time</td><td>{{hours .Cur.TalkSeconds}}</td><td>{{hours .Prev.TalkSeconds}}</td><td>{{change64 .Cur.TalkSeconds .Prev.TalkSeconds}}</td></tr>
+  </tbody></table></div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Calls per day</h3><div class="card-actions legend"><span class="legend-dot legend-answered"></span> answered <span class="legend-dot legend-all"></span> not answered</div></div>
   <div class="card-body">{{callsChart .Series}}</div>
 </div>
 
 <div class="row row-cards">
   <div class="col-lg-6">
-    <div class="card"><div class="card-header"><h3 class="card-title">How calls ended, last {{.Days}} days</h3></div>
+    <div class="card"><div class="card-header"><h3 class="card-title">How calls ended, last {{.Days}} days</h3><div class="card-actions"><a href="{{.Export}}?table=reasons&days={{.Days}}">CSV</a></div></div>
     <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Reason</th><th class="w-1">Calls</th></tr></thead><tbody>
       {{range .Reasons}}<tr><td>{{.Reason}}</td><td>{{.Count}}</td></tr>{{else}}<tr><td colspan="2" class="text-secondary">No calls in this range.</td></tr>{{end}}
     </tbody></table></div></div>
   </div>
   <div class="col-lg-6">
-    <div class="card"><div class="card-header"><h3 class="card-title">Base stations used, last {{.Days}} days</h3></div>
+    <div class="card"><div class="card-header"><h3 class="card-title">Base stations used, last {{.Days}} days</h3><div class="card-actions"><a href="{{.Export}}?table=stations&days={{.Days}}">CSV</a></div></div>
     <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Base station</th><th>Calls</th><th>Talk time</th></tr></thead><tbody>
       {{range .Cells}}<tr><td>{{.Name}}</td><td>{{.Calls}}</td><td>{{hours .TalkSeconds}}</td></tr>{{else}}<tr><td colspan="3" class="text-secondary">No calls in this range.</td></tr>{{end}}
     </tbody></table></div></div>
   </div>
 </div>
+
+<div class="row row-cards mb-3">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">Most calls at once, per day</h3><div class="card-actions"><a href="{{.Export}}?table=peaks&days={{.Days}}">CSV</a></div></div>
+    <div class="card-body">{{peakChart .Peaks}}</div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">When the calls are</h3><div class="card-actions"><a href="{{.Export}}?table=heat&days={{.Days}}">CSV</a></div></div>
+    <div class="card-body">{{if .Heat.Total}}{{heatmap .Heat}}{{else}}<span class="text-secondary">No calls in this range.</span>{{end}}</div></div>
+  </div>
+</div>
+
+<div class="row row-cards mb-3">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">Most calls at once, per base station</h3><div class="card-actions"><a href="{{.Export}}?table=station_peaks&days={{.Days}}">CSV</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Base station</th><th>Most at once</th><th>Can carry</th></tr></thead><tbody>
+      {{range .CellPeaks}}<tr><td>{{.Name}}</td><td>{{.Peak}}{{if .Full}} <span class="badge bg-orange-lt" title="It was full at some time: a further call would not have been carried">full</span>{{end}}</td><td>{{if .Capacity}}{{.Capacity}}{{else}}<span class="text-secondary">not reported</span>{{end}}</td></tr>
+      {{else}}<tr><td colspan="3" class="text-secondary">No calls in this range.</td></tr>{{end}}
+    </tbody></table></div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h3 class="card-title">Call quality, by day</h3><div class="card-actions"><a href="{{.Export}}?table=quality&days={{.Days}}">CSV</a></div></div>
+    <div class="table-responsive"><table class="table table-vcenter card-table table-sm"><thead><tr><th>Day</th><th>Measured calls</th><th>Average MOS</th><th>Poor</th></tr></thead><tbody>
+      {{range .Quality}}{{if .Calls}}<tr><td>{{.Day.Format "Mon 2 Jan"}}</td><td>{{.Calls}}</td><td>{{f1 .AvgMOS}}</td><td>{{if .Poor}}<span class="badge bg-red-lt">{{.Poor}}</span>{{else}}0{{end}}</td></tr>{{end}}
+      {{else}}<tr><td colspan="4" class="text-secondary">No measured calls.</td></tr>{{end}}
+    </tbody></table></div>
+    <div class="card-footer text-secondary small">MOS runs from 1 to 4.5: 4 and above is good, below 3.5 is poor. Only calls whose media was measured are in it.</div></div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">VoIP lines{{if .All}} (the least available first){{end}}</h3><div class="card-actions"><a href="{{.Export}}?table=lines&days={{.Days}}">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Line</th><th>Registered</th><th>Calls</th><th>Answered</th><th>Missed</th><th>Talk time</th><th>Quality</th></tr></thead><tbody>
+    {{range .Lines}}<tr><td>{{with .Name}}{{.}}{{else}}<span class="text-secondary">removed lines</span>{{end}}</td>
+      <td>{{if .HasAvail}}{{f1 .Avail.UpPercent}} %{{else}}<span class="text-secondary">no record</span>{{end}}</td>
+      <td>{{.Calls}}</td><td>{{.Answered}}</td><td>{{.Missed}}</td><td>{{hours .TalkSeconds}}</td>
+      <td>{{if .MOSCalls}}MOS {{f1 .AvgMOS}}{{if .Poor}} <span class="badge bg-red-lt">{{.Poor}} poor</span>{{end}}{{end}}</td></tr>
+    {{else}}<tr><td colspan="7" class="text-secondary">No VoIP lines.</td></tr>{{end}}
+  </tbody></table></div>
+  <div class="card-footer text-secondary small">"Registered" is the share of the time the line was switched on and watched in which it was registered, from its registration history (kept 90 days).</div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Handsets</h3><div class="card-actions"><a href="{{.Export}}?table=handsets&days={{.Days}}">CSV</a></div></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Handset</th><th>Calls</th><th>Answered</th><th>Missed</th><th>Talk time</th><th>Quality</th></tr></thead><tbody>
+    {{range .Handsets}}<tr><td>{{with .Name}}{{.}}{{else}}<span class="text-secondary">removed handsets</span>{{end}}</td><td>{{.Calls}}</td><td>{{.Answered}}</td><td>{{.Missed}}</td><td>{{hours .TalkSeconds}}</td>
+      <td>{{if .MOSCalls}}MOS {{f1 .AvgMOS}}{{if .Poor}} <span class="badge bg-red-lt">{{.Poor}} poor</span>{{end}}{{end}}</td></tr>
+    {{else}}<tr><td colspan="6" class="text-secondary">No calls in this range.</td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{if .Worst}}
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">The worst calls</h3></div>
+  <div class="table-responsive"><table class="table table-vcenter card-table"><tbody>
+    {{range .Worst}}<tr><td>{{fmtTime .Started}}</td><td><span class="badge bg-red-lt">MOS {{f1 .MOS}}</span></td><td class="text-end"><a href="/calls/{{.ID}}">Details</a></td></tr>{{end}}
+  </tbody></table></div>
+</div>
+{{end}}
 
 {{if .Fleet}}
 <h3 class="mt-4 mb-2">The controller</h3>
