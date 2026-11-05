@@ -75,21 +75,6 @@ func (s *Server) contactsExportCSV(w http.ResponseWriter, r *http.Request, u *au
 	}
 }
 
-// sameContact: a contact the user already has: the same name and a number in common.
-func sameContact(a, b contacts.Contact) bool {
-	if !strings.EqualFold(a.LastName, b.LastName) || !strings.EqualFold(a.FirstName, b.FirstName) {
-		return false
-	}
-	for _, x := range a.Numbers {
-		for _, y := range b.Numbers {
-			if x.Number == y.Number {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (s *Server) contactsImport(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	r.Body = http.MaxBytesReader(w, r.Body, importMaxBytes+(64<<10))
 	if err := r.ParseMultipartForm(importMaxBytes); err != nil { //nolint:gosec // G120: the body is capped by the MaxBytesReader above
@@ -122,7 +107,7 @@ func (s *Server) contactsImport(w http.ResponseWriter, r *http.Request, u *auth.
 	for _, c := range im.Contacts {
 		dup := false
 		for _, h := range have {
-			if sameContact(c, *h) {
+			if contacts.Same(c, *h) {
 				dup = true
 				break
 			}

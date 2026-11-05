@@ -69,6 +69,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sip/rtp"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
+	"github.com/openDECTcell/opendectcell-controller/internal/transfer"
 	"github.com/openDECTcell/opendectcell-controller/internal/web"
 )
 
@@ -491,6 +492,13 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	store.EveryoneMayEnroll = everyoneMayEnroll
 	store.Keyring = kr
 	books.Keyring = kr
+	handsets := &handset.Store{Pool: pool, Interval: func(ctx context.Context) time.Duration {
+		ro, err := instance.Roaming(ctx)
+		if err != nil {
+			return 0
+		}
+		return time.Duration(ro.LocateValiditySec) * time.Second
+	}}
 	srv := &web.Server{
 		Pool: pool, Auth: store, LocalLogin: cfg.Auth.Local.Enabled,
 		BaseURL: base, SecureCookies: cfg.SecureCookies(), TrustedProxies: cfg.TrustedProxyPrefixes(),
@@ -508,13 +516,9 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 				dectCore.Deregister(id, force)
 			}
 		},
-		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: &handset.Store{Pool: pool, Interval: func(ctx context.Context) time.Duration {
-			ro, err := instance.Roaming(ctx)
-			if err != nil {
-				return 0
-			}
-			return time.Duration(ro.LocateValiditySec) * time.Second
-		}}, LogCtl: logCtl, StartedAt: time.Now(),
+		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
+		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
+		LogCtl:   logCtl, StartedAt: time.Now(),
 		SMTPHost: cfg.SMTP.Host, MetricsToken: cfg.HTTP.MetricsToken,
 	}
 	if cfg.SMTP.Enabled() {

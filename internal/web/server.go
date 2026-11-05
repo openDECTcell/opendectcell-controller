@@ -42,6 +42,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
 	"github.com/openDECTcell/opendectcell-controller/internal/sipaccount"
 	"github.com/openDECTcell/opendectcell-controller/internal/stats"
+	"github.com/openDECTcell/opendectcell-controller/internal/transfer"
 )
 
 //go:embed templates/*.html
@@ -77,6 +78,7 @@ type Server struct {
 	SIPAccounts    *sipaccount.Store // nil: no SIP pages
 	Contacts       *contacts.Store   // nil: no contact API
 	Books          *carddav.Store    // nil: no address books
+	Transfer       *transfer.Store   // nil: no setup export and import
 	SIP            SIPStatus
 	Registrations  *regwin.Registry // nil: no registration API
 	// HandsetChanged, if set, is told when a handset's name or device profile
@@ -203,6 +205,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /account/2fa/confirm", s.requireUser(s.twoFAConfirm))
 	s.mux.Handle("POST /account/2fa/disable", s.requireUser(s.twoFADisable))
 	s.accountDataRoutes()
+	s.setupRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 	s.mux.Handle("GET /account/sessions", s.requireUser(s.sessionsPage))

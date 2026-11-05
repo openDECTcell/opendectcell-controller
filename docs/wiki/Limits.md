@@ -12,7 +12,7 @@ certificate renewal) against the real controller; SIP registration and calls; ca
 ## Built, but not seen on hardware
 
 The message-waiting indicator (the SIP mailbox to the handset's lamp); the **handset call lists** (missed, received, dialled, from the call log; read-only) and the **handset phonebook** (each handset reads its owner's contacts and the shared ones, and its edits go back to the controller); handsets choosing a cell by walking around with several boxes on at once; hold and resume; two calls on one handset;
-three or five parallel calls on one cell; call waiting; the audio of a cell beyond a test peer; the LuCI
+three or five parallel calls on one cell; call waiting; the audio of a cell beyond a test peer; a handset **imported with its key** from a setup file (it should need no new registration; not tried on air); the LuCI
 firmware-upload page.
 
 ## Not built

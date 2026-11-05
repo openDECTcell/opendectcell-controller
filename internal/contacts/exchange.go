@@ -414,3 +414,18 @@ func WriteCSV(w io.Writer, cs []*Contact, safe func(string) string) error {
 	cw.Flush()
 	return cw.Error()
 }
+
+// Same says whether a is a contact the user already has as b: the same name and a number in common.
+func Same(a, b Contact) bool {
+	if !strings.EqualFold(a.LastName, b.LastName) || !strings.EqualFold(a.FirstName, b.FirstName) {
+		return false
+	}
+	for _, x := range a.Numbers {
+		for _, y := range b.Numbers {
+			if x.Number == y.Number {
+				return true
+			}
+		}
+	}
+	return false
+}

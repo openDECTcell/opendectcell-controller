@@ -1,0 +1,90 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "account_setup.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">{{icon "download"}} Export my setup</h3></div>
+      <div class="card-body">
+        <p>One file with your handsets, VoIP lines and contacts, to move them to another controller or to have them again after a loss.
+        What you export, only you can import: into your own account, here or on another controller.</p>
+        <form method="post" action="/account/setup/export">
+          <label class="form-check"><input class="form-check-input" type="checkbox" name="handsets" checked><span class="form-check-label">Handsets: name, device, ring settings, which line is on which key</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" name="lines" checked><span class="form-check-label">VoIP lines: all their settings</span></label>
+          <label class="form-check mb-3"><input class="form-check-input" type="checkbox" name="contacts" checked><span class="form-check-label">Contacts (your own, not those of address books)</span></label>
+          <label class="form-check"><input class="form-check-input" type="checkbox" name="secrets" id="secrets"><span class="form-check-label"><strong>Include the handsets' keys and the VoIP passwords</strong></span></label>
+          <div class="alert alert-warning mt-2">
+            With keys, a handset can be brought over without registering it again, and the lines work at once. Whoever holds the file <em>and its passphrase</em>
+            can use your handsets' identities and your VoIP accounts: keep the file as you would keep a password. The file is encrypted with the passphrase below;
+            nobody can recover it for you, and this controller never stores it. Without keys, the file only carries settings and is not encrypted.
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3"><label class="form-label" for="pp">Passphrase (at least {{.Min}} characters, only for keys and passwords)</label>
+              <input class="form-control" id="pp" name="passphrase" type="password" autocomplete="new-password"></div>
+            <div class="col-md-6 mb-3"><label class="form-label" for="pp2">Passphrase again</label>
+              <input class="form-control" id="pp2" name="passphrase2" type="password" autocomplete="new-password"></div>
+          </div>
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="expw">Your password (to confirm it is you)</label>
+            <input class="form-control" id="expw" name="password" type="password" autocomplete="current-password"></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="exun">Type your user name to confirm</label>
+            <input class="form-control" id="exun" name="username" autocomplete="off"></div>{{end}}
+          <button type="submit" class="btn btn-primary">{{icon "download"}} Download</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">{{icon "upload"}} Import a setup</h3></div>
+      <div class="card-body">
+        <p>Choose a setup file. <strong>Check the file</strong> shows what would happen without changing anything; <strong>Import</strong> does it.
+        Lines you have already (the same user name and domain) and contacts you have already are left as they are. A handset of the file that you have already
+        gets the file's settings. A handset whose identity is registered on this controller by anyone is never taken over.</p>
+        <form method="post" action="/account/setup/import" enctype="multipart/form-data">
+          <div class="mb-3"><label class="form-label" for="f">File</label><input class="form-control" id="f" name="file" type="file" accept=".json,application/json" required></div>
+          <div class="mb-3"><label class="form-label" for="ip">Passphrase (if the file is encrypted)</label>
+            <input class="form-control" id="ip" name="passphrase" type="password" autocomplete="off"></div>
+          {{if .Local}}<div class="mb-3"><label class="form-label" for="impw">Your password (to import keys and passwords)</label>
+            <input class="form-control" id="impw" name="password" type="password" autocomplete="current-password"></div>
+          {{else}}<div class="mb-3"><label class="form-label" for="imun">Your user name (to import keys and passwords)</label>
+            <input class="form-control" id="imun" name="username" autocomplete="off"></div>{{end}}
+          <button type="submit" class="btn btn-outline-primary" name="mode" value="check">Check the file</button>
+          <button type="submit" class="btn btn-primary" name="mode" value="import">{{icon "upload"}} Import</button>
+        </form>
+        <hr>
+        <h4>VoIP lines from a spreadsheet</h4>
+        <p>Many lines at once, from a CSV file (Excel and LibreOffice can write one). Start from the <a href="/account/setup/lines-template.csv">template</a>:
+        one row per line, with at least the user name and the domain. The passwords in the file stay in your file: they are not kept or shown. The same check comes first.</p>
+        <form method="post" action="/account/setup/lines-import" enctype="multipart/form-data">
+          <div class="mb-3"><label class="form-label" for="cf">CSV file</label><input class="form-control" id="cf" name="file" type="file" accept=".csv,text/csv" required></div>
+          <button type="submit" class="btn btn-outline-primary" name="mode" value="check">Check the file</button>
+          <button type="submit" class="btn btn-primary" name="mode" value="import">{{icon "upload"}} Import the lines</button>
+        </form>
+        {{with .Report}}
+        <h4 class="mt-4">{{if .DryRun}}What an import would do{{else}}What the import did{{end}}</h4>
+        <p>{{.Added}} added, {{.Updated}} updated, {{.Skipped}} left as they are, {{.Failed}} not possible.{{if .DryRun}} Nothing was changed. Press <strong>Import</strong> with the same file to do it.{{end}}</p>
+        <div class="table-responsive"><table class="table table-sm">
+          <thead><tr><th>What</th><th>Name</th><th>Result</th><th></th></tr></thead>
+          <tbody>{{range .Items}}<tr><td>{{.Kind}}</td><td>{{.Name}}</td>
+            <td>{{if eq .Action "add"}}<span class="badge bg-green-lt">{{if $.Data.Report.DryRun}}would be added{{else}}added{{end}}</span>
+              {{else if eq .Action "update"}}<span class="badge bg-blue-lt">{{if $.Data.Report.DryRun}}would be updated{{else}}updated{{end}}</span>
+              {{else if eq .Action "skip"}}<span class="badge bg-secondary-lt">left as it is</span>
+              {{else}}<span class="badge bg-red-lt">not possible</span>{{end}}</td>
+            <td class="text-secondary">{{.Note}}</td></tr>{{end}}</tbody>
+        </table></div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card"><div class="card-body">
+      <h4>What moves, and what does not</h4>
+      <ul class="mb-0">
+        <li>A handset that comes over with its key does not need to be registered again: the first base station that hears it takes it in. Whether it then works on air is something the handset decides; try it before you delete the old one.</li>
+        <li>Address books, call history, shared lines and base stations are not in the file.</li>
+        <li>A VoIP line without its password is imported without one: enter it on the line's page.</li>
+        <li>The file is for you: another user who imports it gets copies in their own account, never yours.</li>
+      </ul>
+    </div></div>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

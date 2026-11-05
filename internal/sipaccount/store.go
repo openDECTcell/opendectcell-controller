@@ -806,3 +806,43 @@ func (s *Store) RuntimeAccounts(ctx context.Context) ([]sip.Account, error) {
 	}
 	return out, errors.Join(errs...)
 }
+
+// Validate says whether in would make a valid account, as Create would judge it, without making one (an import's dry run).
+func Validate(in Input) error {
+	r := defaults()
+	apply(r, in)
+	return validate(r)
+}
+
+// Secrets opens the SIP password and the TURN password of one of u's own accounts, for the export the user asked for. A shared
+// account is not the user's to take with them. Either may be "" (none set). They must not be logged.
+func (s *Store) Secrets(ctx context.Context, u *auth.User, id uuid.UUID) (password, stunPass string, err error) {
+	if u == nil {
+		return "", "", auth.ErrForbidden
+	}
+	var pw, st []byte
+	var owner *uuid.UUID
+	if err := s.Pool.QueryRow(ctx, "SELECT owner_user_id, password_enc, stunpass_enc FROM sip_account WHERE id = $1", id).Scan(&owner, &pw, &st); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", ErrNotFound
+		}
+		return "", "", err
+	}
+	if owner == nil || *owner != u.ID {
+		return "", "", ErrNotFound
+	}
+	open := func(col string, enc []byte) (string, error) {
+		if enc == nil {
+			return "", nil
+		}
+		p, err := s.Keyring.Open(locCol(id, col), enc)
+		return string(p), err
+	}
+	if password, err = open("password_enc", pw); err != nil {
+		return "", "", err
+	}
+	if stunPass, err = open("stunpass_enc", st); err != nil {
+		return "", "", err
+	}
+	return password, stunPass, nil
+}
