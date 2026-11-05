@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+
 -- +up
 
 -- The history of a VoIP line's registration (ideas B3): one row when the line goes up, goes down, or goes down for a

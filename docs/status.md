@@ -39,6 +39,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Calls between handsets of one account | 🟡 | |
 | Phonebook, call lists, message-waiting lamp | 🟡 | Built; not all seen on hardware |
 | CardDAV address books (read only, several, chosen per handset), vCard and CSV import and export of contacts | 🟡 | Tests against a fake server; not tried against Nextcloud; private network addresses refused unless the operator allows them |
+| Notification centre: a bell, VoIP line down, handset not heard (opt-in), base station offline, certificates ending; mail with quiet hours | 🟡 | Tests; not seen with real failures on the Pi; disk, worker restart, release and backup alerts are not built |
 | VoIP line page: registration history (up, down, why, how long), share of time registered, last calls | 🟡 | Tests; not yet seen with a real provider failing |
 | Export and import of handsets (with keys, encrypted), VoIP lines (with passwords) and contacts; VoIP lines from a CSV | 🟡 | Tests against the database; a handset moved with its key has not been tried on air |
 | Calls page: your history with filters, a page per call (codecs, encryption, quality per leg), CSV export, missed calls marked as read | 🟡 | Tests and headless Chrome; the numbers are the user's own and shown in full |

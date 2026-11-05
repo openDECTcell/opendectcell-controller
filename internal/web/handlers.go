@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/calllog"
@@ -29,6 +31,8 @@ type page struct {
 	// user until it is set up, and the page says so (filled in by render)
 	AdminNeeds2FA bool
 	Data          any
+	// Unread is how many notifications the user has not read (filled in by render)
+	Unread int
 
 	// filled in by render
 	Brand   brand
@@ -52,6 +56,9 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, p page) 
 	p.Brand = s.brand(ctx)
 	p.Nav = navFor(p.User, p.Path)
 	p.Section = section(p.Nav)
+	if p.User != nil && p.User.ID != uuid.Nil {
+		p.Unread = s.unreadNotifications(ctx, p.User.ID)
+	}
 	if p.User != nil && s.Auth != nil && !strings.HasPrefix(p.Path, "/account/2fa") {
 		if p.User.Admin2FAPending {
 			p.AdminNeeds2FA = true // instead of the offer: this one is not optional, and the admin pages are missing until it is done

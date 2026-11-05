@@ -66,6 +66,7 @@ see a restricted **Logging** page for their own handsets and lines.
 | Location history of handsets (which cell, when) | 90 days | deleted |
 | Audit log (who changed what) | 365 days | deleted |
 | A VoIP line's registration history (up, down, why) | 90 days, fixed | deleted |
+| Notifications (the bell) | 90 days, fixed | deleted |
 
 The audit log is append-only: it cannot be edited or deleted except by the retention job. There is no export
 or deletion of one user's data yet; see [Limits](Limits.md).

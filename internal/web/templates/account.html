@@ -17,6 +17,23 @@
   <button type="submit" class="btn btn-primary">Save</button>
 </form></div></div>
 {{end}}
+{{with .Data}}{{with .Alerts}}
+<h3 class="mt-4 mb-2">Notifications</h3>
+<div class="card mb-3"><div class="card-body"><form method="post" action="/account/alerts" class="narrow">
+  <p class="text-secondary">What the controller tells you on the <a href="/notifications">Notifications</a> page (the bell), and by e-mail if you tick it.</p>
+  <table class="table table-sm"><thead><tr><th>Tell me when</th><th>Show</th><th>Mail</th></tr></thead><tbody>
+  {{range .Kinds}}<tr><td>{{.Title}}</td>
+    <td><input class="form-check-input" type="checkbox" name="show_{{.Kind}}" {{if .Show}}checked{{end}} aria-label="Show: {{.Title}}"></td>
+    <td>{{if .MailByFlag}}<span class="text-secondary small">see "E-mail notifications" above</span>{{else}}<input class="form-check-input" type="checkbox" name="mail_{{.Kind}}" {{if .Mail}}checked{{end}} aria-label="Mail: {{.Title}}">{{end}}</td></tr>{{end}}
+  </tbody></table>
+  <label class="form-label">Tell me about a handset that was not heard for (hours, 0 is off)
+    <input class="form-control" name="handset_hours" type="number" min="0" max="{{.MaxHours}}" value="{{.HandsetHours}}"></label>
+  <div class="row"><div class="col"><label class="form-label">No mail from <input class="form-control" name="quiet_from" value="{{.QuietFrom}}" placeholder="22:00" maxlength="5"></label></div>
+    <div class="col"><label class="form-label">until <input class="form-control" name="quiet_to" value="{{.QuietTo}}" placeholder="07:00" maxlength="5"></label></div></div>
+  <div class="form-hint mb-2">Mail that comes in during the quiet hours waits for their end and then comes as one mail. The hours are in the controller's local time.</div>
+  <button type="submit" class="btn btn-primary">Save</button>
+</form></div></div>
+{{end}}{{end}}
 <h3 class="mt-4 mb-2">Sessions</h3>
 <p><a class="btn btn-outline-primary" href="/account/sessions">{{icon "device-mobile"}} Where am I logged in</a></p>
 <h3 class="mt-4 mb-2">Your data</h3>

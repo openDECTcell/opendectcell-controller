@@ -44,6 +44,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/alerts"
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/bridge"
@@ -532,6 +533,8 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 	}
 	go srv.RunLogExpiry(ctx)
 	go srv.RunCellAlerts(ctx)
+	go (&alerts.Engine{Pool: pool, Sources: srv.AlertSources(), Log: log.With("component", "alerts"), Sink: srv.AlertSink}).Run(ctx, time.Minute)
+	go (&alerts.MailRun{Pool: pool, Mailer: srv.Mailer, Log: log.With("component", "alerts")}).Run(ctx)
 	go srv.RunMissedCallMails(ctx)
 	go books.Run(ctx, log.Warn)
 	go retention.Run(ctx, pool, instance, log)

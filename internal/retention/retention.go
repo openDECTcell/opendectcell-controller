@@ -20,6 +20,9 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/sipevents"
 )
 
+// NotificationDays is how long a notification is kept.
+const NotificationDays = 90
+
 // Run applies the retention settings once a day until ctx ends.
 func Run(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, log *slog.Logger) {
 	t := time.NewTimer(time.Minute)
@@ -68,6 +71,12 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, st *settings.Store, now time
 		return err
 	} else if n := tag.RowsAffected(); n > 0 {
 		log.Info("retention: VoIP registration history deleted", "events", n, "older_than_days", sipevents.KeepDays)
+	}
+	// notifications are read for a while and then only clutter: fixed, like the registration history
+	if tag, err := pool.Exec(ctx, "DELETE FROM notification WHERE at < $1", now.AddDate(0, 0, -NotificationDays)); err != nil {
+		return err
+	} else if n := tag.RowsAffected(); n > 0 {
+		log.Info("retention: notifications deleted", "notifications", n, "older_than_days", NotificationDays)
 	}
 	if r.AuditDays > 0 {
 		var n int64

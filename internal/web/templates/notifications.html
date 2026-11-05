@@ -1,0 +1,27 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "notifications.html"}}{{template "head" .}}
+{{with .Data}}
+<p class="text-secondary">What the controller found worth telling you: a VoIP line that cannot register, a base station that went offline, a handset nobody has heard from, a certificate that ends soon,
+and when it is over. What you are told, and what is mailed, is set under <a href="/account">Account</a>.</p>
+<div class="d-flex gap-2 mb-3">
+  {{if .Unread}}<form method="post" action="/notifications/read"><button type="submit" class="btn btn-outline-primary">{{icon "check"}} Mark all {{.Unread}} as read</button></form>{{end}}
+</div>
+<div class="card"><div class="list-group list-group-flush">
+{{range .Rows}}
+  <div class="list-group-item{{if .Unread}} bg-azure-lt{{end}}">
+    <div class="row align-items-center">
+      <div class="col-auto"><span class="badge {{if eq .Level "danger"}}bg-red{{else if eq .Level "warning"}}bg-orange{{else if eq .Level "ok"}}bg-green{{else}}bg-azure{{end}} text-white">{{if eq .Level "ok"}}over{{else}}{{.Level}}{{end}}</span></div>
+      <div class="col">
+        <div class="fw-bold">{{if .Href}}<a href="{{.Href}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}</div>
+        {{with .Body}}<div class="text-secondary">{{.}}</div>{{end}}
+        <div class="text-secondary small">{{fmtTime .At}}</div>
+      </div>
+      {{if .Unread}}<div class="col-auto"><form method="post" action="/notifications/read"><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="btn btn-sm btn-link">Mark as read</button></form></div>{{end}}
+    </div>
+  </div>
+{{else}}
+  <div class="list-group-item text-secondary">Nothing to tell. Everything that happens from now on, and is worth telling, appears here.</div>
+{{end}}
+</div></div>
+{{end}}
+{{template "foot" .}}{{end}}

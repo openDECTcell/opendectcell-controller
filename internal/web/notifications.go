@@ -16,11 +16,16 @@ type notifData struct {
 	Log, Cells, Missed bool
 	HasEmail           bool
 	MailOK             bool
+	Alerts             alertPrefsView
 }
 
 func (s *Server) notifState(r *http.Request, u *auth.User) (notifData, error) {
 	d := notifData{HasEmail: u.Email != "", MailOK: s.mailOn()}
-	err := s.Pool.QueryRow(r.Context(), "SELECT notify_log_changes, notify_cell_alerts, notify_missed_calls FROM app_user WHERE id = $1", u.ID).Scan(&d.Log, &d.Cells, &d.Missed)
+	if err := s.Pool.QueryRow(r.Context(), "SELECT notify_log_changes, notify_cell_alerts, notify_missed_calls FROM app_user WHERE id = $1", u.ID).Scan(&d.Log, &d.Cells, &d.Missed); err != nil {
+		return d, err
+	}
+	var err error
+	d.Alerts, err = s.alertPrefsFor(r.Context(), u)
 	return d, err
 }
 

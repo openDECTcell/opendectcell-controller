@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/openDECTcell/opendectcell-controller/internal/alerts"
 	"github.com/openDECTcell/opendectcell-controller/internal/audit"
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
 	"github.com/openDECTcell/opendectcell-controller/internal/carddav"
@@ -79,8 +80,10 @@ type Server struct {
 	Contacts       *contacts.Store   // nil: no contact API
 	Books          *carddav.Store    // nil: no address books
 	Transfer       *transfer.Store   // nil: no setup export and import
-	SIP            SIPStatus
-	Registrations  *regwin.Registry // nil: no registration API
+	// AlertSink, if set, is told every notification made for a user (the webhooks, ideas F2).
+	AlertSink     func(user uuid.UUID, n alerts.Notification)
+	SIP           SIPStatus
+	Registrations *regwin.Registry // nil: no registration API
 	// HandsetChanged, if set, is told when a handset's name or device profile
 	// was changed, so the DECT stacks that hold it follow.
 	HandsetChanged func(id uuid.UUID)
@@ -206,6 +209,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /account/2fa/disable", s.requireUser(s.twoFADisable))
 	s.accountDataRoutes()
 	s.setupRoutes()
+	s.notifyRoutes()
 	s.mux.Handle("POST /account/2fa/devices/forget", s.requireUser(s.twoFAForgetDevices))
 	s.mux.Handle("POST /account/2fa/later", s.requireUser(s.twoFALater))
 	s.mux.Handle("GET /account/sessions", s.requireUser(s.sessionsPage))

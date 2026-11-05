@@ -87,6 +87,11 @@ func (s *Server) checkCellAlerts(ctx context.Context, now time.Time, state map[u
 }
 
 func (s *Server) alertAdmins(ctx context.Context, subject, body, action string, cell uuid.UUID) {
+	level := "danger"
+	if action == "cell.alert_online" {
+		level = "ok"
+	}
+	s.tellCell(ctx, cell, level, subject, body)
 	_ = audit.RecordAs(ctx, s.Pool, audit.System, audit.Entry{Action: action, ObjectType: "cell", ObjectID: cell.String()})
 	if !s.mailOn() {
 		return
