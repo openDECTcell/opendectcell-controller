@@ -108,3 +108,10 @@ capabilities when it first talks to it; until then it may ring a CAT-iq handset 
 A profile is a few settings for a model: for instance the A540 should not be sent list-change notices after its
 location registration. Profiles are chosen when registering; the list of known profiles is built in. If your
 handset misbehaves, say which model it is: a profile is the fix.
+
+A handset that is not plain GAP or CAT-iq may need more than a profile can say today. The Motorola O201 is the first
+case: its profile sets the basic service of an incoming call to narrowband (it refuses the wideband setup) and asks for
+an in-band indication on its outgoing calls (it keeps its audio closed without it). The plan for finding what such a
+handset needs, a step at a time and from the standard, is in openDECTcell's
+[vendor-specific-support.md](https://github.com/openDECTcell/opendectcell/blob/main/docs/vendor-specific-support.md) and the catalogue
+of variations [handset-variation-catalog.md](https://github.com/openDECTcell/opendectcell/blob/main/docs/handset-variation-catalog.md).

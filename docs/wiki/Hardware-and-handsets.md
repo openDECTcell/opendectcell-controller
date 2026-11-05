@@ -32,6 +32,7 @@ switches the console off so the chip can use it. This matters only if you have s
 | Gigaset **AS690H** | GAP / NG-DECT Part 1 | Registration, calls, HD voice, encryption, number, roaming |
 | Gigaset **C430A** | GAP / NG-DECT Part 1 | Registration, calls, HD voice, encryption, number; shows no date and time from the base |
 | AVM **FRITZ!Fon C4** | CAT-iq | Registered and called during development; not tried with the current release |
+| Motorola **O201** | not GAP or CAT-iq compliant | Registration and dialling out on the controller (2026-11-05). Its incoming calls and the audio of its outgoing calls need the device profile **Motorola O201** (a basic-service and an in-band-indication setting): with it, calls both ways with audio worked on a standalone 7412 (3 of 3 calls). The profile is in the controller from libopendectcell API 159 on and is chosen on the handset's page; **not yet tried through the controller and a 7520**. Its display shows the number and its own "Externer Anruf", not the caller's name; it waits about 3 s after dialling before it sets up the call (all handsets do) |
 
 openDECTcell follows the standards, so other GAP and CAT-iq handsets should work. A handset that is not in the
 list of device profiles works as a generic one. Please [tell us](https://github.com/openDECTcell/opendectcell/blob/main/CONTRIBUTING.md)

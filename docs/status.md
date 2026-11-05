@@ -51,6 +51,7 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | VoIP line page: registration history (up, down, why, how long), share of time registered, last calls | 🟡 | Tests; not yet seen with a real provider failing |
 | Export and import of handsets (with keys, encrypted), VoIP lines (with passwords) and contacts; VoIP lines from a CSV | 🟡 | Tests against the database; a handset moved with its key has not been tried on air |
 | Calls page: your history with filters, a page per call (codecs, encryption, quality per leg), CSV export, missed calls marked as read | 🟡 | Tests and headless Chrome; the numbers are the user's own and shown in full |
+| Device profiles for handsets that are not plain GAP or CAT-iq (Motorola O201: narrowband basic service, in-band indication on outgoing calls) | 🟡 | In the library from API 159 and mirrored here (`internal/dect/profiles/data`, `TestSameAsLibrary`). Seen on a standalone 7412 with a random identity (calls both ways, audio); **not yet through the controller**: the Pi runs the build from before the profile |
 | Transfer, conference, early media | ❌ | |
 
 ## Operation
@@ -66,6 +67,12 @@ Legend: ✅ seen working · 🟡 built and tested by the test suite, or seen onl
 | Export and erasure of one user's data | 🟡 | Account page: a JSON download (no secrets) and "Delete my account and data" (handsets, VoIP lines, base stations revoked, contacts, calls; the audit log keeps the entries but forgets who) |
 | An administrator releases a handset registered under another user's name | 🟡 | Administration > Release a handset; audited (SEC-12) |
 | High availability | ➖ | One controller, one database |
+
+**What runs on the Pi and what is waiting for a deploy (2026-11-05).** The Pi runs the build under the 72 h soak, which ends
+2026-11-07 19:43 CET; a deploy restarts it, so the following wait until then: migrations 0026 to 0033, the backup service,
+the new environment variables (`docs/configuration.md`), the submodule at libopendectcell API 159 and the O201 profile. After the
+deploy the Pi's temporary `soak` user is deleted. The stale cell "OpenWrt" is the maintainer's to remove. Details and
+the order are in the maintainers' notes, section 0s.
 
 More in [wiki/Limits.md](wiki/Limits.md) (for users), [next-steps-2026-11-02.md](next-steps-2026-11-02.md) and the open
 audit items in [security-review-2026-11-02.md](security-review-2026-11-02.md).
