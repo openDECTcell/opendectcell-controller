@@ -61,6 +61,7 @@ var menu = []navEntry{
 	{group: "Administration", navItem: navItem{Label: "Logging", Href: "/admin/logging", Icon: "bug"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Audit log", Href: "/admin/audit", Icon: "history"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Settings", Href: "/admin/settings", Icon: "settings"}, admin: true},
+	{group: "Administration", navItem: navItem{Label: "Legal texts", Href: "/admin/legal", Icon: "shield-lock"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Health", Href: "/admin/health", Icon: "heartbeat"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "System", Href: "/admin/system", Icon: "server"}, admin: true},
 	{group: "Administration", navItem: navItem{Label: "Backup", Href: "/admin/backup", Icon: "database"}, admin: true},
@@ -109,6 +110,18 @@ func hrefMatches(href, path string) bool {
 		return path == "/"
 	}
 	return path == href || strings.HasPrefix(path, href+"/")
+}
+
+// withLegalItem adds the "Legal notice" entry to the menu of a signed-in user, at the end of the Account group.
+func withLegalItem(groups []navGroup, path string) []navGroup {
+	it := navItem{Label: "Legal notice", Href: "/legal", Icon: "file-text", Active: hrefMatches("/legal", path)}
+	for i := range groups {
+		if groups[i].Title == "Account" {
+			groups[i].Items = append(groups[i].Items, it)
+			return groups
+		}
+	}
+	return append(groups, navGroup{Title: "Account", Items: []navItem{it}})
 }
 
 // section is the group title of the current page, for the page header.

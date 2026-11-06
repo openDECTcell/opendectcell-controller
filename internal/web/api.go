@@ -92,6 +92,10 @@ func (s *Server) apiUser(h func(http.ResponseWriter, *http.Request, *auth.User))
 			problem(w, http.StatusUnauthorized, "unauthenticated", "log in first, or send a personal API token", nil)
 			return
 		}
+		if u.LegalPending {
+			problem(w, http.StatusForbidden, "legal_acceptance_required", "sign off the legal texts in the web interface (/legal/accept) before you use the API", nil)
+			return
+		}
 		if tok, ok := tokenFrom(r.Context()); ok && !tokenAllows(w, r, tok) {
 			return
 		}

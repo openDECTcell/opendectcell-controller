@@ -1,0 +1,14 @@
+{{/* SPDX-License-Identifier: AGPL-3.0-or-later */}}
+{{define "legal_doc"}}<div class="legal-scroll" tabindex="0" role="region" aria-label="{{.Title}}">{{range .Paragraphs}}<p>{{.}}</p>{{end}}</div>{{end}}
+{{define "legal.html"}}{{template "head" .}}
+<div class="row g-3">
+  {{range .Data.Docs}}
+  <div class="col-12">
+    <div class="card" id="{{.Kind}}">
+      <div class="card-header"><h3 class="card-title">{{.Title}}</h3></div>
+      <div class="card-body">{{template "legal_doc" .}}</div>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{template "foot" .}}{{end}}

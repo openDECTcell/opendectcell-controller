@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/openDECTcell/opendectcell-controller/internal/auth"
+	"github.com/openDECTcell/opendectcell-controller/internal/legal"
 )
 
 // registrationOpen reports whether the sign-up page is on: an admin turned
@@ -30,6 +31,7 @@ type registerData struct {
 	Verify          bool // an e-mail link is needed (SMTP is configured)
 	Done            bool
 	Pending         bool
+	Docs            []legal.Shown // legal texts switched on: each has to be ticked
 }
 
 func (s *Server) registerPage(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +44,7 @@ func (s *Server) registerPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pol, _ := s.Settings.Registration(r.Context())
-	s.render(w, http.StatusOK, "register.html", page{Title: "Register", Data: registerData{Approval: pol.RequireApproval, Verify: s.mailOn()}})
+	s.render(w, http.StatusOK, "register.html", page{Title: "Register", Data: registerData{Approval: pol.RequireApproval, Verify: s.mailOn(), Docs: s.legalShown(r.Context())}})
 }
 
 func (s *Server) registerPost(w http.ResponseWriter, r *http.Request) {
@@ -56,9 +58,16 @@ func (s *Server) registerPost(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	d := registerData{Username: strings.TrimSpace(r.PostFormValue("username")), Email: strings.TrimSpace(r.PostFormValue("email")), Approval: pol.RequireApproval, Verify: s.mailOn()}
+	d := registerData{Username: strings.TrimSpace(r.PostFormValue("username")), Email: strings.TrimSpace(r.PostFormValue("email")), Approval: pol.RequireApproval, Verify: s.mailOn(), Docs: s.legalShown(r.Context())}
 	fail := func(status int, msg string) {
 		s.render(w, status, "register.html", page{Title: "Register", Error: msg, Data: d})
+	}
+	signed := signedFrom(r)
+	for _, doc := range d.Docs {
+		if signed[doc.Kind] != doc.Version {
+			fail(http.StatusBadRequest, "Please read and tick every box below. Without it there is no account.")
+			return
+		}
 	}
 	if d.Email != "" && auth.ValidEmail(d.Email) == nil && !pol.AllowsEmail(d.Email) {
 		fail(http.StatusBadRequest, "Sign-up is limited to certain e-mail domains, and yours is not one of them.")
@@ -77,6 +86,12 @@ func (s *Server) registerPost(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		fail(http.StatusBadRequest, "Could not sign you up: "+err.Error()+".")
 		return
+	}
+	if len(d.Docs) > 0 {
+		// a failure here is not fatal: the account then has texts pending and is asked at its first visit
+		if err := s.Legal.Accept(r.Context(), u.ID, signed); err != nil {
+			s.Log.Error("legal sign-off at registration", "err", err)
+		}
 	}
 	if d.Verify {
 		go s.sendVerification(u, d.Email) //nolint:gosec // G118: the mail outlives the request on purpose

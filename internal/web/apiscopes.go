@@ -86,6 +86,7 @@ func (s *Server) withToken(h http.Handler) http.Handler {
 			invalid()
 			return
 		}
+		user = s.withLegal(r.Context(), user)
 		ctx := auth.WithUser(r.Context(), user)
 		a := user.Actor()
 		a.Addr = addrFrom(ctx)

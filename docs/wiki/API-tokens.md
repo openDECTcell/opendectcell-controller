@@ -44,6 +44,8 @@ The API is described in [`docs/api/openapi.yaml`](../api/openapi.yaml). A token 
 * Read a VoIP line's password or a handset's key.
 * Be used when its user is disabled.
 
+If the installation has [legal texts](Legal-texts.md) switched on and the token's user has not signed them off, every request gets `403 legal_acceptance_required` until they have, in the web interface.
+
 A request whose token lacks a scope gets `403 insufficient_scope`, and the answer names the scope. A token that is wrong, expired or revoked gets `401 invalid_token`, even if the same request carries a valid session cookie.
 
 ## Keeping them safe

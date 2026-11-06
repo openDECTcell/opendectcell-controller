@@ -39,6 +39,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/profiles"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/regwin"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
+	"github.com/openDECTcell/opendectcell-controller/internal/legal"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/org"
 	"github.com/openDECTcell/opendectcell-controller/internal/settings"
@@ -98,6 +99,7 @@ type Server struct {
 	// HandsetDeregister, if set, asks the DECT cells to deregister the handset.
 	HandsetDeregister func(id uuid.UUID, force bool)
 	Settings          *settings.Store // nil: the default instance name, no settings pages
+	Legal             *legal.Store    // nil: no legal texts, no sign-off
 	Stats             *stats.Store    // nil: no statistics pages
 	Handsets          *handset.Store  // nil: no handset pages
 	Orgs              *org.Store      // nil: no organization pages
@@ -232,6 +234,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /admin/audit", s.requireAdmin(s.adminAudit))
 	s.mux.Handle("GET /admin/calls", s.requireAdmin(s.adminCalls))
 	s.settingsRoutes()
+	s.legalRoutes()
 	s.handsetRoutes()
 	s.publicMapRoutes()
 	s.stubRoutes()
@@ -392,6 +395,7 @@ func (s *Server) withSession(h http.Handler) http.Handler {
 			switch {
 			case err == nil:
 				user := sess.User
+				user = s.withLegal(r.Context(), user)
 				if s.adminNeeds2FA(r, user) {
 					// not an administrator at all until they have set up two-factor login: every route that checks
 					// the role, not only the admin pages, then refuses them
@@ -436,8 +440,20 @@ func (s *Server) clearCookie(w http.ResponseWriter) {
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode})
 }
 
-// requireUser sends anonymous requests to the login page.
+// requireUser sends anonymous requests to the login page, and a user who has not signed off the legal texts an administrator
+// switched on to the sign-off page: they get no access to anything else until they have.
 func (s *Server) requireUser(h func(http.ResponseWriter, *http.Request, *auth.User)) http.Handler {
+	return s.requireUserAny(func(w http.ResponseWriter, r *http.Request, u *auth.User) {
+		if u.LegalPending {
+			http.Redirect(w, r, "/legal/accept", http.StatusSeeOther)
+			return
+		}
+		h(w, r, u)
+	})
+}
+
+// requireUserAny is requireUser without the legal sign-off check: the sign-off page itself.
+func (s *Server) requireUserAny(h func(http.ResponseWriter, *http.Request, *auth.User)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := auth.UserFrom(r.Context())
 		if u == nil {

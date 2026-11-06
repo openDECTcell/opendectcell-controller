@@ -52,6 +52,7 @@ func Export(ctx context.Context, pool *pgxpool.Pool, user uuid.UUID) ([]byte, er
 		{"organizations", `SELECT o.name, m.display_name AS your_name, m.role, m.joined_at,
 				(o.owner_user_id = m.user_id) AS owner
 			FROM organization_member m JOIN organization o ON o.id = m.org_id WHERE m.user_id = $1 ORDER BY lower(o.name)`},
+		{"legal_sign_offs", `SELECT doc, version, accepted_at FROM legal_acceptance WHERE user_id = $1 ORDER BY doc`},
 		{"audit_entries_by_you", `SELECT at, action, object_type FROM audit_log WHERE actor_user_id = $1 ORDER BY id DESC LIMIT ` + itoa(maxRows)},
 	}
 	out := map[string]any{"exported_at": time.Now().UTC(), "note": "Personal data held about this account. Secrets (password hash, handset keys, VoIP and address book passwords, two-factor secret) are not included."}

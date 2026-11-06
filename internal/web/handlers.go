@@ -39,6 +39,8 @@ type page struct {
 	Nav     []navGroup
 	Section string
 	Path    string
+	// LegalOn: the instance has legal texts switched on, so the footer links to them (filled in by render)
+	LegalOn bool
 
 	// set by a handler
 	Wide             bool // an anonymous page that needs the full width (the public map)
@@ -55,6 +57,12 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, p page) 
 	}
 	p.Brand = s.brand(ctx)
 	p.Nav = navFor(p.User, p.Path)
+	if docs := s.legalShown(ctx); len(docs) > 0 {
+		p.LegalOn = true
+		if p.User != nil {
+			p.Nav = withLegalItem(p.Nav, p.Path)
+		}
+	}
 	p.Section = section(p.Nav)
 	if p.User != nil && p.User.ID != uuid.Nil {
 		p.Unread = s.unreadNotifications(ctx, p.User.ID)

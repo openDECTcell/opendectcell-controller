@@ -61,6 +61,7 @@ import (
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/stack"
 	"github.com/openDECTcell/opendectcell-controller/internal/dect/worker"
 	"github.com/openDECTcell/opendectcell-controller/internal/handset"
+	"github.com/openDECTcell/opendectcell-controller/internal/legal"
 	"github.com/openDECTcell/opendectcell-controller/internal/logctl"
 	"github.com/openDECTcell/opendectcell-controller/internal/mailer"
 	"github.com/openDECTcell/opendectcell-controller/internal/netguard"
@@ -522,7 +523,7 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 				dectCore.Deregister(id, force)
 			}
 		},
-		Settings: instance, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
+		Settings: instance, Legal: &legal.Store{Pool: pool, Settings: instance}, Stats: &stats.Store{Pool: pool}, Handsets: handsets,
 		Transfer: &transfer.Store{Pool: pool, Records: &dectcore.Store{Pool: pool, Keyring: kr}, Lines: sipAccts, Contacts: contactStore, Handsets: handsets},
 		LogCtl:   logCtl, StartedAt: time.Now(), BackupDir: cfg.Backup.Dir, PublicStatus: cfg.HTTP.PublicStatus, APITokens: &apitoken.Store{Pool: pool},
 		Webhooks: &webhook.Store{Pool: pool, Keyring: kr, Policy: netguard.Policy{AllowPrivate: cfg.Webhook.AllowPrivate}},

@@ -62,6 +62,9 @@ type User struct {
 	// EmailVerified is false for a sign-up that has not followed the link
 	// in its e-mail yet (disabled until it does).
 	EmailVerified bool
+	// LegalPending: texts an administrator switched on that the user has not signed off yet (set for the request, not stored on the
+	// user). Until they do, the web interface and the API refuse them; only the sign-off page, the legal notice and logout work.
+	LegalPending bool
 }
 
 // IsAdmin reports whether u has the admin role.
