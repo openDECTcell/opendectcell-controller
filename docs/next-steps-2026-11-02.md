@@ -89,7 +89,7 @@ export and account deletion, German, accessibility audit, map tile proxy.
   the README advertises releases that are not made. the maintainers' notes is 874 lines of history; §0r is
   the current state.
 - **Packaging decisions** (openDECTcell the maintainers' notes): a `opendectcell-fritz7412` package and dropping SSC
-  from `opendectcell`; the licence of `kmod-lantiq-tdm-pcm`; the deploy key for the private PCM repo
+  from `opendectcell`; the licence of `kmod-lantiq-tdm-pcm`; the PCM repo's publication
   (without it a 7412 release has no transport); the signing key lives only in the GitHub secret
   (move to a protected environment); which names and files go public and the final scrub.
 - **Upstream submission gaps** (openDECTcell `openwrt/README.md`): the ACL allows `dect-stubd --ctl *`,
@@ -116,7 +116,7 @@ export and account deletion, German, accessibility audit, map tile proxy.
 - **Docs and i18n.** No admin or user manual, no runbook for the 7412 and 7520 quirks outside the
   openDECTcell notes; English only.
 - **Release.** CI builds an image but pushes none; the default Docker build has `LIBOPENDECTCELL=0`, and
-  such an image silently drops every cell mail; the private submodule key is optional in CI, and
+  such an image silently drops every cell mail; the submodule is checked out in CI, and
   without it the cdect tests are skipped.
 
 ### 4.2 OpenWrt packages (openDECTcell)
@@ -136,7 +136,7 @@ export and account deletion, German, accessibility audit, map tile proxy.
 - **CI.** `check.yml` runs `make check` only; `make cross` and `make check-cell` are not in CI;
   packages build on a tag; no test installs the apks, runs the uci-defaults or the init script; no
   shellcheck.
-- **Hardware matrix.** 7520 works; 7530 untested; 7412 partial (private repo for the PCM module);
+- **Hardware matrix.** 7520 works; 7530 untested; 7412 partial;
   7362 SL partial (service off, no SIP call).
 
 ## 5. How this was checked

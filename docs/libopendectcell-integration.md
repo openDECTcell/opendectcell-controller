@@ -81,7 +81,7 @@ review, for `cgocheck2`, and for API churn in `libopendectcell`. Only `cmd/` pic
 the implementation: built with `-tags libopendectcell` (the submodule and cgo) it
 hands `cdect.NewStack` to the core; without the tag the core is off and the
 cells' mails are counted and dropped, as before C3, so everything else builds
-and tests without a C compiler or the private submodule.
+and tests without a C compiler or the submodule.
 
 ## 3. One host per cell
 
@@ -349,7 +349,7 @@ should add a CI check that fails if a file the controller compiles stops being
 | L4 | ~~Internal pointers~~ **resolved:** none except the transient `dect_lapc_frame.info` (§5) | — |
 | L5 | ~~`assert`/`abort`~~ **resolved:** none (§8) | — |
 | L6 ([opendectcell#70](https://github.com/openDECTcell/opendectcell/issues/70)) | ~~Version macro~~ **delivered:** `OPENDECTCELL_API_VERSION` in `dect_proto.h`, now **3** (2: CC timer fields; 3: `dect_iwu.h`, and `struct dect_cc` embeds `struct dect_iwu`, so its layout changed: recompile, don't relink). `cdect.h` refuses any other version with `#error` | `cdect` |
-| L7 | ~~The openDECTcell repository is private: CI needs read access~~ **resolved:** a **read-only deploy key** on `openDECTcell/opendectcell`, with the private half in the `OPENDECTCELL_READ_SSH_KEY` secret of this repo. `.github/workflows/ci.yml` installs it and rewrites the one resolved submodule URL to SSH; without the secret the job still warns and skips `cdect`, as before | B1 |
+| L7 | ~~The openDECTcell repository is private: CI needs read access~~ **resolved:** the openDECTcell repository is public, CI checks the submodule out like any other (an earlier version used a read-only deploy key) | B1 |
 | L8 | ~~Connection identifier~~ **resolved:** `handle` + 3-byte `tag` from `0x0203` (§3.1) | — |
 | L9 ([opendectcell#67](https://github.com/openDECTcell/opendectcell/issues/67)) | **Change request:** move the stack glue (§1.1) into `libopendectcell`, so `dect-stubd` and the controller share it instead of keeping two copies. **Accepted** (2026-10-22) in the proposed shape (`struct dect_link` plus a stack object with `rx_segment` / `tick` / `poll_append_mail`); no date. It is the last blocker for the #46 thaw. Scope: `reg_segment()`, `drain_nwk()`, `pump_lapc()` only. The audio bind stays with the controller (`cell-protocol.md` §8.1), which is what we assumed | `cdect`, openDECTcell |
 | L10 ([opendectcell#68](https://github.com/openDECTcell/opendectcell/issues/68)) | ~~TPUI as a parameter~~ **delivered:** `struct dect_mm_cfg` takes `tpui[3]` and `sub_slot`, decoupled; all-zero TPUI falls back to `{0x00, 0x11, sub_slot}`. Accessors `dect_mm_tpui()`, `dect_mm_sub_slot()`. **Trap:** a page (`0x0300`) must take its octets from `dect_mm_tpui()`, never from the slot index | `core` |

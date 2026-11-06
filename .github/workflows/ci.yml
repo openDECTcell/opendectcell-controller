@@ -1,16 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: CI
 
-# Manual only (the maintainers, 2026-11-02: saves CI minutes). The same gate runs
-# locally before every commit; start this workflow from the Actions tab for a
-# clean-machine run, e.g. before a release.
+# Runs on every pull request and on pushes to main; it can also be started by hand from the Actions tab.
+# The same gate runs locally before every commit (CONTRIBUTING.md). Pull requests from forks get no secrets.
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
-    inputs:
-      release:
-        description: "A release run: fail instead of warning when the DECT library cannot be built and tested"
-        type: boolean
-        default: false
 
 # a newer push to the same branch makes the older run pointless
 concurrency:
@@ -42,7 +39,7 @@ jobs:
           grep " golangci-lint-$v-linux-amd64.tar.gz\$" "golangci-lint-$v-checksums.txt" | sha256sum -c
           tar xzf "golangci-lint-$v-linux-amd64.tar.gz"
           echo "$RUNNER_TEMP/golangci-lint-$v-linux-amd64" >> "$GITHUB_PATH"
-      # cdect needs the private openDECTcell submodule (see the test job), so it
+      # cdect is linted by the test job's build (it needs the submodule and a C compiler), so it
       # is left out here.
       - name: Lint
         run: golangci-lint run --timeout=5m $(go list -f '{{.Dir}}' ./... | grep -v /dect/cdect)
@@ -63,12 +60,8 @@ jobs:
       CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Check out the opendectcell submodule
-        id: sub
-        uses: ./.github/actions/opendectcell-submodule
         with:
-          key: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
-          required: ${{ inputs.release }}
+          submodules: recursive
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -79,13 +72,9 @@ jobs:
           if [ -n "$missing" ]; then echo "Missing SPDX header:"; echo "$missing"; exit 1; fi
       - name: Test
         run: |
-          if [ "${{ steps.sub.outputs.have }}" = "true" ]; then
-            go test -race -count=1 ./...
-            go test -race -count=1 -tags libopendectcell ./cmd/... ./internal/dect/...
-            GOEXPERIMENT=cgocheck2 go test -count=1 -tags libopendectcell ./internal/dect/...
-          else
-            go test -race -count=1 $(go list ./... | grep -v /dect/cdect)
-          fi
+          go test -race -count=1 ./...
+          go test -race -count=1 -tags libopendectcell ./cmd/... ./internal/dect/...
+          GOEXPERIMENT=cgocheck2 go test -count=1 -tags libopendectcell ./internal/dect/...
       - name: Media regression corpus
         # Skipped under -race (single goroutine, ten times slower).
         run: go test -count=1 -run Corpus ./internal/media/
@@ -165,25 +154,17 @@ jobs:
           docker exec fs sh -c 'tail -n 3000 /var/log/freeswitch/freeswitch.log' || true
 
   image:
-    # The image that would be released: the same Dockerfile and compose file, with the DECT core
-    # (LIBOPENDECTCELL=1) whenever the private submodule can be checked out. Without it the image has no
-    # core, and the job says so instead of passing quietly; a release run (inputs.release) fails then.
+    # The image that would be released: the same Dockerfile and compose file, with the DECT core (LIBOPENDECTCELL=1).
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Check out the opendectcell submodule
-        id: sub
-        uses: ./.github/actions/opendectcell-submodule
         with:
-          key: ${{ secrets.OPENDECTCELL_READ_SSH_KEY }}
-          required: ${{ inputs.release }}
+          submodules: recursive
       - name: Build the image
         run: |
-          if [ "${{ steps.sub.outputs.have }}" = "true" ]; then export LIBOPENDECTCELL=1; else export LIBOPENDECTCELL=0; fi
-          echo "LIBOPENDECTCELL=$LIBOPENDECTCELL" >> "$GITHUB_ENV"
-          docker compose build --build-arg VERSION=${GITHUB_SHA::7}
+          echo "LIBOPENDECTCELL=1" >> "$GITHUB_ENV"
+          LIBOPENDECTCELL=1 docker compose build --build-arg VERSION=${GITHUB_SHA::7}
       - name: The image has the DECT core
-        if: steps.sub.outputs.have == 'true'
         run: |
           docker compose run --rm --no-deps --entrypoint /usr/local/bin/opendectcell-controller controller version | tee /dev/stderr | grep -q 'dect-core: yes'
       - name: Compose bring-up smoke test

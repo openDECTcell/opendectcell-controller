@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem (private)
+    url: https://github.com/openDECTcell/opendectcell-controller/security/advisories/new
+    about: Please do not open a public issue for a vulnerability; see SECURITY.md.
+  - name: Handset or box problem (opendectcell repository)
+    url: https://github.com/openDECTcell/opendectcell/issues/new/choose
+    about: Problems with a handset, the DECT radio or the box software belong there.

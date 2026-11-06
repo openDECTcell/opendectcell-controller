@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Bug
+description: Something in the controller does not work as documented
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Controller version (footer of every page) and how you run it
+      placeholder: "0.1.0-abc1234, Docker Compose"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: "`docker compose logs controller`, with personal data, SIP passwords, tokens and keys removed."
+      render: text
