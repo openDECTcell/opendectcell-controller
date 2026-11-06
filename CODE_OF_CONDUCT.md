@@ -3,7 +3,7 @@
 This project follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 The full text is below; it is licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-Reports of unacceptable behaviour go to the maintainers at **CONDUCT_CONTACT_TO_FILL** (not into a public issue).
+Reports of unacceptable behaviour go to the maintainers at **amo@ct.de** (not into a public issue).
 
 # Contributor Covenant Code of Conduct
 
@@ -43,7 +43,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at CONDUCT_CONTACT_TO_FILL. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at amo@ct.de. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

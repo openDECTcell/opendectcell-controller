@@ -9,8 +9,13 @@ OpenWrt and openDECTcell) to VoIP, so that many boxes act as one DECT network an
 
 **Status: it makes real calls.** A controller with a FRITZ!Box 7520 and a 7412 as cells registers Gigaset
 handsets, carries calls in and out over SIP with HD voice and encryption, and moves handsets between the two
-boxes. Many features are still missing (transfer, the handset phonebook, message waiting, internal calls) and
+boxes. Transfer and conference calls are still missing, several features are built but not yet seen on hardware, and
 scale has been tested only in simulation: [what works and what does not](docs/wiki/Limits.md).
+
+> **Experimental software, no warranty, no emergency calls.** The controller is free software developed without commercial
+> interest; it is provided as it is, with no guaranteed service. **Do not rely on it for emergency calls** (112, 110 and the
+> like). If you run it for other people, switch on the [legal texts](docs/wiki/Legal-texts.md): a legal notice, a privacy
+> notice and the warnings, which every user then signs off.
 
 ## Quick start
 
@@ -88,3 +93,10 @@ the [glossary](https://github.com/openDECTcell/opendectcell/blob/main/docs/gloss
 
 AGPL-3.0-or-later (see [LICENSE](LICENSE)). Anyone running a modified controller as a network service must offer
 its source to the users of that service.
+
+## Trademarks and affiliation
+
+DECT is a trademark of ETSI; CAT-iq of the DECT Forum; OpenWrt of Software Freedom Conservancy; FRITZ!Box and FRITZ!Fon of
+AVM GmbH; Gigaset of Gigaset Communications GmbH. opendectcell-controller is not affiliated with or endorsed by any of them.
+
+Copyright (C) 2026 the openDECTcell authors, [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt).
