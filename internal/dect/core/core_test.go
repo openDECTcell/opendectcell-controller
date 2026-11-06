@@ -1961,10 +1961,12 @@ func TestPlacedButNeverHeardLeavesSoon(t *testing.T) {
 	g.core.Roaming = func(context.Context) (Roaming, error) {
 		return Roaming{LocateValidity: time.Hour, ExpireAfter: time.Hour, MovedAfter: time.Hour}, nil
 	}
-	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	id := uuid.New()
+	g.core.CellUp(id, cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
 	waitFor(t, "radio on", radioOn(g))
-	g.stack(0).env.Fetch(h1.Rec.PortID)
-	g.stack(0).env.Fetch(h2.Rec.PortID)
+	// placed for a call (the router's lookup), not because the handsets located here
+	g.core.post(id, event{kind: evCtl, line: "ring {hs}", sip: "c1", hid: h1.ID})
+	g.core.post(id, event{kind: evCtl, line: "ring {hs}", sip: "c2", hid: h2.ID})
 	waitFor(t, "both in", func() bool {
 		n := 0
 		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
@@ -1998,6 +2000,40 @@ func TestPlacedButNeverHeardLeavesSoon(t *testing.T) {
 		if len(f.dropped) != 1 || len(f.records) != 1 {
 			t.Errorf("dropped %v, records %+v: the handset that was heard stays", f.dropped, f.records)
 		}
+	})
+}
+
+// A handset that located on the cell (a Fetch) and has not been heard since stays past unheardKeep,
+// for the validity and the grace: its next location registration must find its record, or it is
+// never authenticated and never counts as heard, and shows offline until somebody calls it.
+func TestLocatedButNotYetHeardStaysForTheNextLocate(t *testing.T) {
+	old := unheardKeep
+	unheardKeep = 100 * time.Millisecond
+	defer func() { unheardKeep = old }()
+	h := handset(7, owner)
+	recs := &fakeRecords{place: map[uuid.UUID]Handset{h.ID: h}}
+	g := newRig(t, recs, func(f *fakeStack) { f.seen = map[int]uint64{} })
+	g.core.Roaming = func(context.Context) (Roaming, error) {
+		return Roaming{LocateValidity: 1500 * time.Millisecond, ExpireAfter: 1500 * time.Millisecond, MovedAfter: time.Hour}, nil
+	}
+	g.core.CellUp(uuid.New(), cell.CellUp{StubVersion: "08.25", CapSubRecords: 6})
+	waitFor(t, "radio on", radioOn(g))
+	g.stack(0).env.Fetch(h.Rec.PortID)
+	waitFor(t, "in", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.records) })
+		return n == 1
+	})
+	time.Sleep(2200 * time.Millisecond) // two sweeps (once a second) past unheardKeep, inside validity and grace
+	g.stack(0).get(func(f *fakeStack) {
+		if len(f.dropped) != 0 || len(f.records) != 1 {
+			t.Errorf("dropped %v, records %+v: a handset that just located must stay for its next location registration", f.dropped, f.records)
+		}
+	})
+	waitFor(t, "dropped once the validity and the grace have passed", func() bool {
+		n := 0
+		g.stack(0).get(func(f *fakeStack) { n = len(f.dropped) })
+		return n == 1
 	})
 }
 

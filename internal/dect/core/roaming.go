@@ -55,7 +55,12 @@ func (r Roaming) Units() uint {
 // unheardKeep (a variable for the tests) is how long a handset that was placed in a
 // cell's table, for a call or a lookup, and has not been heard there since stays: a call
 // to a handset nobody knows the cell of is offered to several cells (route.go), and the
-// ones it is not on should not keep it for the whole validity.
+// ones it is not on should not keep it for the whole validity. A handset that has just
+// located on the cell (a Fetch) is the exception (transRec.located): it stays at least for the
+// validity and the grace, so that its next location registration finds its record, is
+// authenticated and counts as heard. Dropped after 90 s, the record was gone at every one of its
+// contacts, none was authenticated, and the handset showed offline for as long as nobody called
+// it (the soak, 2026-11-06).
 var unheardKeep = 90 * time.Second
 
 // roamingEvery (a variable for the tests) is how often the settings are read.
@@ -91,6 +96,7 @@ type transRec struct {
 	slot        uint
 	added       time.Time // placed, or called for
 	heard       time.Time // the last contact the stack reported
+	located     bool      // placed because the handset itself located on this cell
 	evict, busy bool      // to go: its key changed, or the stack was not quiet at the last try
 }
 
@@ -220,6 +226,11 @@ func (r *cellRun) fetched(ev event) {
 	if ok && !r.admit(h, time.Now()) {
 		ok = false
 	}
+	if ok {
+		if t := r.trans[h.ID]; t != nil {
+			t.located = true
+		}
+	}
 	if !ok {
 		r.log.Debug("a handset this cell does not hold is told its identity is unknown")
 	}
@@ -280,7 +291,7 @@ func (r *cellRun) sweep(now time.Time) {
 		switch o, moved := r.core.lastHeard(hid); {
 		case t.evict:
 			why = "its registration changed"
-		case t.heard.IsZero() && now.Sub(t.added) > unheardKeep:
+		case t.heard.IsZero() && now.Sub(t.added) > keepUnheard(t, rm):
 			why = "never heard here"
 		case now.Sub(last) > rm.LocateValidity+rm.ExpireAfter:
 			why = "not heard"
@@ -291,6 +302,14 @@ func (r *cellRun) sweep(now time.Time) {
 			r.dropTransient(hid, why)
 		}
 	}
+}
+
+// keepUnheard is how long a handset placed in the table and not heard since stays.
+func keepUnheard(t *transRec, rm Roaming) time.Duration {
+	if t.located {
+		return max(unheardKeep, rm.LocateValidity+rm.ExpireAfter)
+	}
+	return unheardKeep
 }
 
 // withSlot puts the handset's record number on this cell into a command.
