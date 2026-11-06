@@ -37,7 +37,8 @@ the calls, the handsets it holds, the audio capabilities.
 On the cell's own page an administrator can **approve**, **disable** and **enable** it (a disabled cell is
 kept but its radio is off). The owner's settings are on **Base stations**: the name, the location and
 **Revoke**, which permanently removes the cell's right to connect (you must type its name to confirm; a
-revoked box has to enrol again with a new token).
+revoked box has to enrol again with a new token). A revoked cell stays in **All base stations** for three days, so you can
+see what happened to it, and is then deleted automatically (its calls stay in the history, without the base station's name).
 
 There is no call limit to set and no way to allow unencrypted audio. A cell takes as many calls as its voice
 channels allow (the **Capacity announced** line shows them: records are handsets the chip can hold, the

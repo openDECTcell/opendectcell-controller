@@ -241,6 +241,37 @@ func TestRevokeOwned(t *testing.T) {
 	}
 }
 
+// A revoked cell is deleted three days after it was revoked; not before, and nothing else is.
+func TestPurgeRevoked(t *testing.T) {
+	e := newEnv(t)
+	admin, _ := e.users.CreateLocalUser(e.ctx, auth.NewLocalUser{Username: "boss", Password: "admin password", Role: auth.RoleAdmin})
+	keep, gone := e.enrolled(t, true), e.enrolled(t, true)
+	if err := e.store.Revoke(e.ctx, admin, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Now()
+	e.store.Now = func() time.Time { return t0.Add(71 * time.Hour) }
+	if n, err := e.store.PurgeRevoked(e.ctx); err != nil || n != 0 {
+		t.Fatalf("after 71 h: deleted %d, %v", n, err)
+	}
+	e.store.Now = func() time.Time { return t0.Add(73 * time.Hour) }
+	if n, err := e.store.PurgeRevoked(e.ctx); err != nil || n != 1 {
+		t.Fatalf("after 73 h: deleted %d, %v", n, err)
+	}
+	cells, err := e.store.ListCells(e.ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cells {
+		if c.ID == gone.ID {
+			t.Errorf("the revoked cell is still listed")
+		}
+	}
+	if len(cells) != 1 || cells[0].ID != keep.ID {
+		t.Errorf("the other cell was touched: %d cells", len(cells))
+	}
+}
+
 // A cell that announces media and SRTP is granted both: without the grant it
 // refuses MEDIA_OPEN as "not allowed" (found on air, 2026-11-01). Plain RTP is
 // never granted.

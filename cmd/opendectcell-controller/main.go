@@ -570,6 +570,11 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 			if err := store.Cleanup(ctx); err != nil && ctx.Err() == nil {
 				log.Warn("session cleanup", "err", err)
 			}
+			if n, err := cells.PurgeRevoked(ctx); err != nil && ctx.Err() == nil {
+				log.Warn("deleting revoked base stations", "err", err)
+			} else if n > 0 {
+				log.Info("revoked base stations deleted", "count", n)
+			}
 			select {
 			case <-ctx.Done():
 				return

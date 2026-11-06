@@ -32,7 +32,7 @@ var actionWords = map[string]string{ //nolint:gosec // G101: sentences about pas
 	"contact.create": "A contact was made", "contact.update": "A contact was changed", "contact.delete": "A contact was deleted",
 	"addressbook.create": "An address book was linked", "addressbook.update": "An address book was changed", "addressbook.delete": "An address book was unlinked",
 	"registration_window.open": "A registration window was opened", "registration_window.cancel": "A registration window was closed",
-	"cell.enroll": "A base station was enrolled", "cell.update": "A base station was changed", "cell.revoke": "A base station was revoked", "cell.profile": "A base station's profile was changed",
+	"cell.enroll": "A base station was enrolled", "cell.update": "A base station was changed", "cell.revoke": "A base station was revoked", "cell.purge": "A revoked base station was deleted", "cell.profile": "A base station's profile was changed",
 	"cell_token.create": "An enrolment token was made", "cell_token.delete": "An enrolment token was deleted",
 	"org.create": "An organization was made", "org.join": "An organization was joined", "org.leave": "An organization was left", "org.invite": "Someone was invited to an organization",
 	"org.rename": "An organization was renamed", "org.role": "A role in an organization was changed", "org.remove_member": "A member was removed from an organization", "org.delete": "An organization was deleted",

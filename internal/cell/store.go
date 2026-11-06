@@ -763,7 +763,7 @@ func (s *Store) RevokeOwned(ctx context.Context, u *auth.User, id uuid.UUID) err
 
 func (s *Store) revoke(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, "UPDATE cell SET state = 'revoked', rpn = NULL WHERE id = $1 AND state <> 'revoked'", id)
+		tag, err := tx.Exec(ctx, "UPDATE cell SET state = 'revoked', rpn = NULL, revoked_at = $2 WHERE id = $1 AND state <> 'revoked'", id, s.now())
 		if err != nil {
 			return err
 		}
@@ -785,6 +785,37 @@ func (s *Store) revoke(ctx context.Context, id uuid.UUID) error {
 		}
 		return audit.Record(ctx, tx, audit.Entry{Action: "cell.revoke", ObjectType: "cell", ObjectID: id.String()})
 	})
+}
+
+// RevokedKeep is how long a revoked cell stays in the list before PurgeRevoked deletes it.
+const RevokedKeep = 72 * time.Hour
+
+// PurgeRevoked deletes the cells that were revoked more than RevokedKeep ago, and with them what hangs on a cell (certificates,
+// slots, enrollment tokens; calls and handset records only lose their pointer to it). It returns how many it deleted. Each one is
+// audited. Run it now and then; it is safe to run at any time and from several controllers.
+func (s *Store) PurgeRevoked(ctx context.Context) (int, error) {
+	n := 0
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, "SELECT id FROM cell WHERE state = 'revoked' AND revoked_at < $1 FOR UPDATE SKIP LOCKED", s.now().Add(-RevokedKeep))
+		if err != nil {
+			return err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, err := tx.Exec(ctx, "DELETE FROM cell WHERE id = $1", id); err != nil {
+				return err
+			}
+			if err := audit.Record(ctx, tx, audit.Entry{Action: "cell.purge", ObjectType: "cell", ObjectID: id.String()}); err != nil {
+				return err
+			}
+		}
+		n = len(ids)
+		return nil
+	})
+	return n, err
 }
 
 // CellUpdate holds the editable fields; nil leaves a field unchanged.
