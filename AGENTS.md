@@ -1,6 +1,6 @@
 # AGENTS.md: rules for AI agents (and humans) working on opendectcell-controller
 
-Read this completely before changing anything. For the current project state, see the maintainers' notes. If a rule is unclear or wrong, propose a change to this file in its own commit; don't silently deviate. The sister repository **openDECTcell** (cell side: firmware loader, kernel module, `libopendectcell`) has its own `AGENTS.md`. Its clean-room rules apply here too.
+Read this completely before changing anything. For the current project state see `docs/status.md`, `ROADMAP.md` and the open issues; who works on what, and every hand-over, is in the issues (CONTRIBUTING.md, "Working on an issue"). the maintainers' notes and the maintainers' notes, where your checkout has them, are the maintainers' private notes and are not part of the public repository. If a rule is unclear or wrong, propose a change to this file in its own commit; don't silently deviate. The sister repository **openDECTcell** (cell side: firmware loader, kernel module, `libopendectcell`) has its own `AGENTS.md`. Its clean-room rules apply here too.
 
 ## 1. What this project is, and what it is not
 
@@ -127,9 +127,10 @@ anyway.
 The maintainers review this work and decide what gets built next. They are not
 watching the commits as they happen, so the log is how they see what you did.
 
-- **Keep the maintainers' notes current.** Add an entry for every working session,
-  newest first. An entry states what changed (with commit hashes), the
-  decisions taken and why, and anything that is uncertain or incomplete.
+- **Report every working session in its issue** (CONTRIBUTING.md, "Working on an
+  issue"): what changed (with commit hashes), the decisions taken and why, and
+  anything that is uncertain or incomplete. Where your checkout has the
+  maintainers' private the maintainers' notes, add the entry there as well.
 - **Surface decisions, don't bury them.** Anything a reviewer might reasonably
   overrule — a library choice, a schema shape, an interpretation of a design
   doc — goes in the entry's decisions list explicitly, with the alternative you

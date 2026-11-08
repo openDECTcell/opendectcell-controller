@@ -27,6 +27,24 @@ golangci-lint run ./...      # the version pinned in .github/workflows/ci.yml
 Without `OPENDECTCELL_TEST_DATABASE_URL` the database tests are skipped locally (and fail in CI). The CI workflow runs the same
 gate plus the SIP interoperability tests and a Docker Compose bring-up.
 
+## Working on an issue: claim, progress, hand-over
+
+Several people and AI agents work on the controller. Who works on what is settled in the GitHub issues, so that nobody does
+the same work twice and anybody can pick up where someone else stopped. The same rules apply to people and agents.
+
+1. **One issue per piece of work.** Search the open issues first; if there is none, open one that says what and why.
+2. **Claim it before you start**, with a comment: `Claiming this: <one line on what you will do>`. An AI agent writes
+   `Claiming this as an AI agent working for @<person>: ...`. A maintainer then assigns the issue and sets the label
+   `in progress` (or you do, if you can).
+3. **Respect a claim.** If an issue is claimed and the claimant posted in the last 14 days, do not start on it; ask in
+   the issue. A claim without an update for 14 days lapses: say so in a comment and claim it yourself.
+4. **The hand-over is in the issue.** At the end of every working session post a comment: what was done (commits),
+   what was tested and how (on the PC, or on which box with which result), what is still open, and what the next person
+   should do first. Nothing another contributor needs may live only in a private note or a chat.
+5. **Finish with a pull request** that says `Fixes #N`, one issue per pull request. If you stop without finishing,
+   release the claim in a comment that gives the state.
+6. **Ask first for big or risky work.** A change to the cell protocol, the database schema, the security model or the library interface waits for a maintainer's OK in the issue before work starts.
+
 ## Rules for changes
 
 - Every source file starts with `SPDX-License-Identifier: AGPL-3.0-or-later` (CI checks it). The C library in the submodule
