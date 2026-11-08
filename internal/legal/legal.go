@@ -83,9 +83,10 @@ func (k Kind) Standard() string {
 			"refused, may not reach the right control centre, and cannot be located. If you need to reach the emergency services, " +
 			"use a mobile phone or a landline that is not served through this system."
 	case Experimental:
-		return "This software is experimental. It is provided as it is, without any warranty, and there is no guaranteed service: " +
-			"calls, handsets, base stations and data may stop working, be lost or change at any time, without notice. " +
-			"By signing off you confirm that you understand this and use the service at your own risk."
+		return "This software is experimental. It was written almost entirely (about 99 %) by AI coding agents, and only smaller " +
+			"parts of it have been reviewed by a human. It is provided as it is, without any warranty whatsoever, and there is no " +
+			"guaranteed service: calls, handsets, base stations and data may stop working, be lost or change at any time, without " +
+			"notice. By signing off you confirm that you understand this and use the service at your own risk."
 	}
 	return ""
 }
