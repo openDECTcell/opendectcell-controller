@@ -991,13 +991,16 @@ void cdect_host_names_refresh(struct cdect_host *c)
 	dect_base_names_refresh(&c->b);
 }
 
+/* the header line of the stored calls list; its length comes from sizeof, so a rename needs no other change */
+#define CALLS_MAGIC "#opendectcell-calls 1\n"
+
 int cdect_host_set_calls(struct cdect_host *c, const char *text, size_t len)
 {
 	unsigned before[DECT_BASE_HS_MAX][2], i, ln;
 	struct dect_calls fresh;
 
 	/* parse first: a file that is not ours changes nothing */
-	if (len < 17u || memcmp(text, "#opendectcell-calls 1\n", 17))
+	if (len < sizeof(CALLS_MAGIC) - 1 || memcmp(text, CALLS_MAGIC, sizeof(CALLS_MAGIC) - 1))
 		return -1;
 	for (i = 0; i < c->b.n_hs && i < DECT_BASE_HS_MAX; i++)
 		for (ln = 0; ln < 2u; ln++)
