@@ -3,10 +3,8 @@ name: CI
 
 # Runs on every pull request and on pushes to main; it can also be started by hand from the Actions tab.
 # The same gate runs locally before every commit (CONTRIBUTING.md). Pull requests from forks get no secrets.
+# Manual while the repository is private (Actions minutes); push and pull_request triggers return when it is public.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 # a newer push to the same branch makes the older run pointless
