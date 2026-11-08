@@ -9,6 +9,9 @@ could not be diffed against it. Severity is the reviewer's; "fixed" says what wa
 
 | Finding | What was wrong | What changed |
 |---|---|---|
+| **F-10 (low)** cell names and places | every active cell's name and location went to every user | a user sees of another operator's cell only what that operator shares (`ListCells`, PRIV-01, test in `internal/cell/cell_test.go`) |
+| **F-15 (low)** identities and numbers in debug logs | debug lines held page and C-plane mail bytes (handset identities, numbers, names) and the raw bridge lines | those mails are logged as length and a short digest, bridge lines with numbers masked, names as their length and keypad digits as `*` (`internal/dect/core/redact.go`, tests), 2026-11-08; the library's own info-level trace lines still name IPUIs (B7 says so) |
+| **F-17 (low)** single-sign-on role changes | an administrator removed at the identity provider stayed admin for the session's lifetime | a single-sign-on administrator's session ends after 12 hours (`auth.OIDCAdminMaxAge`), so the provider decides again |
 | **F-01 (high)** SIP INVITE/NOTIFY from any source | A request addressed by extension and domain (`To:`) was accepted from any address: ringing handsets, forged caller IDs and missed calls, RTP port exhaustion | A request addressed by the account's secret Contact token is taken from anywhere (that is the registrar's side); one addressed by extension and domain only from the addresses the account's servers resolve to (`sip.Manager.accept`, `line.fromPeer`). At most 8 incoming calls per account and 4 per source at once (`takeIncoming`). Tests: `sip/guard_test.go`. **Still open:** an INVITE with the token from a stranger who learned it (it is a 64-bit random value in the account's id); compose still publishes 5060 on all interfaces: firewall it |
 | **F-02 (medium)** SIP account fields | A user chose the registrar, proxy and domain: the controller connected to loopback, link-local, Docker-internal services; control characters and quotes in the display name or user agent reached the SIP headers; no quota | Targets that are loopback, link-local, multicast or a port of another service (22, 443, 5432, 6379 ...) are refused (`sip/target.go`, `Config.AllowLocal` for tests); control characters, quotes and backslashes are refused in every text that goes into a header, and every text is at most 255 characters; 20 accounts per user (`sipaccount.MaxAccountsPerUser`). Tests: `sip/target_test.go`, `sipaccount` `TestHeaderInjectionAndQuota`. **Still open:** a user can still probe other *private* addresses on a SIP port and read "refused" or "timeout" on the account's status page |
 | **F-03 (medium)** worker isolation | A worker is the controller's own binary under the same uid: a worker taken over through the C library could read `/secrets` and connect to the database | A seccomp filter on every thread (`dect/worker/seccomp_linux.go`) denies opening files, sockets, `connect`, `execve`, `ptrace`, `process_vm_*`, `pidfd_getfd`, mounts; ADR 0003 corrected. Test: `TestConfinedWorkerCannotReachFilesOrNetwork`. **Still open:** cells in one worker share an address space |
@@ -29,13 +32,10 @@ could not be diffed against it. Severity is the reviewer's; "fixed" says what wa
 
 ## Open (not fixed yet)
 
-| Finding | Summary | Suggested fix |
+| Finding | Summary | State |
 |---|---|---|
-| F-10 (low) | name and location of every active cell are visible to every user, ignoring the sharing switches | non-admins see only their own cells, or `Cell.Public()` |
-| F-15 (low) | debug logging holds IPUIs, pages and dialled digits (the threat model says never) | hash identities and mask numbers in debug logs, or say so in B7 |
-| F-17 (low) | an OIDC role change applies at the next login (sessions last 7 days) | re-login every 12 h |
-| F-18 (low, unconfirmed) | a passive capture of a registration may allow an offline PIN search (the PIN is the authentication code) | verify against EN 300 175-7; then say so in the threat model |
-| F-19 (low) | IPUI squatting: the first account to register an IPUI owns it | an admin action to release one; show the conflict |
+| F-18 (low) | a passive capture of a registration allows an offline PIN search, and with it the handset's UAK (the PIN is the authentication code) | **confirmed 2026-11-08** from the key allocation (EN 300 175-7, as libopendectcell implements it); inherent in DECT, not fixable in the base; written into the threat model, B1 |
+| F-19 (low) | IPUI squatting: the first account to register an IPUI owns it | **known risk, written into the threat model (B1)**; an administrator releases the handset by IPEI (Administration > Release a handset, built 2026-11-04); showing the refusal in the owner's registration status is planned |
 | I-02..I-06 | Leaflet attribution HTML (admin only), unpinned CI actions and base images, radio-triggered registration lock-out (by design), the SDP peer address decides where RTP goes, `otpauth:` link rewritten by `html/template` | see the report |
 
 The full reports (file and line for every finding, what was checked and found fine) are kept by the maintainer outside
