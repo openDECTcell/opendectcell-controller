@@ -19,6 +19,18 @@ scale has been tested only in simulation: [what works and what does not](docs/wi
 > like). If you run it for other people, switch on the [legal texts](docs/wiki/Legal-texts.md): a legal notice, a privacy
 > notice and the warnings, which every user then signs off.
 
+## Screenshots
+
+![The overview: lines, handsets, base stations and the last seven days of calls](docs/images/controller-overview.png)
+
+*The overview of a user: what needs attention, the handsets with their signal, and the VoIP lines.*
+
+![The call list with the quality of every call](docs/images/controller-calls.png)
+
+*The calls, with direction, handset, line and a quality estimate (MOS) for each.*
+
+More pages, with example entries, are in [docs/screenshots.md](docs/screenshots.md). Everything on them is made up.
+
 ## Quick start
 
 You need a Linux server with Docker, a FRITZ!Box with OpenWrt and the openDECTcell packages, a DECT handset and a SIP
