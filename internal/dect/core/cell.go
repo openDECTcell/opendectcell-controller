@@ -248,7 +248,9 @@ func (r *cellRun) handle(ev event) {
 	case evMail:
 		r.log.Debug("chip mail", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "len", len(ev.mail.Param))
 		switch ev.mail.Prim { // the link's own mails, with what they carry: no memory reads, so no keys
-		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242, 0xF601, 0xF602, 0xF623: // F601/F602/F623: the chip's RFPI, its broadcast report, the scan report (the beacon carrier and bearer)
+		case 0x0200, 0x0201, 0x0202, 0x0203, 0x0242: // a connection's mails can name the handset: a digest only (B7)
+			r.log.Debug("chip mail content", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "param", mailDigest(ev.mail.Param))
+		case 0xF601, 0xF602, 0xF623: // the chip's RFPI, its broadcast report, the scan report: about the cell, not a person
 			r.log.Debug("chip mail content", "prim", fmt.Sprintf("%04x", ev.mail.Prim), "param", hex.EncodeToString(ev.mail.Param))
 		}
 		if ev.mail.Prim == 0x0201 {
@@ -943,11 +945,11 @@ func (r *cellRun) drop() {
 // send is MAIL_DOWN. A slot write gets a corr, so a cell that cannot
 // deliver it says so (§7.4).
 func (r *cellRun) send(corr uint16, m stack.Mail) error {
-	if m.Prim == 0x0300 { // a page: whom it names is public, no key travels in it
-		r.log.Debug("chip mail down: page", "param", hex.EncodeToString(m.Param))
+	if m.Prim == 0x0300 { // a page names the handset: a digest only (B7)
+		r.log.Debug("chip mail down: page", "param", mailDigest(m.Param))
 	}
-	if m.Prim == 0x0244 { // the C-plane going out (APPEND_CONNECTION_DATA): signalling, no key in it
-		r.log.Debug("chip mail down", "prim", fmt.Sprintf("%04x", m.Prim), "param", hex.EncodeToString(m.Param))
+	if m.Prim == 0x0244 { // the C-plane going out (APPEND_CONNECTION_DATA) carries numbers and names: a digest only (B7)
+		r.log.Debug("chip mail down", "prim", fmt.Sprintf("%04x", m.Prim), "param", mailDigest(m.Param))
 	}
 	if corr == 0 && (m.Prim == 0x0247 || m.Prim == 0x020A) && len(m.Param) > 0 {
 		r.corr++
@@ -1206,7 +1208,7 @@ func (g *gen) Log(line string) {
 // destination is not used here.
 func (g *gen) Event(to stack.To, line string) {
 	line = strings.TrimSpace(line)
-	g.r.log.Debug("bridge line", "line", line)
+	g.r.log.Debug("bridge line", "line", redactBridgeLine(line))
 	if verb, kv := parseBridgeLine(line); verb == "call-out" {
 		hid := g.r.handsetBySlot(kv["hs"])
 		var target uuid.UUID

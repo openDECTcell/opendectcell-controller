@@ -564,29 +564,7 @@ func (rs *routes) legEnded(c *Core, rt *route, kind CallEventKind, reason string
 // parseBridgeLine splits `verb key=value key="a value"` ...
 func parseBridgeLine(line string) (verb string, kv map[string]string) {
 	kv = map[string]string{}
-	var toks []string
-	var cur strings.Builder
-	in := false
-	started := false
-	for _, r := range line {
-		switch {
-		case r == '"':
-			in = !in
-			started = true
-		case r == ' ' && !in:
-			if started {
-				toks = append(toks, cur.String())
-				cur.Reset()
-				started = false
-			}
-		default:
-			cur.WriteRune(r)
-			started = true
-		}
-	}
-	if started {
-		toks = append(toks, cur.String())
-	}
+	toks := splitBridgeLine(line)
 	if len(toks) == 0 {
 		return "", kv
 	}
