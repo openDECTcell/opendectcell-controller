@@ -12,7 +12,7 @@ require (
 	github.com/icholy/digest v1.2.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/miekg/dns v1.1.73
-	github.com/pion/rtcp v1.2.19
+	github.com/pion/rtcp v1.2.20
 	github.com/pion/rtp v1.10.6
 	github.com/pion/sdp/v3 v3.0.20
 	github.com/pion/srtp/v3 v3.1.3
