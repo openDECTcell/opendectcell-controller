@@ -91,6 +91,8 @@ services:
       # The cells' DECT stacks in worker processes (docs/adr/0003-stack-isolation.md): a
       # crash in the C library ends one worker, not the controller. 0: inside the controller.
       OPENDECTCELL_CELLS_STACK_WORKERS: ${OPENDECTCELL_CELLS_STACK_WORKERS:-0}
+      # lab switch: 1 puts every DECT segment and message in the log (numbers and secrets left out)
+      OPENDECTCELL_DECT_VERBOSE: ${OPENDECTCELL_DECT_VERBOSE:-}
     volumes:
       - secrets:/secrets:ro
       # the backups, read only: the administrators see their state and download the newest one

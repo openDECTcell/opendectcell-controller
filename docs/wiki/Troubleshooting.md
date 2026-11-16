@@ -29,7 +29,8 @@ tab *Log* in LuCI. Most problems are the network between the two.
 | **A call connects but there is no audio** | The two media addresses are wrong: `OPENDECTCELL_CELLS_MEDIA_IP` (cells to controller) and `OPENDECTCELL_SIP_MEDIA_IP` (controller to the SIP peer), and the UDP ranges must be open (41100–41199 and 41000–41099 by default). The controller log says so at start when the cells address is invalid. |
 | Audio in one direction only | The same, for the other address. SIP behind NAT: check the SIP peer can reach `OPENDECTCELL_SIP_MEDIA_IP`. |
 | The handset shows `---` or "not possible" when you dial | It has no line, or the cell it is on does not hear it; see "A handset is deaf" below. |
-| A call is "busy" right away | The handset is in a call or ringing, or the cell has used all its voice channels (5 on a 7520, 3 on a 7412). |
+| An incoming call does not ring on one handset, which is shown as offline | Some old GAP handsets (Siemens C45, C450) never answer the base's page; see [Hardware and handsets](Hardware-and-handsets.md). Check that the handset is switched on and registered; its outgoing calls usually still work. |
+| A call is "busy" right away | The handset is in a call or ringing, or the cell has used all its voice channels (three on every cell for now; the 7520's chip could carry five, which is planned). |
 | A call dropped when a box was switched off | A call does not move to another cell; there is no handover. |
 | The line shows "not registered" | The reason is shown next to the profile: user name, password, registrar, transport, a firewall. |
 | An incoming call is refused with 403 or does not ring | The account has to be registered, and the call must come from its server (or the one it is routed through). |

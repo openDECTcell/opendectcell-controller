@@ -96,6 +96,9 @@ func buildVersion() string {
 	return "dev"
 }
 
+// dectVerboseEnv switches on the DECT library's message log (a lab switch; cdect.VerboseEnv reads it).
+const dectVerboseEnv = "OPENDECTCELL_DECT_VERBOSE"
+
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "opendectcell-controller:", err)
@@ -427,6 +430,10 @@ func serve(ctx context.Context, cfg config.Config, pool *pgxpool.Pool, log *slog
 		orgs.Enforcer = dect
 		if n := int(cfg.Cells.StackWorkers); n > 0 {
 			sup = &worker.Supervisor{N: n, Log: log.With("component", "dect-workers")}
+			// a workers' environment is empty on purpose; the one lab switch (dectVerboseEnv) is passed on by name
+			if os.Getenv(dectVerboseEnv) == "1" {
+				sup.Env = append(sup.Env, dectVerboseEnv+"=1")
+			}
 			sup.Start(sctx)
 			newStack = func(env stack.Env, c stack.Config) stack.Stack { return sup.NewStack(env, c, dect.Clock) }
 			log.Info("the DECT stacks run in worker processes", "workers", n)

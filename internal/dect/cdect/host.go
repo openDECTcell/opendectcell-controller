@@ -19,6 +19,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime/cgo"
 	"runtime/debug"
 	"sync"
@@ -122,6 +123,9 @@ func (x *Host) raise() {
 	}
 }
 
+// VerboseEnv is the environment variable that switches on the library's message log (the controller passes it to its DECT workers).
+const VerboseEnv = "OPENDECTCELL_DECT_VERBOSE"
+
 // NewHost allocates a stack for one cell. Add the records, then Start.
 func NewHost(env Env, cfg Config) *Host {
 	x := &Host{env: env}
@@ -142,6 +146,8 @@ func NewHost(env Env, cfg Config) *Host {
 	b.cfg.names_readonly = cbool(cfg.NamesRO)
 	x.c.poll_signal = cbool(cfg.PollSignal)
 	b.cfg.no_cipher = cbool(cfg.NoCipher)
+	// A lab switch for chasing a handset problem: every segment and NWK message in the log, secrets and numbers left out.
+	b.cfg.verbose = cbool(os.Getenv(VerboseEnv) == "1")
 	b.cfg.locauth = cbool(!cfg.NoLocAuth)
 	b.cfg.bind_first = cbool(cfg.BindFirst)
 	b.cfg.alert_ms = C.unsigned(cfg.AlertMs)

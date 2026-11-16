@@ -5,7 +5,7 @@ field are in the [LuCI manual](https://github.com/openDECTcell/opendectcell/blob
 
 ## 1. What you need
 
-- A FRITZ!Box with **OpenWrt 25.12.5** and internet access during the installation (the package manager
+- A FRITZ!Box with **OpenWrt 25.12.6** and internet access during the installation (the package manager
   fetches what openDECTcell builds on).
 - The release files from [GitHub releases](https://github.com/openDECTcell/opendectcell/releases), signed packages for
   your box:

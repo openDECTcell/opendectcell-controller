@@ -15,3 +15,7 @@ cc.basic_service = basic
 # source: with <<PROGRESS-INDICATOR>> cause 8 ("in-band information is now available", EN 300 175-5 section 9.3.1.4) on our SETUP-ACK
 # source: alone, audio at once on 2 of 2 calls, with it on SETUP-ACK, CALL-PROC and ALERTING on 3 of 3, on ALERTING alone on 0 of 3.
 cc.progress_in_band = yes
+# source: bench 2026-11-09, lab 7520 on the controller, incoming call hung up by the caller while the handset rang: our {CC-RELEASE} was
+# source: acknowledged and the O201 answered {CC-RELEASE-COM} with reason 0x0E, yet it went on ringing for 10 to 15 s (three runs).
+# source: Pressing the hook during that ring makes it place a call of its own ({CC-SETUP} from it), so its CC call was already gone: only
+# source: the ringer runs on. <<SIGNAL>> 4FH (alerting off) before the release, cc.alert_off_on_release = yes, did NOT stop it (run 3): left off.

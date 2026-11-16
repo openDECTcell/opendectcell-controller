@@ -12,7 +12,7 @@ certificate renewal) against the real controller; SIP registration and calls; ca
 ## Built, but not seen on hardware
 
 The message-waiting indicator (the SIP mailbox to the handset's lamp); the **handset call lists** (missed, received, dialled, from the call log; read-only) and the **handset phonebook** (each handset reads its owner's contacts and the shared ones, and its edits go back to the controller); handsets choosing a cell by walking around with several boxes on at once; hold and resume; two calls on one handset;
-five parallel calls on one cell (three at once were up on a 7412 on 2026-11-05, G.722 passed through; the log shows them set up, whether the audio was good is not recorded); call waiting; the audio of a cell beyond a test peer; a handset **imported with its key** from a setup file (it should need no new registration; not tried on air); the LuCI
+more than three parallel calls on one cell (the cells announce three; three at once were up on a 7412 on 2026-11-05, G.722 passed through; the log shows them set up, whether the audio was good is not recorded); call waiting; the audio of a cell beyond a test peer; a handset **imported with its key** from a setup file (it should need no new registration; not tried on air); the LuCI
 firmware-upload page.
 
 ## Not built
@@ -24,13 +24,13 @@ firmware-upload page.
 | Cells | A way to update a cell's software from the controller; rotation of the controller's certificate authority (a runbook is in [Operating](Operating.md)); a hard limit of calls per cell |
 | Controller | WebAuthn security keys; German or other languages; roles between user and administrator (a site manager, an auditor); a manual for administrators beyond this wiki; a first-run wizard; search, sorting and paging in the long lists (hundreds of base stations or users render every row) |
 | Operations | Backups to S3 (the backup service writes to a volume and to SFTP); high availability (one controller, one database); alerts for disk, worker restarts and new releases; a "run a backup now" button; per-tenant quotas |
-| Hardware | The 7530 untested; the 7412 and the 7362 SL need kernel modules that are not in the release yet |
+| Hardware | The 7530 untested; the 7412 and the 7362 SL need extra kernel modules, which the 0.3.7 release includes |
 | Releases | Public releases and a package repository (planned after the controller is done) |
 
 ## Things that behave in a way you may not expect
 
 - **A call in progress does not follow a handset.** If the cell goes away the call ends.
-- **A 7412 cell carries three calls at once**, a 7520 five.
+- **A cell carries three calls at once**, whatever the box (the 7520's chip could do five; not built yet).
 - **Two handsets whose temporary numbers end in the same digit** cannot both be in a call or ringing at once on a
   7412 cell ([Roaming](Roaming-and-many-cells.md)).
 - **By default all cells' DECT stacks run inside one controller process.** A crash in the DECT library stops every call
@@ -45,7 +45,7 @@ firmware-upload page.
   (a move takes 7 ms). **Not measured:** the DECT stack's cost per cell and per call (the stacks of the two real cells
   idle at about 5 % of one core together with the controller itself), real radios, and the web interface under load.
   *A comfortable size for one Pi is about 30 simultaneous calls, 20 to 30 cells and 100 handsets.* The limit that
-  bites first is the cells' own: a 7520 carries 5 calls and a 7412 3. Cells that restart together behind one address
+  bites first is the cells' own: a cell carries 3 calls. Cells that restart together behind one address
   reconnect 16 at a time and retry the rest.
 - **The cell operator can read the handset keys of its cell** by design (the base has to hold them): do not enrol a
   cell you do not trust. See [threat-model.md](../threat-model.md).

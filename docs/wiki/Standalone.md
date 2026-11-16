@@ -6,7 +6,7 @@ boxes, use [cells and a controller](Quick-start.md) instead.
 
 The complete guides live in the openDECTcell repository; this page is the short path.
 
-1. **Prepare the box**: OpenWrt 25.12.5 and the signed packages `kmod-opendectcell-…`, `opendectcell`, `luci-app-opendectcell`
+1. **Prepare the box**: OpenWrt 25.12.6 and the signed packages `kmod-opendectcell-…`, `opendectcell`, `luci-app-opendectcell`
    and, for SIP, `opendectcell-baresip`. The commands are on [Prepare a box](Box-install.md) (leave out `opendectcell-cell`).
 2. **The chip firmware**: extract it from the FRITZ!OS image on your PC with `tools/dect-fw-extract.py` and copy it
    to the box (same page, step 3).

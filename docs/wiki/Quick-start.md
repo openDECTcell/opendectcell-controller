@@ -5,7 +5,7 @@ about an hour, most of it waiting for downloads. Later boxes need only steps 3 t
 
 **What you need**
 
-- A FRITZ!Box **7520** with OpenWrt 25.12.5 (the 7530 should be the same; the 7412 works but needs extra
+- A FRITZ!Box **7520** with OpenWrt 25.12.6 (the 7530 should be the same; the 7412 works but needs extra
   steps, see [Hardware and handsets](Hardware-and-handsets.md)). Installing OpenWrt is described on the
   [OpenWrt wiki](https://openwrt.org/toh/avm/avm_fritz_box_7530).
 - A computer or server for the controller that the box can reach over the network: Linux with Docker and
