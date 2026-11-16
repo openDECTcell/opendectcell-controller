@@ -6,7 +6,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/emiago/sipgo v1.5.0
 	github.com/getkin/kin-openapi v0.152.0
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/google/uuid v1.6.0
 	github.com/gotranspile/g722 v0.0.0-20240123003956-384a1bb16a19
 	github.com/icholy/digest v1.2.0
