@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Keeps the pinned base images, workflow actions and Go modules current: each is pinned by digest or commit
+# (docs/releasing.md), so an update is a reviewed pull request, not a silent change.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule: {interval: weekly}
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+  - package-ecosystem: gomod
+    directory: /
+    schedule: {interval: weekly}
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule: {interval: weekly}
