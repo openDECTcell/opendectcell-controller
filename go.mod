@@ -10,7 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gotranspile/g722 v0.0.0-20240123003956-384a1bb16a19
 	github.com/icholy/digest v1.2.0
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/miekg/dns v1.1.73
 	github.com/pion/rtcp v1.2.20
 	github.com/pion/rtp v1.10.6
@@ -31,7 +31,7 @@ require (
 	github.com/gobwas/ws v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/pion/logging v0.2.4 // indirect
