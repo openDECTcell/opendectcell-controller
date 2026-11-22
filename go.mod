@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/emiago/sipgo v1.5.0
+	github.com/emiago/sipgo v1.7.4
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/google/uuid v1.6.0
